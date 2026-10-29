@@ -11,12 +11,13 @@
   import DetailPane from "./DetailPane.svelte";
   import EnvironmentDialog from "./EnvironmentDialog.svelte";
   import ImportDialog from "./ImportDialog.svelte";
+  import KindChips from "./KindChips.svelte";
   import Workspace from "../query/Workspace.svelte";
   import { QueryWorkspace } from "../query/store.svelte";
   import SettingsDialog from "./SettingsDialog.svelte";
   import StatusBar from "./StatusBar.svelte";
   import Tree from "./Tree.svelte";
-  import { TreeModel, type LoadReport, type Row } from "./tree-model";
+  import { TreeModel, type KindSummary, type LoadReport, type Row } from "./tree-model";
 
   let { info }: { info: StartupInfo } = $props();
 
@@ -25,6 +26,8 @@
   let sidecarText = $state("Starting...");
   let config = $state<AppConfig>({ environments: [] });
   let rows = $state.raw<Row[]>([]);
+  let kinds = $state.raw<KindSummary[]>([]);
+  let kindFilter = $state<string>();
   let selectedKey = $state<string>();
   let lastLoad = $state<LoadReport>();
   let inFlight = $state<{ label: string; startedAt: number }>();
@@ -47,6 +50,8 @@
     (id) => api!.children(id),
     () => {
       rows = model.rows();
+      kinds = model.kinds();
+      kindFilter = model.activeKind();
       const loading = model.inFlight()[0];
       inFlight = loading ? { label: model.node(loading.id)?.label ?? "tree", startedAt: loading.startedAt } : undefined;
     },
@@ -126,6 +131,7 @@
     const sidecarReadyEpochMs = nowEpochMs();
     config = await api!.config();
     await model.loadRoot();
+    await model.preload(envNodeIds());
 
     const fcp = await firstPaintEpochMs();
     const timings = {
@@ -153,10 +159,14 @@
   }
 
   /** Re-reads environments and connections after a config change without losing expanded subtrees. */
+  /** Node ids of every environment, matching the sidecar's node paths. */
+  const envNodeIds = () => config.environments.map((e) => `env:${encodeURIComponent(e.id)}`);
+
   async function configChanged(next?: AppConfig) {
     config = next ?? (await api!.config());
     await model.reload("");
     for (const env of config.environments) await model.reload(`env:${encodeURIComponent(env.id)}`);
+    await model.preload(envNodeIds());
   }
 
   const envOf = (id: string) => config.environments.find((e) => e.id === id);
@@ -315,6 +325,16 @@
       <button title="New connection" disabled={sidecar !== "connected"} onclick={() => addConnection()}>+ Connection</button>
       <button title="Settings" aria-label="Settings" disabled={sidecar !== "connected"} onclick={() => (dialog = { kind: "settings" })}>Settings</button>
     </div>
+    {#if kinds.length > 1}
+      <KindChips
+        {kinds}
+        active={kindFilter}
+        onSelect={(kind) => {
+          kindFilter = kind;
+          model.setKindFilter(kind);
+        }}
+      />
+    {/if}
     <div class="tree-host">
       {#if sidecar === "connected" && config.environments.length === 0}
         <p class="hint muted">No environments yet.</p>

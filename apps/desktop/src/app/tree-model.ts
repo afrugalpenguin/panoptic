@@ -53,6 +53,13 @@ export type Row =
   | (RowBase & { type: "error"; parentId: string; message: string })
   | (RowBase & { type: "empty"; parentId: string });
 
+/** One chip in the kind filter row: a kind present in the loaded connections and how many. */
+export interface KindSummary {
+  kind: string;
+  badge: KindBadge;
+  count: number;
+}
+
 export interface LoadReport {
   id: string;
   label: string;
@@ -74,6 +81,11 @@ export class TreeModel {
   private readonly expanded = new Set<string>();
   /** Display segments per node, rebuilt when nodes load (docs/explorer-ux.md); rows only read them. */
   private readonly labels = new Map<string, LabelSegments>();
+  /** Built with the labels: connection kind per connection id, kind counts per env, and tree-wide. */
+  private readonly connectionKind = new Map<string, string>();
+  private envKinds = new Map<string, Map<string, number>>();
+  private kindList: KindSummary[] = [];
+  private kindFilter: string | undefined;
 
   constructor(
     private readonly load: (id: string) => Promise<TreeNode[]>,
@@ -134,6 +146,31 @@ export class TreeModel {
     else this.onChange();
   }
 
+  /**
+   * Loads children without expanding: used to fetch every environment's connection list at start-up
+   * (config only, no server calls), so labels and kind chips see the whole tree.
+   */
+  async preload(ids: string[]): Promise<void> {
+    await Promise.all(ids.filter((id) => !this.children.has(id)).map((id) => this.loadChildren(id)));
+  }
+
+  /** Kinds present in the loaded connections, in order of first appearance, with counts. */
+  kinds(): KindSummary[] {
+    return this.kindList;
+  }
+
+  /** The kind being filtered on, if any; cleared automatically when that kind disappears. */
+  activeKind(): string | undefined {
+    return this.kindFilter;
+  }
+
+  /** Shows only connections of one kind (and environments that have some); undefined shows all. */
+  setKindFilter(kind: string | undefined): void {
+    if (this.kindFilter === kind) return;
+    this.kindFilter = kind;
+    this.onChange();
+  }
+
   /** Refetches one already-loaded level, keeping descendants' caches. Used when config changes. */
   async reload(id: string): Promise<void> {
     if (this.children.has(id)) await this.loadChildren(id);
@@ -159,6 +196,9 @@ export class TreeModel {
       for (const id of ids) {
         const node = this.nodes.get(id)!;
         const isEnv = node.kind === "environment";
+        const filter = this.kindFilter;
+        if (filter && isEnv && !this.envKinds.get(id)?.get(filter)) continue;
+        if (filter && node.kind === "connection" && this.connectionKind.get(id) !== filter) continue;
         const color = isEnv ? node.meta?.color : envColor;
         const ro = isEnv ? node.meta?.readOnly === "true" : readOnly;
         const env = isEnv ? id : envId;
@@ -183,7 +223,13 @@ export class TreeModel {
               indent: indentFor(depth),
               envId: env,
               badge: rowKind === "connection" ? kindBadge(node.meta?.connectionKind ?? node.icon) : undefined,
-              count: isEnv ? (Number(node.meta?.connectionCount) || loadedCount) : rowKind === "folder" ? loadedCount : undefined,
+              count: isEnv
+                ? filter
+                  ? this.envKinds.get(id)?.get(filter)
+                  : Number(node.meta?.connectionCount) || loadedCount
+                : rowKind === "folder"
+                  ? loadedCount
+                  : undefined,
               secondary: node.meta?.partitionKey ?? node.meta?.detail,
             },
             out.length === 0,
@@ -232,11 +278,15 @@ export class TreeModel {
     for (const n of loaded) {
       if (n.kind !== "connection") this.labels.set(n.id, n.meta?.schema ? leafLabel(n.label) : { prefix: "", core: n.label, suffix: "" });
     }
-    if (!loaded.some((n) => n.kind === "connection")) return;
-    // Only connections currently listed under an environment: the node cache keeps removed ones.
-    const listed = [...this.children].flatMap(([parent, s]) =>
-      s.status === "loaded" && this.nodes.get(parent)?.kind === "environment" ? s.ids : [],
-    );
+    if (!loaded.some((n) => n.kind === "connection" || n.kind === "environment")) return;
+    // Only connections listed under environments that are themselves still listed: the node cache
+    // keeps removed environments and connections.
+    const root = this.children.get("");
+    const envIds = root?.status === "loaded" ? root.ids : [];
+    const listed = envIds.flatMap((env) => {
+      const s = this.children.get(env);
+      return s?.status === "loaded" ? s.ids : [];
+    });
     const connections = listed
       .map((id) => this.nodes.get(id)!)
       .filter((n) => n.kind === "connection")
@@ -247,6 +297,20 @@ export class TreeModel {
         envId: this.parents.get(n.id) ?? "",
       }));
     for (const [id, segments] of computeLabels(connections)) this.labels.set(id, segments);
+
+    // Kinds for the filter chips, from the same connection list.
+    this.connectionKind.clear();
+    this.envKinds = new Map();
+    const totals = new Map<string, number>();
+    for (const c of connections) {
+      this.connectionKind.set(c.id, c.kind);
+      const perEnv = this.envKinds.get(c.envId) ?? new Map<string, number>();
+      perEnv.set(c.kind, (perEnv.get(c.kind) ?? 0) + 1);
+      this.envKinds.set(c.envId, perEnv);
+      totals.set(c.kind, (totals.get(c.kind) ?? 0) + 1);
+    }
+    this.kindList = [...totals].map(([kind, count]) => ({ kind, badge: kindBadge(kind), count }));
+    if (this.kindFilter && !totals.has(this.kindFilter)) this.kindFilter = undefined;
   }
 
   private forgetBelow(id: string): void {

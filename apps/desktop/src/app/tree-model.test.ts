@@ -250,4 +250,64 @@ describe("TreeModel", () => {
       expect(rows["dev/b/c"].secondary).toBe("/tenantId");
     });
   });
+
+  describe("kind filter", () => {
+    const conn = (id: string, kind: string): TreeNode => ({
+      id, kind: "connection", label: id, icon: kind, hasChildren: true, actions: [],
+      meta: { endpoint: `${id}.x.com`, connectionKind: kind },
+    });
+    const env = (id: string): TreeNode => ({ ...node(id), kind: "environment", label: id, meta: { environmentId: id, connectionCount: "9" } });
+
+    async function loaded() {
+      const { model } = fixture({
+        "": [env("dev"), env("prod")],
+        dev: [conn("dev/s1", "sql"), conn("dev/s2", "sql"), conn("dev/c1", "cosmos")],
+        prod: [conn("prod/s1", "sql")],
+      });
+      await model.loadRoot();
+      await model.preload(["dev", "prod"]);
+      return model;
+    }
+
+    it("preloads connection lists without expanding", async () => {
+      const model = await loaded();
+      expect(model.rows().map((r) => r.key)).toEqual(["dev", "prod"]);
+    });
+
+    it("derives chips from the loaded connections", async () => {
+      expect((await loaded()).kinds()).toEqual([
+        { kind: "sql", badge: { letters: "S", color: "#2d5aa0", name: "SQL" }, count: 3 },
+        { kind: "cosmos", badge: { letters: "C", color: "#1f7a74", name: "Cosmos" }, count: 1 },
+      ]);
+    });
+
+    it("filters to one kind, hides environments with none, and counts what is shown", async () => {
+      const model = await loaded();
+      await model.toggle("dev");
+      await model.toggle("prod");
+      model.setKindFilter("cosmos");
+      const rows = model.rows();
+      expect(rows.map((r) => r.key)).toEqual(["dev", "dev/c1"]);
+      expect(rows[0].type === "node" && rows[0].count).toBe(1);
+
+      model.setKindFilter(undefined);
+      expect(model.rows().map((r) => r.key)).toEqual(["dev", "dev/s1", "dev/s2", "dev/c1", "prod", "prod/s1"]);
+    });
+  });
+
+  it("drops a deleted environment's connections from the kind chips", async () => {
+    const conn = (id: string, kind: string): TreeNode => ({
+      id, kind: "connection", label: id, icon: kind, hasChildren: true, actions: [], meta: { endpoint: `${id}.x.com`, connectionKind: kind },
+    });
+    const env = (id: string): TreeNode => ({ ...node(id), kind: "environment", label: id, meta: { environmentId: id } });
+    const children: Record<string, TreeNode[]> = { "": [env("dev"), env("old")], dev: [conn("dev/s", "sql")], old: [conn("old/c", "cosmos")] };
+    const { model } = fixture(children);
+    await model.loadRoot();
+    await model.preload(["dev", "old"]);
+    expect(model.kinds().map((k) => k.kind)).toEqual(["sql", "cosmos"]);
+
+    children[""] = [env("dev")];
+    await model.reload("");
+    expect(model.kinds().map((k) => k.kind)).toEqual(["sql"]);
+  });
 });
