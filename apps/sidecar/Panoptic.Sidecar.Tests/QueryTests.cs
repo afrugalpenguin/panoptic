@@ -36,7 +36,7 @@ public class SqlValueTests
     private static string Json(object? value)
     {
         using var buffer = new MemoryStream();
-        using (var w = new Utf8JsonWriter(buffer)) SqlValues.Write(w, value);
+        using (var w = new Utf8JsonWriter(buffer, JsonRpcDispatcher.WriterOptions)) SqlValues.Write(w, value);
         return Encoding.UTF8.GetString(buffer.ToArray());
     }
 
@@ -44,7 +44,7 @@ public class SqlValueTests
     [InlineData(null, "null")]
     [InlineData(42, "42")]
     [InlineData(true, "true")]
-    [InlineData("it's", "\"it\\u0027s\"")]
+    [InlineData("it's", "\"it's\"")]
     public void Writes_simple_values(object? value, string expected) => Assert.Equal(expected, Json(value));
 
     [Fact]
