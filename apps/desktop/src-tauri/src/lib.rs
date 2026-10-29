@@ -192,6 +192,9 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        // Export: a save dialog, then writing the one file the user picked (the dialog adds it to the fs scope).
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .manage(Sidecar::default())
         .setup(|app| {
             let handle = app.handle().clone();

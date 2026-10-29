@@ -11,6 +11,8 @@
   import DetailPane from "./DetailPane.svelte";
   import EnvironmentDialog from "./EnvironmentDialog.svelte";
   import ImportDialog from "./ImportDialog.svelte";
+  import Workspace from "../query/Workspace.svelte";
+  import { QueryWorkspace } from "../query/store.svelte";
   import SettingsDialog from "./SettingsDialog.svelte";
   import StatusBar from "./StatusBar.svelte";
   import Tree from "./Tree.svelte";
@@ -57,6 +59,11 @@
 
   const selectedRow = $derived(rows.find((r) => r.key === selectedKey));
 
+  const workspace = new QueryWorkspace({
+    executeQuery: (request) => api!.executeQuery(request),
+    cancelQuery: (queryId) => api!.cancelQuery(queryId),
+  });
+
   onMount(() => {
     start();
   });
@@ -68,6 +75,7 @@
   async function start() {
     rpc = await connectSidecar(onSidecarStatus, (method, params) => {
       if (method === "auth.deviceCode") deviceCode = params as DeviceCodePrompt;
+      else if (method.startsWith("query.")) workspace.handle(method, params);
     });
     api = createApi(rpc);
     if (runningBeforeConnected) await onRunning();
@@ -178,6 +186,9 @@
       items.push({ label: "Retry", run: () => model.refresh(row.parentId) });
     } else {
       const n = row.node;
+      if (n.actions.includes("selectTop")) items.push({ label: "Select top 1000", run: () => openQuery(row, "selectTop") });
+      if (n.actions.includes("newQuery")) items.push({ label: "New query (Ctrl+N)", run: () => openQuery(row, "newQuery") });
+      if (n.actions.includes("selectTop") || n.actions.includes("newQuery")) items.push("separator");
       if (n.kind === "environment") {
         const env = envOf(n.meta!.environmentId);
         items.push({ label: "New connection...", run: () => addConnection(env?.id) });
@@ -217,6 +228,46 @@
     if (items.length) menu = { x, y, items };
   }
 
+  /** Nearest ancestor (or the node itself) of one of the given kinds. */
+  function ancestor(id: string, kinds: string[]) {
+    for (let cur: string | undefined = id; cur; cur = model.parentOf(cur)) {
+      const n = model.node(cur);
+      if (n && kinds.includes(n.kind)) return n;
+    }
+  }
+
+  /** Opens a query tab against a node: New query, or Select top 1000 which also runs it. */
+  async function openQuery(row: Row, action: "newQuery" | "selectTop") {
+    if (row.type !== "node" || !api) return;
+    const n = row.node;
+    try {
+      const template = await api.queryTemplate(n.id, action);
+      const scope = ancestor(n.id, ["container", "database"]) ?? ancestor(n.id, ["connection"]);
+      const connection = ancestor(n.id, ["connection"]);
+      const tab = workspace.open(
+        {
+          nodeId: n.id,
+          label: action === "selectTop" ? n.label : (scope?.label ?? n.label),
+          connection: connection?.label ?? "",
+          envColor: row.envColor,
+          readOnly: row.readOnly,
+          language: template.language,
+        },
+        template.text ?? "",
+      );
+      if (action === "selectTop") void workspace.run(tab);
+    } catch (e) {
+      lastLoad = { id: n.id, label: n.label, count: 0, ms: 0, error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
+  function onGlobalKeydown(e: KeyboardEvent) {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "n" && selectedRow?.type === "node" && selectedRow.node.actions.includes("newQuery")) {
+      e.preventDefault();
+      void openQuery(selectedRow, "newQuery");
+    }
+  }
+
   function activate(row: Row) {
     if (row.type === "node" && row.node.hasChildren) model.toggle(row.node.id);
   }
@@ -243,6 +294,8 @@
     target.addEventListener("pointerup", up, { once: true });
   }
 </script>
+
+<svelte:window onkeydown={onGlobalKeydown} />
 
 <div class="shell" style:--tree-w="{treeWidth}px">
   {#if deviceCode}
@@ -273,7 +326,11 @@
   <div class="splitter" role="separator" aria-orientation="vertical" onpointerdown={startResize}></div>
 
   <main class="content">
+    {#if workspace.tabs.length > 0}
+      <Workspace {workspace} />
+    {:else}
     <DetailPane row={selectedRow} onAddEnvironment={() => (dialog = { kind: "environment" })} onImport={() => (dialog = { kind: "import" })} />
+    {/if}
   </main>
 
   <div class="status-host">
