@@ -1,0 +1,106 @@
+/* Shared by both renderers so the comparison is about the framework, not the styling. */
+
+.bench {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100vh;
+  padding: 0 16px;
+  box-sizing: border-box;
+}
+
+.bench header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+}
+
+#host {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid color-mix(in srgb, CanvasText 15%, Canvas);
+}
+
+#results {
+  max-height: 30vh;
+  overflow: auto;
+  margin: 8px 0;
+}
+
+.v-scroller {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  contain: strict;
+}
+
+.v-spacer {
+  position: relative;
+}
+
+.v-window {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  will-change: transform;
+}
+
+.t-row {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.t-twisty {
+  width: 16px;
+  flex: none;
+  text-align: center;
+  opacity: 0.6;
+}
+.t-twisty.closed::before { content: "\25B8"; }
+.t-twisty.open::before { content: "\25BE"; }
+
+.t-icon {
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  flex: none;
+  border-radius: 2px;
+}
+.t-icon.k0 { background: #e8590c; }
+.t-icon.k1 { background: #1971c2; }
+.t-icon.k2 { background: #2f9e44; }
+.t-icon.k3 { background: #868e96; }
+.t-icon.k4 { background: #3bc9db; }
+.t-icon.k5 { background: #9775fa; }
+.t-icon.k6 { background: #f08c00; }
+.t-icon.k7 { background: #e64980; }
+
+.g-header,
+.g-row {
+  display: flex;
+  height: 24px;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.g-header {
+  flex: none;
+  font-weight: 600;
+  border-bottom: 1px solid color-mix(in srgb, CanvasText 15%, Canvas);
+}
+
+.g-cell {
+  width: 150px;
+  flex: none;
+  padding: 0 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 24px;
+  box-sizing: border-box;
+  border-right: 1px solid color-mix(in srgb, CanvasText 8%, Canvas);
+}

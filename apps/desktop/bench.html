@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="/src/styles.css" />
+    <title>Panoptic benchmarks</title>
+    <script type="module" src="/src/bench/main.ts"></script>
+  </head>
+  <body>
+    <main class="bench">
+      <header>
+        <a href="/index.html">Back</a>
+        <button id="run" type="button">Run benchmarks</button>
+        <span id="status">50k-node tree and 100k-row grid, plain TS vs Svelte 5. Takes about a minute.</span>
+      </header>
+      <div id="host"></div>
+      <pre id="results"></pre>
+    </main>
+  </body>
+</html>

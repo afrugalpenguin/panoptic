@@ -1,3 +1,4 @@
+import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { defineConfig } from "vite";
 // @ts-expect-error type error without @types/node package
 import process from "node:process";
@@ -5,6 +6,15 @@ const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
+  plugins: [svelte()],
+
+  build: {
+    // WebView2 is evergreen Chromium, so target it directly (top-level await, modern syntax).
+    target: "chrome120",
+    rollupOptions: {
+      input: { main: "index.html", bench: "bench.html" },
+    },
+  },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
