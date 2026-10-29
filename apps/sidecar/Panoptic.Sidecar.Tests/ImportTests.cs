@@ -175,6 +175,17 @@ public sealed class ImportTests : IDisposable
                                 <ServerConnectionItem>
                                   <Instance>localhost</Instance>
                                   <AuthenticationMethod>0</AuthenticationMethod>
+                                  <Connections>
+                                    <Element><Item><ServerConnectionSettings>
+                                      <Instance>localhost</Instance>
+                                      <AuthenticationMethod>0</AuthenticationMethod>
+                                      <Database />
+                                      <Advanced>
+                                        <Element><Key><string>CT</string></Key><Value><string>30</string></Value></Element>
+                                        <Element><Key><string>TSC</string></Key><Value><string>True</string></Value></Element>
+                                      </Advanced>
+                                    </ServerConnectionSettings></Item></Element>
+                                  </Connections>
                                 </ServerConnectionItem>
                               </Item>
                             </Element>
@@ -194,7 +205,7 @@ public sealed class ImportTests : IDisposable
         Assert.Equal(3, all.Count);
         Assert.Contains(all, c => c.Endpoint == "orders-dev.database.windows.net" && c.Auth == "entra" && c.Database == "Orders");
         Assert.Contains(all, c => c.Kind == "synapse" && c.Auth == "sql" && c.User == "sqladmin");
-        Assert.Contains(all, c => c.Endpoint == "localhost" && c.Auth == "windows");
+        Assert.Contains(all, c => c.Endpoint == "localhost" && c.Auth == "windows" && c.TrustServerCertificate && c.Database is null);
     }
 
     [Fact]
@@ -279,5 +290,87 @@ public sealed class ImportTests : IDisposable
     {
         Assert.Equal(ImportKey.Of("tcp:contoso.database.windows.net", "u", null), ImportKey.Of("contoso.database.windows.net", "u", null));
         Assert.NotEqual(ImportKey.Of("contoso", null, null), ImportKey.Of("ontoso", null, null));
+    }
+
+    // Shape of RegSrvr17.xml as written by SSMS 21/22: documents nested under bufferSchema, the
+    // auth choice in AuthenticationType, the Entra account in ActiveDirectoryUserId, and no Parent
+    // element on some servers (the group then comes from the document alias). Names are invented.
+    private const string RegSrvr17 = """
+        <?xml version="1.0"?>
+        <model xmlns="http://schemas.serviceml.org/smlif/2007/02">
+          <bufferSchema><definitions><document><data><xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:bufferData>
+            <instances xmlns:sfc="http://schemas.microsoft.com/sqlserver/sfc/serialization/2007/08">
+              <document>
+                <docinfo><aliases><alias>/RegisteredServersStore/ServerGroup/DatabaseEngineServerGroup/ServerGroup/UAT/RegisteredServer/app-uat</alias></aliases></docinfo>
+                <data>
+                  <RegisteredServers:RegisteredServer xmlns:RegisteredServers="http://schemas.microsoft.com/sqlserver/RegisteredServers/2007/08">
+                    <RegisteredServers:Name type="string">app-uat</RegisteredServers:Name>
+                    <RegisteredServers:ServerName type="string">app-uat.database.windows.net</RegisteredServers:ServerName>
+                    <RegisteredServers:UseCustomConnectionColor type="boolean">false</RegisteredServers:UseCustomConnectionColor>
+                    <RegisteredServers:ServerType type="ServerType">DatabaseEngine</RegisteredServers:ServerType>
+                    <RegisteredServers:ConnectionStringWithEncryptedPassword type="string">data source=app-uat.database.windows.net;encrypt=True;trust server certificate=False</RegisteredServers:ConnectionStringWithEncryptedPassword>
+                    <RegisteredServers:AuthenticationType type="int">5</RegisteredServers:AuthenticationType>
+                    <RegisteredServers:ActiveDirectoryUserId type="string">someone@example.com</RegisteredServers:ActiveDirectoryUserId>
+                  </RegisteredServers:RegisteredServer>
+                </data>
+              </document>
+              <document>
+                <docinfo><aliases><alias>/RegisteredServersStore/ServerGroup/DatabaseEngineServerGroup/ServerGroup/Local/RegisteredServer/localhost</alias></aliases></docinfo>
+                <data>
+                  <RegisteredServers:RegisteredServer xmlns:RegisteredServers="http://schemas.microsoft.com/sqlserver/RegisteredServers/2007/08">
+                    <RegisteredServers:ServerName type="string">localhost</RegisteredServers:ServerName>
+                    <RegisteredServers:ServerType type="ServerType">DatabaseEngine</RegisteredServers:ServerType>
+                    <RegisteredServers:ConnectionStringWithEncryptedPassword type="string">data source=localhost;user id=sa;trust server certificate=True</RegisteredServers:ConnectionStringWithEncryptedPassword>
+                    <RegisteredServers:AuthenticationType type="int">1</RegisteredServers:AuthenticationType>
+                    <RegisteredServers:ActiveDirectoryUserId type="string" />
+                  </RegisteredServers:RegisteredServer>
+                </data>
+              </document>
+              <document>
+                <docinfo><aliases><alias>/RegisteredServersStore/ServerGroup/DatabaseEngineServerGroup/ServerGroup/Local/RegisteredServer/winbox</alias></aliases></docinfo>
+                <data>
+                  <RegisteredServers:RegisteredServer xmlns:RegisteredServers="http://schemas.microsoft.com/sqlserver/RegisteredServers/2007/08">
+                    <RegisteredServers:ServerName type="string">WINBOX\DEV</RegisteredServers:ServerName>
+                    <RegisteredServers:ServerType type="ServerType">DatabaseEngine</RegisteredServers:ServerType>
+                    <RegisteredServers:ConnectionStringWithEncryptedPassword type="string">data source=WINBOX\DEV</RegisteredServers:ConnectionStringWithEncryptedPassword>
+                    <RegisteredServers:AuthenticationType type="int">0</RegisteredServers:AuthenticationType>
+                  </RegisteredServers:RegisteredServer>
+                </data>
+              </document>
+            </instances>
+          </xs:bufferData></xs:schema></data></document></definitions></bufferSchema>
+        </model>
+        """;
+
+    [Fact]
+    public void Ssms22_registered_servers_use_authentication_type_and_alias_groups()
+    {
+        var source = ConnectionImporter.ParseRegisteredServers(Write("RegSrvr17.xml", RegSrvr17))!;
+
+        Assert.Equal(["Local", "UAT"], source.Groups.Select(g => g.Name).Order());
+        var uat = source.Groups.Single(g => g.Name == "UAT").Connections.Single();
+        Assert.Equal("entra", uat.Auth);
+        Assert.Equal("someone@example.com", uat.User);
+        Assert.Equal("app-uat", uat.Name);
+
+        var local = source.Groups.Single(g => g.Name == "Local").Connections;
+        Assert.Contains(local, c => c.Endpoint == "localhost" && c.Auth == "sql" && c.User == "sa" && c.TrustServerCertificate && c.Name == "localhost");
+        Assert.Contains(local, c => c.Endpoint == @"WINBOX\DEV" && c.Auth == "windows" && c.User is null);
+    }
+
+    [Fact]
+    public void Scan_reads_numbered_regsrvr_files_and_reports_every_file_examined()
+    {
+        Write("Roaming/Microsoft/SQL Server Management Studio/RegSrvr17.xml", RegSrvr17);
+        Write("Roaming/Microsoft/SQL Server Management Studio/22.0/UserSettings.xml",
+            "<SqlStudio><SSMS><ConnectionOptions><ServerTypes /></ConnectionOptions></SSMS></SqlStudio>");
+
+        var sources = ConnectionImporter.Scan(Path.Combine(_root, "Roaming"), Path.Combine(_root, "Local"));
+
+        var registered = Assert.Single(sources, s => s.Source == "ssms-registered");
+        Assert.Equal(3, registered.Groups.Sum(g => g.Connections.Count));
+        var empty = Assert.Single(sources, s => s.Source == "ssms-recent");
+        Assert.Empty(empty.Groups);
+        Assert.Null(empty.Error);
     }
 }
