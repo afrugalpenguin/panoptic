@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import type { Api, AppConfig, EnvironmentConfig, ImportCandidate, ImportSource } from "./api";
   import Dialog from "./Dialog.svelte";
-  import { envStyleFor, planGroups, type PlanGroup } from "./import-plan";
+  import { candidateKey, envStyleFor, planGroups, type PlanGroup } from "./import-plan";
 
   let { api, config, onImported, onClose }: { api: Api; config: AppConfig; onImported: (count: number) => void; onClose: () => void } =
     $props();
@@ -20,7 +20,8 @@
   const hasOwnGroups = $derived(sources.some((s) => s.source !== "ssms-recent" && s.groups.some((g) => g.connections.length > 0)));
   let error = $state("");
 
-  const keyOf = (g: PlanGroup, i: number) => `${g.key}#${i}`;
+  // Selection is per connection, so it follows a connection when it is moved to another group.
+  const keyOf = (c: ImportCandidate) => candidateKey(c);
   const examined = $derived(
     sources.map((s) => ({
       label: s.label,
@@ -31,7 +32,7 @@
   );
   const total = $derived(plan.reduce((n, g) => n + g.candidates.filter((c) => !c.alreadyAdded).length, 0));
   const count = $derived(
-    plan.reduce((n, g) => n + g.candidates.filter((c, i) => !c.alreadyAdded && selected[keyOf(g, i)]).length, 0),
+    plan.reduce((n, g) => n + g.candidates.filter((c) => !c.alreadyAdded && selected[keyOf(c)]).length, 0),
   );
 
   onMount(async () => {
@@ -52,18 +53,29 @@
       const match = config.environments.find((e) => e.name.toLowerCase() === g.name.toLowerCase());
       target[g.key] = match?.id ?? "new";
       names[g.key] = g.name;
-      g.candidates.forEach((c, i) => (selected[keyOf(g, i)] = !c.alreadyAdded));
+      g.candidates.forEach((c) => (selected[keyOf(c)] = !c.alreadyAdded));
     }
   }
 
+  /** Moves a connection to another proposed group; empty groups disappear. */
+  function moveTo(c: ImportCandidate, from: PlanGroup, toKey: string) {
+    const to = plan.find((g) => g.key === toKey);
+    if (!to || to === from) return;
+    plan = plan
+      .map((g) =>
+        g === from ? { ...g, candidates: g.candidates.filter((x) => x !== c) } : g === to ? { ...g, candidates: [...g.candidates, c] } : g,
+      )
+      .filter((g) => g.candidates.length > 0);
+  }
+
   function toggleGroup(g: PlanGroup, on: boolean) {
-    g.candidates.forEach((c, i) => {
-      if (!c.alreadyAdded) selected[keyOf(g, i)] = on;
+    g.candidates.forEach((c) => {
+      if (!c.alreadyAdded) selected[keyOf(c)] = on;
     });
   }
 
   const groupState = (g: PlanGroup) => {
-    const open = g.candidates.map((c, i) => (c.alreadyAdded ? undefined : selected[keyOf(g, i)])).filter((v) => v !== undefined);
+    const open = g.candidates.map((c) => (c.alreadyAdded ? undefined : selected[keyOf(c)])).filter((v) => v !== undefined);
     return { all: open.length > 0 && open.every(Boolean), some: open.some(Boolean) };
   };
 
@@ -75,7 +87,7 @@
     const created = new Map<string, string>();
     try {
       for (const [index, g] of plan.entries()) {
-        const chosen = g.candidates.filter((c, i) => !c.alreadyAdded && selected[keyOf(g, i)]);
+        const chosen = g.candidates.filter((c) => !c.alreadyAdded && selected[keyOf(c)]);
         if (chosen.length === 0) continue;
 
         let envId = target[g.key];
@@ -165,16 +177,22 @@
             <span class="source muted">{g.sourceLabel}</span>
           </header>
           <ul>
-            {#each g.candidates as c, i}
+            {#each g.candidates as c (keyOf(c))}
               <li class:added={c.alreadyAdded}>
                 <label>
-                  <input type="checkbox" bind:checked={selected[keyOf(g, i)]} disabled={c.alreadyAdded} />
+                  <input type="checkbox" bind:checked={selected[keyOf(c)]} disabled={c.alreadyAdded} />
                   <span class="cname">{c.name}</span>
                   {#if c.name !== c.endpoint}<span class="muted endpoint">{c.endpoint}</span>{/if}
                   <span class="auth">{AUTH_LABEL[c.auth] ?? c.auth}{c.user ? ` (${c.user})` : ""}</span>
                   {#if c.kind === "synapse"}<span class="tag">Synapse</span>{/if}
                   {#if c.alreadyAdded}<span class="muted">already added</span>{:else if c.note}<span class="note">{c.note}</span>{/if}
                 </label>
+                {#if !c.alreadyAdded && plan.length > 1}
+                  <select class="move" aria-label="Move {c.name} to another group" value="" onchange={(e) => moveTo(c, g, e.currentTarget.value)}>
+                    <option value="" disabled>Move to...</option>
+                    {#each plan.filter((o) => o !== g) as o (o.key)}<option value={o.key}>{names[o.key] ?? o.name}</option>{/each}
+                  </select>
+                {/if}
               </li>
             {/each}
           </ul>
@@ -260,7 +278,14 @@
     margin: 0;
     padding: 4px 0;
   }
+  li {
+    display: flex;
+    align-items: center;
+    padding-right: 8px;
+  }
   li label {
+    flex: 1;
+    min-width: 0;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -271,6 +296,11 @@
   }
   li:hover {
     background: var(--bg-hover);
+  }
+  .move {
+    flex: none;
+    font-size: 11px;
+    padding: 1px 4px;
   }
   li.added {
     opacity: 0.55;

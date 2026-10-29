@@ -3,155 +3,187 @@ import type { ImportCandidate, ImportSource } from "./api";
 export interface PlanGroup {
   key: string;
   sourceLabel: string;
-  /** Proposed environment name: the source tool's group, or one suggested from server names. */
+  /** Proposed environment name: the source tool's group, or one suggested from names. */
   name: string;
-  /** True when the name was guessed from server names rather than defined in the source tool. */
+  /** True when the name was inferred rather than defined in the source tool. */
   suggested: boolean;
   candidates: ImportCandidate[];
 }
 
 /**
- * A prefix counts as a naming family when at least this many distinct servers share it, and at
- * least half of the servers that share its first MIN_PREFIX characters. The half rule stops a
- * sub-family from winning: in acmedwhuat, acmedwhsupport, acmedwhsandbox, acmedwhstage-us,
- * acmedwhdev, the prefix "acmedwhs" is shared by three, but only "acmedwh" covers the family.
+ * Environment rules, first match wins. `words` match as a separate word anywhere (orders-uat,
+ * uat-orders, orders.uat.corp); `glued` also match at the end of a word with at least three letters
+ * before it (ordersuat). Never mid-word, so product, devonshire and testament don't match.
+ * Order matters: Pre-prod and Non-prod before Prod.
  */
-const FAMILY_SIZE = 3;
-const MIN_PREFIX = 4;
+const RULES: { env: string; words: string; glued?: string }[] = [
+  { env: "Pre-prod", words: "pre-?prod", glued: "preprod" },
+  { env: "Non-prod", words: "non-?prod" },
+  { env: "Prod", words: "prod|prd|production", glued: "prod|prd" },
+  { env: "Staging", words: "staging|stage|stg", glued: "staging|stage|stg" },
+  { env: "UAT", words: "uat", glued: "uat" },
+  { env: "SIT", words: "sit" },
+  { env: "QA", words: "qa", glued: "qa" },
+  { env: "Test", words: "test|tst", glued: "test" },
+  { env: "Dev", words: "dev|develop|development", glued: "dev" },
+  { env: "Sandbox", words: "sandbox|sbx", glued: "sandbox|sbx" },
+  { env: "DR", words: "dr" },
+  { env: "Demo", words: "demo" },
+  { env: "Perf", words: "perf" },
+  { env: "Training", words: "training|train" },
+  { env: "Hotfix", words: "hotfix" },
+  { env: "Lower", words: "lower" },
+];
 
-/** Canonical names for common tokens; anything else is title-cased as written. */
-const TOKEN_NAMES: Record<string, string> = {
-  uat: "UAT",
-  dev: "Dev",
-  develop: "Dev",
-  development: "Dev",
-  prod: "Prod",
-  prd: "Prod",
-  production: "Prod",
-  live: "Prod",
-  test: "Test",
-  tst: "Test",
-  qa: "Test",
+const COMPILED = RULES.map((r) => ({
+  env: r.env,
+  word: new RegExp(`(^|[^a-z])(${r.words})([^a-z]|$)`),
+  glued: r.glued ? new RegExp(`^[a-z]{3,}(${r.glued})$`) : undefined,
+}));
+
+const REGIONS: Record<string, string> = {
   uk: "UK",
   us: "US",
   eu: "EU",
+  uksouth: "UK South",
+  ukwest: "UK West",
+  eastus: "East US",
+  eastus2: "East US 2",
+  westus: "West US",
+  westus2: "West US 2",
+  westeurope: "West Europe",
+  northeurope: "North Europe",
+  australiaeast: "Australia East",
+  canadacentral: "Canada Central",
 };
 
-// Fallback for servers with no naming family. Whole-word-ish, or glued onto the end of the name,
-// so "devonshire" and "product" don't count as dev or prod.
-const KEYWORDS: [string, RegExp][] = [
-  ["Prod", /(^|[^a-z])(prod|prd|production|live)([^a-z]|$)|[a-z]{3,}(prod|prd)$/i],
-  ["UAT", /(^|[^a-z])(uat|preprod|staging|stg)([^a-z]|$)|[a-z]{3,}uat$/i],
-  ["Test", /(^|[^a-z])(test|tst|qa)([^a-z]|$)|[a-z]{3,}(test|qa)$/i],
-  ["Dev", /(^|[^a-z])(dev|develop|development)([^a-z]|$)|[a-z]{3,}dev$/i],
-];
-
 const LOCAL = new Set(["localhost", "127.0.0.1", ".", "(local)", "::1"]);
+const CLOUD_SUFFIX = /\.(database\.windows\.net|sql\.azuresynapse\.net|documents\.azure\.com|database\.azure\.com)$/;
 
-/** The part of a server name people actually vary: lower-cased first DNS label, no port, instance or "-ondemand". */
-export function hostLabel(endpoint: string): string {
-  let host = endpoint.trim().toLowerCase().replace(/^tcp:/, "");
-  host = host.split(/[,\\]/)[0];
-  if (!/^\d+(\.\d+){3}$/.test(host)) host = host.split(".")[0] || host;
-  return host.replace(/-ondemand$/, "");
+/** The environment named in some text (server, database, display or folder name), by the rule table. */
+export function envFromText(text: string): string | undefined {
+  const t = text.toLowerCase().replace(/\d+/g, " ");
+  const segments = t.split(/[^a-z]+/).filter(Boolean);
+  return COMPILED.find((r) => r.word.test(t) || (r.glued && segments.some((s) => r.glued!.test(s))))?.env;
 }
 
-function nameFor(token: string): string {
-  return token
-    .split(/[-_\s]+/)
-    .filter(Boolean)
-    .map((t) => TOKEN_NAMES[t] ?? t.charAt(0).toUpperCase() + t.slice(1))
-    .join(" ");
+/** Server name without protocol, port, instance, cloud domain or Synapse's -ondemand. */
+function host(endpoint: string): string {
+  return endpoint.trim().toLowerCase().replace(/^tcp:/, "").split(/[,\\]/)[0].replace(CLOUD_SUFFIX, "").replace(/-ondemand/, "");
+}
+
+function region(h: string): string | undefined {
+  return h.split(/[^a-z0-9]+/).map((s) => REGIONS[s]).find(Boolean);
 }
 
 /**
- * Suggests an environment per connection from naming conventions. Finds, for each server, the
- * longest prefix shared by a family of at least three servers (e.g. "acmedwh" in acmedwhuat,
- * acmedwhdev, acmedwhsupport) and uses what follows it ("uat", "dev", "support") as the
- * environment, so the user's own convention decides, not a keyword list. Servers with no family
- * fall back to keywords. Returns one suggestion (or undefined) per candidate, in order.
+ * Glued names with no environment word: the longest prefix shared by a family of at least three
+ * servers and by at least half of the servers that share its first four characters (acmedwh in
+ * acmedwhsupport, acmedwhuat...). What follows it is the environment, so house words like
+ * "Support" group together. The half rule stops a sub-family (acmedwhs: support, sandbox, stage) winning.
  */
-export function suggestEnvironments(candidates: ImportCandidate[]): (string | undefined)[] {
-  const labels = candidates.map((c) => hostLabel(c.endpoint));
-  const distinct = [...new Set(labels)];
-
-  return candidates.map((c, i) => {
-    const label = labels[i];
-    if (LOCAL.has(label)) return "Local";
-
-    const sharing = (prefix: string) => distinct.filter((l) => l.startsWith(prefix)).length;
-    const needed = Math.max(FAMILY_SIZE, Math.ceil(sharing(label.slice(0, MIN_PREFIX)) / 2));
-    for (let len = label.length - 1; len >= MIN_PREFIX; len--) {
+function familySuffixes(labels: string[]): (string | undefined)[] {
+  const distinct = [...new Set(labels.filter(Boolean))];
+  const sharing = (prefix: string) => distinct.filter((l) => l.startsWith(prefix)).length;
+  return labels.map((label) => {
+    if (label.length <= 4) return undefined;
+    const needed = Math.max(3, Math.ceil(sharing(label.slice(0, 4)) / 2));
+    for (let len = label.length - 1; len >= 4; len--) {
       if (sharing(label.slice(0, len)) < needed) continue;
-      const token = label.slice(len).replace(/^[-_.\d]+|[-_.\d]+$/g, "");
-      if (token.length >= 2) return nameFor(token);
-      break; // The bare family name ("acmedwh" itself): don't guess.
+      const token = label.slice(len);
+      return token.length >= 2 ? token : undefined;
     }
-
-    const text = [c.endpoint, c.database ?? "", c.name].map(hostOrText).join(" ").replace(/[_\d]+/g, " ");
-    return KEYWORDS.find(([, re]) => re.test(text))?.[0];
   });
 }
 
-/** Keyword matching looks at the varying part of host names and the full text of everything else. */
-const hostOrText = (s: string) => (s.includes(".") || s.includes(",") || s.includes("\\") ? hostLabel(s) : s);
+const display = (token: string) => REGIONS[token] ?? token.charAt(0).toUpperCase() + token.slice(1);
+
+/**
+ * One suggestion (or undefined) per candidate: Local; the rule table on the server name; then on the
+ * database or display name; then the family-prefix fallback for glued house words. Regions are
+ * appended (Prod UK).
+ */
+export function suggestEnvironments(candidates: ImportCandidate[]): (string | undefined)[] {
+  const hosts = candidates.map((c) => host(c.endpoint));
+  const family = familySuffixes(hosts.map((h) => (/^\d+(\.\d+){3}$/.test(h) ? "" : h.split(/[.\-_]/)[0])));
+
+  return candidates.map((c, i) => {
+    const h = hosts[i];
+    if (LOCAL.has(h)) return "Local";
+    const env =
+      envFromText(h) ??
+      envFromText(c.database ?? "") ??
+      (c.name !== c.endpoint ? envFromText(c.name) : undefined) ??
+      (family[i] ? display(family[i]!) : undefined);
+    if (!env) return undefined;
+    const r = region(h);
+    return r && !env.includes(r) ? `${env} ${r}` : env;
+  });
+}
 
 const STYLES: Record<string, { color: string; readOnly: boolean }> = {
   Prod: { color: "#e03131", readOnly: true },
+  "Pre-prod": { color: "#e8590c", readOnly: false },
+  Staging: { color: "#f08c00", readOnly: false },
   UAT: { color: "#f08c00", readOnly: false },
+  SIT: { color: "#1971c2", readOnly: false },
+  QA: { color: "#1971c2", readOnly: false },
   Test: { color: "#1971c2", readOnly: false },
   Dev: { color: "#2f9e44", readOnly: false },
   Local: { color: "#868e96", readOnly: false },
 };
-const OTHER_COLORS = ["#7048e8", "#0c8599", "#e8590c", "#d6336c", "#66a80f"];
+const OTHER_COLORS = ["#7048e8", "#0c8599", "#d6336c", "#66a80f", "#5c7cfa"];
 
-/** Colour and read-only default for a new environment. Prod starts read-only. */
+/** Colour and read-only default for a new environment, by its first word. Prod (and Prod UK...) starts read-only. */
 export function envStyleFor(name: string, index = 0): { color: string; readOnly: boolean } {
-  return STYLES[name] ?? { color: OTHER_COLORS[index % OTHER_COLORS.length], readOnly: false };
+  return STYLES[name] ?? STYLES[name.split(" ")[0]] ?? { color: OTHER_COLORS[index % OTHER_COLORS.length], readOnly: false };
 }
 
-const LIFECYCLE = ["Dev", "Test", "UAT", "Prod"];
-const OTHER = "Other connections";
+const LIFECYCLE = ["Local", "Dev", "Test", "QA", "SIT", "UAT", "Staging", "Pre-prod", "Prod"];
+export const OTHER = "Other connections";
 
-const keyOf = (c: ImportCandidate) => `${c.endpoint.toLowerCase().replace(/^tcp:/, "")}|${c.user ?? ""}|${c.database ?? ""}`;
+export const candidateKey = (c: ImportCandidate) => `${c.endpoint.toLowerCase().replace(/^tcp:/, "")}|${c.user ?? ""}|${c.database ?? ""}`;
 
 /**
- * Turns scanned sources into proposed environments. Groups a source tool defined are kept unless
- * byPattern is set; everything else (SSMS connection history, or all of it with byPattern) is
- * grouped by suggested environment, merged across sources. Order: Dev, Test, UAT, Prod, then other
- * suggestions alphabetically, then "Other connections". A connection seen in an earlier source is dropped.
+ * Turns scanned sources into proposed environments. By default, folders a source tool defined are
+ * kept and only ungrouped connections (SSMS connection history) are inferred. With byPattern,
+ * everything is regrouped: folders named after an environment ("Production", "Lower environments")
+ * still decide, other connections are inferred from their names. Inferred groups merge across
+ * sources, in lifecycle order (Dev ... Prod), then alphabetically, then "Other connections".
+ * A connection seen in an earlier source is dropped.
  */
 export function planGroups(sources: ImportSource[], { byPattern = false }: { byPattern?: boolean } = {}): PlanGroup[] {
   const seen = new Set<string>();
   const kept: PlanGroup[] = [];
-  const toSuggest: ImportCandidate[] = [];
+  const toInfer: { candidate: ImportCandidate; folderEnv?: string }[] = [];
 
   for (const source of sources) {
     for (const group of source.groups) {
-      const fresh = group.connections.filter((c) => {
-        const k = keyOf(c);
-        if (seen.has(k)) return false;
-        seen.add(k);
-        return true;
-      });
+      const fresh = group.connections.filter((c) => !seen.has(candidateKey(c)) && seen.add(candidateKey(c)));
       if (fresh.length === 0) continue;
-      if (byPattern || source.source === "ssms-recent") toSuggest.push(...fresh);
-      else kept.push({ key: `${source.path}|${group.name}`, sourceLabel: source.label, name: group.name, suggested: false, candidates: fresh });
+      if (byPattern || source.source === "ssms-recent") {
+        const folderEnv = source.source === "ssms-recent" ? undefined : envFromText(group.name);
+        toInfer.push(...fresh.map((candidate) => ({ candidate, folderEnv })));
+      } else {
+        kept.push({ key: `${source.path}|${group.name}`, sourceLabel: source.label, name: group.name, suggested: false, candidates: fresh });
+      }
     }
   }
 
+  const inferred = suggestEnvironments(toInfer.map((x) => x.candidate));
   const buckets = new Map<string, ImportCandidate[]>();
-  suggestEnvironments(toSuggest).forEach((env, i) => {
-    const name = env ?? OTHER;
-    buckets.set(name, [...(buckets.get(name) ?? []), toSuggest[i]]);
+  toInfer.forEach(({ candidate, folderEnv }, i) => {
+    const name = folderEnv ?? inferred[i] ?? OTHER;
+    buckets.set(name, [...(buckets.get(name) ?? []), candidate]);
   });
 
-  const rank = (name: string) => (name === OTHER ? 2 : LIFECYCLE.includes(name) ? 0 : 1);
+  const stage = (name: string) => LIFECYCLE.indexOf(name.split(" ")[0]);
+  const rank = (name: string) => (name === OTHER ? 2 : stage(name) >= 0 ? 0 : 1);
   const suggested = [...buckets.entries()]
-    .sort(([a], [b]) => rank(a) - rank(b) || (rank(a) === 0 ? LIFECYCLE.indexOf(a) - LIFECYCLE.indexOf(b) : a.localeCompare(b)))
+    .sort(([a], [b]) => rank(a) - rank(b) || (rank(a) === 0 ? stage(a) - stage(b) : 0) || a.localeCompare(b))
     .map(([name, candidates]) => ({
       key: `suggested|${name}`,
-      sourceLabel: "Suggested from server names",
+      sourceLabel: "Suggested from names and folders",
       name,
       suggested: name !== OTHER,
       candidates,
