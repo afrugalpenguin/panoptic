@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contextAt, isDdl, statementAt, tokenize, type Language } from "./scanner";
+import { contextAt, isDdl, statementAt, tablesAt, tokenize, type Language } from "./scanner";
 
 /** `|` marks the cursor. */
 function at(source: string, language: Language = "tsql") {
@@ -193,4 +193,24 @@ describe("contextAt: robustness", () => {
     it(`never throws at any offset (${language})`, () => {
       for (const script of scripts) for (let o = 0; o <= script.length; o++) expect(() => contextAt(script, o, language)).not.toThrow();
     });
+});
+
+describe("replace range and table refs", () => {
+  it("start is where the raw prefix begins, bracket included", () => {
+    expect(at("select * from [my Ta|").start).toBe("select * from ".length);
+    expect(at("select @a|").start).toBe("select ".length);
+    expect(at("select |").start).toBe("select ".length);
+  });
+
+  it("Cosmos array indexes become [] in the path prefix", () => {
+    expect(at("select c.lines[0].| from c", "cosmos-sql").context).toEqual({ kind: "cosmosPaths", prefix: ["lines[]"] });
+  });
+
+  it("tablesAt lists the statement's tables for hover", () => {
+    const text = "select o.Id from dbo.Orders o join Lines l on 1 = 1";
+    expect(tablesAt(text, 8, "tsql")).toEqual([
+      { name: "Orders", schema: "dbo", alias: "o" },
+      { name: "Lines", alias: "l" },
+    ]);
+  });
 });

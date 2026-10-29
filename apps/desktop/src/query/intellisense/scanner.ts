@@ -42,6 +42,8 @@ export interface CursorContext {
   context: Context;
   /** The partial word before the cursor that completions replace. */
   prefix: string;
+  /** Offset where the replaced text starts (includes an opening bracket or @, which prefix may not). */
+  start: number;
   /** The database named by the last USE before the cursor. */
   useDatabase?: string;
 }
@@ -361,10 +363,18 @@ function nearestClause(tokens: Token[]): { kind: ClauseKind; index: number } | u
   return undefined;
 }
 
+/** The tables named in the statement around offset (for hover). */
+export function tablesAt(text: string, offset: number, language: Language): TableRef[] {
+  const all = tokenize(text, language);
+  const statement = containing(segments(text, all, false), offset);
+  const stmt = all.filter((t) => t.type !== "comment" && t.start >= statement.start && t.end <= statement.end);
+  return tableRefs(stmt, 0, stmt.length);
+}
+
 export function contextAt(text: string, offset: number, language: Language): CursorContext {
   const all = tokenize(text, language);
   const inside = all.find((t) => t.start < offset && (offset < t.end || (offset === t.end && !t.closed)));
-  if (inside && (inside.type === "string" || inside.type === "comment")) return { context: { kind: "none" }, prefix: "" };
+  if (inside && (inside.type === "string" || inside.type === "comment")) return { context: { kind: "none" }, prefix: "", start: offset };
 
   let prefix = "";
   let prefixStart = offset;
@@ -379,7 +389,8 @@ export function contextAt(text: string, offset: number, language: Language): Cur
   let useDatabase: string | undefined;
   for (let i = 0; i < significant.length && significant[i].end <= prefixStart; i++)
     if (lower(significant[i]) === "use" && isName(significant[i + 1]) && significant[i + 1].end <= prefixStart) useDatabase = significant[i + 1].value;
-  const done = (context: Context): CursorContext => (useDatabase ? { context, prefix, useDatabase } : { context, prefix });
+  const done = (context: Context): CursorContext =>
+    useDatabase ? { context, prefix, start: prefixStart, useDatabase } : { context, prefix, start: prefixStart };
 
   const statement = containing(segments(text, all, false), offset);
   const stmt = significant.filter((t) => t.start >= statement.start && t.end <= statement.end && t.start !== prefixStart);
@@ -395,9 +406,18 @@ export function contextAt(text: string, offset: number, language: Language): Cur
   if (last?.text === "." && last.type === "punct") {
     const parts: string[] = [];
     let i = before.length - 1;
-    while (i >= 1 && before[i].text === "." && isName(before[i - 1])) {
-      parts.unshift(before[i - 1].value);
-      i -= 2;
+    while (i >= 1 && before[i].text === ".") {
+      // Cosmos array index: lines[0]. reads as lines[].
+      let j = i - 1;
+      let suffix = "";
+      if (language === "cosmos-sql" && before[j]?.text === "]") {
+        while (j > 0 && before[j].text !== "[") j--;
+        j--;
+        suffix = "[]";
+      }
+      if (!isName(before[j])) break;
+      parts.unshift(before[j].value + suffix);
+      i = j - 1;
     }
     if (language === "cosmos-sql") return done({ kind: "cosmosPaths", prefix: parts.slice(1) });
     const clause = nearestClause(before.slice(0, i + 1));
