@@ -1,9 +1,11 @@
 <script lang="ts">
-  import Icon from "./Icon.svelte";
   import type { Row, TreeModel } from "./tree-model";
+  import ConnectionRow from "./rows/ConnectionRow.svelte";
+  import EnvHeaderRow from "./rows/EnvHeaderRow.svelte";
+  import FolderRow from "./rows/FolderRow.svelte";
+  import LeafRow from "./rows/LeafRow.svelte";
 
-  const ROW_H = 22;
-  const OVERSCAN = 10;
+  const OVERSCAN_PX = 240;
   const TYPE_TO_JUMP_MS = 700;
 
   let {
@@ -27,18 +29,49 @@
   let typed = "";
   let typedAt = 0;
 
-  const start = $derived(Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN));
-  const end = $derived(Math.min(rows.length, start + Math.ceil(height / ROW_H) + 2 * OVERSCAN));
-  const visible = $derived(rows.slice(start, end));
+  const totalHeight = $derived(rows.length ? rows[rows.length - 1].top + rows[rows.length - 1].height : 0);
   const selectedIndex = $derived(rows.findIndex((r) => r.key === selectedKey));
+
+  /** First row whose box reaches below `y`; rows are sorted by top, so binary search. */
+  function firstBelow(y: number): number {
+    let lo = 0;
+    let hi = rows.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (rows[mid].top + rows[mid].height <= y) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  const start = $derived(firstBelow(scrollTop - OVERSCAN_PX));
+  const end = $derived(Math.min(rows.length, firstBelow(scrollTop + height + OVERSCAN_PX) + 1));
+
+  /** Visible rows grouped by environment, so --env is set once per group element. */
+  const groups = $derived.by(() => {
+    const out: { envId: string; color?: string; rows: Row[] }[] = [];
+    for (let i = start; i < end; i++) {
+      const row = rows[i];
+      const last = out[out.length - 1];
+      if (last && last.envId === row.envId) last.rows.push(row);
+      else out.push({ envId: row.envId, color: row.envColor, rows: [row] });
+    }
+    return out;
+  });
+  const windowTop = $derived(start < rows.length ? rows[start].top - rows[start].gapBefore : 0);
 
   function select(index: number) {
     if (rows.length === 0) return;
     const i = Math.max(0, Math.min(rows.length - 1, index));
     selectedKey = rows[i].key;
-    const top = i * ROW_H;
+    const { top, height: h } = rows[i];
     if (top < scroller.scrollTop) scroller.scrollTop = top;
-    else if (top + ROW_H > scroller.scrollTop + scroller.clientHeight) scroller.scrollTop = top + ROW_H - scroller.clientHeight;
+    else if (top + h > scroller.scrollTop + scroller.clientHeight) scroller.scrollTop = top + h - scroller.clientHeight;
+  }
+
+  function pageRows(direction: 1 | -1): number {
+    const target = (selectedIndex >= 0 ? rows[selectedIndex].top : 0) + direction * scroller.clientHeight;
+    return direction > 0 ? Math.min(rows.length - 1, firstBelow(target)) : Math.max(0, firstBelow(target));
   }
 
   function toggle(row: Row) {
@@ -55,10 +88,10 @@
         select(selectedIndex - 1);
         break;
       case "PageDown":
-        select(selectedIndex + Math.floor(scroller.clientHeight / ROW_H));
+        select(pageRows(1));
         break;
       case "PageUp":
-        select(selectedIndex - Math.floor(scroller.clientHeight / ROW_H));
+        select(pageRows(-1));
         break;
       case "Home":
         select(0);
@@ -91,8 +124,8 @@
         break;
       case "ContextMenu":
         if (row) {
-          const top = selectedIndex * ROW_H - scroller.scrollTop + scroller.getBoundingClientRect().top;
-          onContextMenu(row, scroller.getBoundingClientRect().left + 40, top + ROW_H);
+          const bounds = scroller.getBoundingClientRect();
+          onContextMenu(row, bounds.left + 40, bounds.top + row.top - scroller.scrollTop + row.height);
         }
         break;
       default:
@@ -102,7 +135,7 @@
     e.preventDefault();
   }
 
-  /** Jumps to the next row whose label starts with what has been typed in quick succession. */
+  /** Jumps to the next row whose shown text starts with what has been typed in quick succession. */
   function typeToJump(ch: string) {
     const now = performance.now();
     typed = now - typedAt > TYPE_TO_JUMP_MS ? ch.toLowerCase() : typed + ch.toLowerCase();
@@ -110,7 +143,9 @@
     const from = typed.length === 1 ? selectedIndex + 1 : Math.max(0, selectedIndex);
     for (let k = 0; k < rows.length; k++) {
       const r = rows[(from + k) % rows.length];
-      if (r.type === "node" && r.node.label.toLowerCase().startsWith(typed)) {
+      if (r.type !== "node") continue;
+      const shown = (r.label.prefix + r.label.core + r.label.suffix).toLowerCase();
+      if (shown.startsWith(typed) || r.label.core.toLowerCase().startsWith(typed)) {
         select((from + k) % rows.length);
         return;
       }
@@ -119,7 +154,7 @@
 
   function onRowMouseDown(e: MouseEvent, row: Row) {
     selectedKey = row.key;
-    if (e.button === 0 && (e.target as HTMLElement).classList.contains("twisty")) toggle(row);
+    if (e.button === 0 && (e.target as HTMLElement).classList.contains("chevron")) toggle(row);
   }
 </script>
 
@@ -135,41 +170,41 @@
   onfocus={() => (focused = true)}
   onblur={() => (focused = false)}
 >
-  <div class="spacer" style:height="{rows.length * ROW_H}px">
-    <div class="window" style:transform="translateY({start * ROW_H}px)">
-      {#each visible as row (row.key)}
-        <div
-          class="row {row.type}"
-          class:selected={row.key === selectedKey}
-          class:env={row.type === "node" && row.node.kind === "environment"}
-          role="treeitem"
-          tabindex="-1"
-          aria-selected={row.key === selectedKey}
-          aria-expanded={row.type === "node" && row.node.hasChildren ? row.expanded : undefined}
-          style:--band={row.envColor ?? "transparent"}
-          style:padding-left="{row.depth * 16 + 6}px"
-          onmousedown={(e) => onRowMouseDown(e, row)}
-          ondblclick={() => onActivate(row)}
-          oncontextmenu={(e) => {
-            e.preventDefault();
-            selectedKey = row.key;
-            onContextMenu(row, e.clientX, e.clientY);
-          }}
-        >
-          {#if row.type === "node"}
-            <span class="twisty" class:open={row.expanded} class:hidden={!row.node.hasChildren}></span>
-            {#if row.node.kind !== "environment"}<Icon icon={row.node.icon} />{/if}
-            <span class="label">{row.node.label}</span>
-            {#if row.node.kind === "environment" && row.readOnly}<span class="badge">read-only</span>{/if}
-            {#if row.loading}<span class="spinner" aria-label="Loading"></span>{/if}
-            {#if row.stale}<span class="stale" title="Loaded a while ago. F5 to refresh.">stale</span>{/if}
-          {:else if row.type === "loading"}
-            <span class="twisty hidden"></span><span class="muted">Loading...</span>
-          {:else if row.type === "error"}
-            <span class="twisty hidden"></span><span class="error-text" title={row.message}>{row.message}</span>
-          {:else}
-            <span class="twisty hidden"></span><span class="muted">(empty)</span>
-          {/if}
+  <div class="spacer" style:height="{totalHeight}px">
+    <div class="window" style:transform="translateY({windowTop}px)">
+      <!-- Environments are contiguous in the tree, so an env id appears at most once among the visible groups. -->
+      {#each groups as group (group.envId)}
+        <div class="env-group" style:--env={group.color ?? "var(--text-muted)"}>
+          {#each group.rows as row (row.key)}
+            <div
+              class="tree-row {row.rowKind}"
+              class:selected={row.key === selectedKey}
+              role="treeitem"
+              tabindex="-1"
+              aria-selected={row.key === selectedKey}
+              aria-expanded={row.type === "node" && row.node.hasChildren ? row.expanded : undefined}
+              style:height="{row.height}px"
+              style:margin-top="{row.gapBefore}px"
+              style:padding-left="{row.indent + 4 + (row.rowKind === "header" ? 6 : 0)}px"
+              onmousedown={(e) => onRowMouseDown(e, row)}
+              ondblclick={() => onActivate(row)}
+              oncontextmenu={(e) => {
+                e.preventDefault();
+                selectedKey = row.key;
+                onContextMenu(row, e.clientX, e.clientY);
+              }}
+            >
+              {#if row.type === "node" && row.rowKind === "header"}
+                <EnvHeaderRow {row} />
+              {:else if row.type === "node" && row.rowKind === "connection"}
+                <ConnectionRow {row} />
+              {:else if row.type === "node" && row.rowKind === "folder"}
+                <FolderRow {row} />
+              {:else}
+                <LeafRow {row} />
+              {/if}
+            </div>
+          {/each}
         </div>
       {/each}
     </div>
@@ -191,71 +226,58 @@
     inset: 0 0 auto 0;
     will-change: transform;
   }
-  .row {
+  .tree-row {
     display: flex;
     align-items: center;
-    gap: 5px;
-    height: 22px;
-    padding-right: 8px;
+    gap: 8px;
+    box-sizing: border-box;
+    padding-right: 10px;
     white-space: nowrap;
     cursor: default;
-    box-shadow: inset 3px 0 0 var(--band);
+    /* Every row continues the group's bar: solid env colour on headers, darkened elsewhere. */
+    box-shadow: inset 4px 0 0 var(--env-dark);
+    --env-dark: hsl(from var(--env) h s 25%);
   }
-  .row:hover {
+  .tree-row:hover {
     background: var(--bg-hover);
   }
-  .row.selected {
+  .tree-row.header {
+    background: color-mix(in srgb, var(--env) 14%, transparent);
+    box-shadow: inset 4px 0 0 var(--env);
+  }
+  .tree-row.selected {
+    background: var(--tree-selected);
+  }
+  .tree:not(.focused) .tree-row.selected {
     background: var(--bg-selected-blur);
   }
-  .tree.focused .row.selected {
-    background: var(--bg-selected);
-  }
-  .row.env {
-    font-weight: 600;
-    background: color-mix(in srgb, var(--band) 10%, transparent);
-  }
-  .row.env.selected {
-    background: color-mix(in srgb, var(--band) 22%, var(--bg-selected-blur));
-  }
-  .twisty {
-    width: 14px;
+  .tree-row :global(.chevron) {
     flex: none;
+    width: 12px;
     text-align: center;
     color: var(--text-muted);
     font-size: 10px;
+    line-height: 1;
   }
-  .twisty::before {
+  .tree-row :global(.chevron::before) {
     content: "\25B8";
   }
-  .twisty.open::before {
+  .tree-row :global(.chevron.open::before) {
     content: "\25BE";
   }
-  .twisty.hidden::before {
+  .tree-row :global(.chevron.none::before) {
     content: "";
   }
-  .label {
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .badge,
-  .stale {
+  .tree-row :global(.stale) {
+    flex: none;
     font-size: 10px;
-    font-weight: 500;
     padding: 0 5px;
     border-radius: 8px;
     border: 1px solid var(--border);
     color: var(--text-muted);
   }
-  .badge {
-    color: var(--warn);
-    border-color: color-mix(in srgb, var(--warn) 40%, transparent);
-  }
-  .error-text {
-    color: var(--bad);
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .spinner {
+  .tree-row :global(.spinner) {
+    flex: none;
     width: 10px;
     height: 10px;
     border: 2px solid var(--border);

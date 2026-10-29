@@ -58,7 +58,14 @@ public sealed class TreeService(ConfigStore store, IReadOnlyDictionary<string, I
         "environment",
         env.Connections.Count > 0,
         Nodes.Browse,
-        new() { ["color"] = env.Color, ["readOnly"] = env.ReadOnly ? "true" : "false", ["environmentId"] = env.Id });
+        new()
+        {
+            ["color"] = env.Color,
+            ["readOnly"] = env.ReadOnly ? "true" : "false",
+            ["environmentId"] = env.Id,
+            // Shown on the group header before the group is expanded.
+            ["connectionCount"] = env.Connections.Count.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        });
 
     private static TreeNode ConnectionNode(NodePath envPath, ConnectionConfig c) => new(
         envPath.Child("conn", c.Id).Id,

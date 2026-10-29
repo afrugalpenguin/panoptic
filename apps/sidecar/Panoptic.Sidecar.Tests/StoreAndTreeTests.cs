@@ -197,6 +197,7 @@ public sealed class TreeServiceTests : IDisposable
         var env = Assert.Single(envs);
         Assert.Equal("environment", env.Kind);
         Assert.Equal("true", env.Meta!["readOnly"]);
+        Assert.Equal("1", env.Meta!["connectionCount"]);
 
         var conn = Assert.Single(await tree.ChildrenAsync(env.Id, default));
         Assert.Equal("connection", conn.Kind);

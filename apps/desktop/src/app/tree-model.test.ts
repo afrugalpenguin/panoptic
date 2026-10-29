@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { TreeNode } from "./api";
-import { TreeModel } from "./tree-model";
+import { ENV_GAP, ROW_HEIGHT, TreeModel } from "./tree-model";
 
 const node = (id: string, hasChildren = true, meta?: Record<string, string>): TreeNode => ({
   id,
@@ -185,5 +185,69 @@ describe("TreeModel", () => {
 
     const a = model.rows().find((r) => r.key === "a");
     expect(a?.type === "node" && a.label).toEqual({ prefix: "orders-", core: "uat", suffix: ".x.com" });
+  });
+
+  describe("layout", () => {
+    const conn = (id: string, kind = "sql"): TreeNode => ({
+      id, kind: "connection", label: id, icon: kind, hasChildren: true, actions: [],
+      meta: { endpoint: `${id}.x.com`, connectionKind: kind, connectionId: id },
+    });
+    const env = (id: string, color: string): TreeNode => ({
+      ...node(id), kind: "environment", label: id, meta: { environmentId: id, color, connectionCount: "2" },
+    });
+
+    async function loaded() {
+      const { model } = fixture({
+        "": [env("dev", "#2f9e44"), env("prod", "#e03131")],
+        dev: [conn("dev/a"), conn("dev/b", "cosmos")],
+        prod: [conn("prod/a")],
+        "dev/a": [{ ...node("dev/a/f"), kind: "folder", label: "Tables" }],
+        "dev/a/f": [{ ...node("dev/a/f/t", false), kind: "table", label: "dbo.Orders" }],
+        "dev/b": [{ ...node("dev/b/c", false), kind: "container", label: "orders", meta: { partitionKey: "/tenantId" } }],
+      });
+      await model.loadRoot();
+      for (const id of ["dev", "prod", "dev/a", "dev/a/f", "dev/b"]) await model.toggle(id);
+      return model;
+    }
+
+    it("classifies rows and gives each its fixed height", async () => {
+      const rows = (await loaded()).rows();
+      expect(rows.map((r) => [r.key, r.rowKind, r.height])).toEqual([
+        ["dev", "header", ROW_HEIGHT.header],
+        ["dev/a", "connection", ROW_HEIGHT.connection],
+        ["dev/a/f", "folder", ROW_HEIGHT.folder],
+        ["dev/a/f/t", "leaf", ROW_HEIGHT.leaf],
+        ["dev/b", "connection", ROW_HEIGHT.connection],
+        ["dev/b/c", "leaf", ROW_HEIGHT.leaf],
+        ["prod", "header", ROW_HEIGHT.header],
+        ["prod/a", "connection", ROW_HEIGHT.connection],
+      ]);
+    });
+
+    it("lays rows out by summing heights, with a gap before every env group after the first", async () => {
+      const rows = (await loaded()).rows();
+      const prod = rows.find((r) => r.key === "prod")!;
+      const beforeProd = rows.slice(0, rows.indexOf(prod)).reduce((sum, r) => sum + r.height, 0);
+      expect(rows[0].top).toBe(0);
+      expect(rows[0].gapBefore).toBe(0);
+      expect(prod.gapBefore).toBe(ENV_GAP);
+      expect(prod.top).toBe(beforeProd + ENV_GAP);
+    });
+
+    it("carries env, indent, badge, count and secondary text precomputed", async () => {
+      type NodeRow = Extract<ReturnType<TreeModel["rows"]>[number], { type: "node" }>;
+      const rows = Object.fromEntries(
+        (await loaded())
+          .rows()
+          .filter((r): r is NodeRow => r.type === "node")
+          .map((r) => [r.key, r]),
+      );
+      expect(rows["dev/a/f/t"].envId).toBe("dev");
+      expect([rows["dev/a"].indent, rows["dev/a/f"].indent, rows["dev/a/f/t"].indent]).toEqual([30, 50, 70]);
+      expect(rows["dev/b"].badge).toEqual({ letters: "C", color: "#1f7a74", name: "Cosmos" });
+      expect(rows["dev"].count).toBe(2);
+      expect(rows["dev/a/f"].count).toBe(1);
+      expect(rows["dev/b/c"].secondary).toBe("/tenantId");
+    });
   });
 });

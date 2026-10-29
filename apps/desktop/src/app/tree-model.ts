@@ -1,5 +1,15 @@
 import type { TreeNode } from "./api";
+import { kindBadge, type KindBadge } from "./kinds";
 import { computeLabels, leafLabel, type LabelSegments } from "./labels";
+
+/** Fixed row heights per level (docs/explorer-ux.md); the virtualiser lays rows out from these alone. */
+export const ROW_HEIGHT = { header: 26, connection: 24, folder: 22, leaf: 22 } as const;
+/** Space before each environment group after the first. */
+export const ENV_GAP = 4;
+const CONNECTION_INDENT = 30;
+const INDENT_STEP = 20;
+
+export type RowKind = keyof typeof ROW_HEIGHT;
 
 type ChildState =
   | { status: "loading"; startedAt: number }
@@ -12,10 +22,33 @@ interface RowBase {
   depth: number;
   envColor?: string;
   readOnly: boolean;
+  /** Which row component draws it; placeholders (loading, error, empty) draw as leaves. */
+  rowKind: RowKind;
+  height: number;
+  /** Offset of the row's own box from the top of the tree; any gap sits above it. */
+  top: number;
+  gapBefore: number;
+  /** Pixels from the left bar: connections 30, then 20 more per level. Headers 0. */
+  indent: number;
+  /** The environment node id this row belongs to, for grouping rows under --env. */
+  envId: string;
 }
 
 export type Row =
-  | (RowBase & { type: "node"; node: TreeNode; label: LabelSegments; expanded: boolean; loading: boolean; stale: boolean })
+  | (RowBase & {
+      type: "node";
+      node: TreeNode;
+      label: LabelSegments;
+      expanded: boolean;
+      loading: boolean;
+      stale: boolean;
+      /** Connection rows only. */
+      badge?: KindBadge;
+      /** Headers: connections in the env. Folders: loaded children. */
+      count?: number;
+      /** Muted text after the name, e.g. a container's partition key. */
+      secondary?: string;
+    })
   | (RowBase & { type: "loading"; parentId: string })
   | (RowBase & { type: "error"; parentId: string; message: string })
   | (RowBase & { type: "empty"; parentId: string });
@@ -110,35 +143,61 @@ export class TreeModel {
     const out: Row[] = [];
     const root = this.children.get("");
     if (root?.status !== "loaded") return out;
+    let top = 0;
 
-    const visit = (ids: string[], depth: number, envColor: string | undefined, readOnly: boolean) => {
+    const place = <T extends Omit<RowBase, "height" | "top" | "gapBefore">>(row: T, firstOfTree: boolean) => {
+      const gapBefore = row.rowKind === "header" && !firstOfTree ? ENV_GAP : 0;
+      const height = ROW_HEIGHT[row.rowKind];
+      top += gapBefore;
+      const placed = { ...row, height, top, gapBefore };
+      top += height;
+      return placed;
+    };
+    const indentFor = (depth: number) => (depth === 0 ? 0 : CONNECTION_INDENT + (depth - 1) * INDENT_STEP);
+
+    const visit = (ids: string[], depth: number, envColor: string | undefined, readOnly: boolean, envId: string) => {
       for (const id of ids) {
         const node = this.nodes.get(id)!;
-        const color = node.kind === "environment" ? node.meta?.color : envColor;
-        const ro = node.kind === "environment" ? node.meta?.readOnly === "true" : readOnly;
+        const isEnv = node.kind === "environment";
+        const color = isEnv ? node.meta?.color : envColor;
+        const ro = isEnv ? node.meta?.readOnly === "true" : readOnly;
+        const env = isEnv ? id : envId;
         const expanded = this.expanded.has(id);
         const state = this.children.get(id);
-        out.push({
-          type: "node",
-          key: id,
-          node,
-          label: this.labels.get(id) ?? { prefix: "", core: node.label, suffix: "" },
-          depth,
-          expanded,
-          loading: state?.status === "loading",
-          stale: this.isStale(id),
-          envColor: color,
-          readOnly: ro,
-        });
+        const rowKind: RowKind = isEnv ? "header" : node.kind === "connection" ? "connection" : node.kind === "folder" ? "folder" : "leaf";
+        const loadedCount = state?.status === "loaded" ? state.ids.length : undefined;
+        out.push(
+          place(
+            {
+              type: "node" as const,
+              key: id,
+              node,
+              label: this.labels.get(id) ?? { prefix: "", core: node.label, suffix: "" },
+              depth,
+              expanded,
+              loading: state?.status === "loading",
+              stale: this.isStale(id),
+              envColor: color,
+              readOnly: ro,
+              rowKind,
+              indent: indentFor(depth),
+              envId: env,
+              badge: rowKind === "connection" ? kindBadge(node.meta?.connectionKind ?? node.icon) : undefined,
+              count: isEnv ? (Number(node.meta?.connectionCount) || loadedCount) : rowKind === "folder" ? loadedCount : undefined,
+              secondary: node.meta?.partitionKey ?? node.meta?.detail,
+            },
+            out.length === 0,
+          ),
+        );
         if (!expanded || !state) continue;
-        const base = { depth: depth + 1, envColor: color, readOnly: ro, parentId: id };
-        if (state.status === "loading") out.push({ ...base, type: "loading", key: `${id}#loading` });
-        else if (state.status === "error") out.push({ ...base, type: "error", key: `${id}#error`, message: state.message });
-        else if (state.ids.length === 0) out.push({ ...base, type: "empty", key: `${id}#empty` });
-        else visit(state.ids, depth + 1, color, ro);
+        const base = { depth: depth + 1, envColor: color, readOnly: ro, parentId: id, rowKind: "leaf" as const, indent: indentFor(depth + 1), envId: env };
+        if (state.status === "loading") out.push(place({ ...base, type: "loading" as const, key: `${id}#loading` }, false));
+        else if (state.status === "error") out.push(place({ ...base, type: "error" as const, key: `${id}#error`, message: state.message }, false));
+        else if (state.ids.length === 0) out.push(place({ ...base, type: "empty" as const, key: `${id}#empty` }, false));
+        else visit(state.ids, depth + 1, color, ro, env);
       }
     };
-    visit(root.ids, 0, undefined, false);
+    visit(root.ids, 0, undefined, false, "");
     return out;
   }
 

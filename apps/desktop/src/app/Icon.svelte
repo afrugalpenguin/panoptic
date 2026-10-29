@@ -14,7 +14,7 @@
     key: ["K", "#f59f00"],
     index: ["I", "#868e96"],
     definition: ["{}", "#868e96"],
-    container: ["C", "#0c8599"],
+    container: ["{ }", "#0c8599"],
     document: ["d", "#868e96"],
     sproc: ["P", "#e8590c"],
     trigger: ["t", "#d6336c"],
