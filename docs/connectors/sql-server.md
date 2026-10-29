@@ -51,6 +51,22 @@ Node ids are opaque paths such as `env:<id>/conn:<id>/db:Orders/f:tables/o:sales
 schema and object name are joined with the unit-separator character so that names containing dots
 or slashes round-trip safely. Only the sidecar parses them.
 
+## IntelliSense catalog
+
+Completions and hover in the query editor read a catalog of each database (docs/query-editor.md),
+built in one round trip: schemas, tables, views, procedures, functions and synonyms from
+`sys.objects`, their columns from `sys.columns`, parameters from `sys.parameters`, and `sys.types`.
+Serverless Synapse pools get one statement per round trip, because they reject the batch.
+
+The stamp is `MAX(modify_date)` and the object count over `sys.objects`. A query tab first gets
+the cached catalog, checks the stamp in the background, and rebuilds only if it changed. Running
+CREATE, ALTER or DROP, refreshing the database in the explorer, or clicking the IntelliSense status
+in the tab rebuilds it straight away.
+
+Catalogs are cached under `%LOCALAPPDATA%\Panoptic\catalog`, one DPAPI-encrypted file per
+connection and database, named by a hash, so no server, database or object name is stored in
+clear text.
+
 ## Importing connections
 
 **Import** (in the explorer toolbar, or on the empty start screen) reads saved connections from
