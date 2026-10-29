@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { QuerySummary } from "./types";
-import { QueryWorkspace } from "./store.svelte";
+import { nodeParts, QueryWorkspace } from "./store.svelte";
 
 const target = { nodeId: "env:dev/conn:c1/db:Orders", label: "Orders", connection: "sql-dev", envColor: "#2f9e44", readOnly: false, language: "sql" as const };
 
@@ -128,5 +128,114 @@ describe("QueryWorkspace", () => {
       expect(query.results[0].count).toBe(1);
       expect(ws.tabs.find((t) => t.kind === "whats-new")).not.toHaveProperty("results");
     });
+  });
+});
+
+describe("QueryWorkspace: IntelliSense", () => {
+  const catalog = { stamp: "s", schemas: ["dbo"], objects: [], types: [] };
+
+  function setupCatalog() {
+    const api = {
+      executeQuery: vi.fn(async (_: { queryId: string; database?: string }) => ({ queryId: "", resultSets: [], elapsedMs: 1, rolledBack: false, cancelled: false })),
+      cancelQuery: vi.fn(async () => true),
+      catalogGet: vi.fn(async (_nodeId: string, database?: string) => ({ key: `key:${database ?? "node"}`, state: "building" as const })),
+      catalogRefresh: vi.fn(async (_nodeId: string, database?: string) => ({ key: `key:${database ?? "node"}`, state: "building" as const })),
+      databases: vi.fn(async (_connection: string) => ["Orders", "Sales"]),
+    };
+    return { ws: new QueryWorkspace(api), api };
+  }
+  const settle = () => new Promise((r) => setTimeout(r, 0));
+
+  it("parses the connection, database and container out of a node id", () => {
+    expect(nodeParts("env:dev/conn:c1/db:My%20Db/f:tables/o:x")).toEqual({ connection: "env:dev/conn:c1", database: "My Db" });
+    expect(nodeParts("env:dev/conn:cos/db:app/c:orders")).toEqual({ connection: "env:dev/conn:cos", database: "app", container: "orders" });
+    expect(nodeParts("env:dev/conn:c1")).toEqual({ connection: "env:dev/conn:c1" });
+  });
+
+  it("loads the tab's catalog and database list on open, and follows notifications", async () => {
+    const { ws, api } = setupCatalog();
+    const tab = ws.open(target, "");
+    await settle();
+    expect(api.catalogGet).toHaveBeenCalledWith(target.nodeId, undefined);
+    expect(api.databases).toHaveBeenCalledWith("env:dev/conn:c1");
+    expect(tab.databases).toEqual(["Orders", "Sales"]);
+    expect(tab.catalogKey).toBe("key:node");
+    expect(ws.intellisenseStatus(tab).text).toBe("IntelliSense: building");
+    ws.handle("catalog.updated", { key: "key:node", state: "current", catalog });
+    expect(ws.intellisenseStatus(tab).text).toBe("IntelliSense: current");
+  });
+
+  it("switching database reloads the catalog and the query runs against it", async () => {
+    const { ws, api } = setupCatalog();
+    const tab = ws.open(target, "select 1");
+    await settle();
+    ws.setDatabase(tab, "Sales");
+    await settle();
+    expect(api.catalogGet).toHaveBeenLastCalledWith(target.nodeId, "Sales");
+    expect(tab.catalogKey).toBe("key:Sales");
+    await ws.run(tab);
+    expect(api.executeQuery.mock.calls[0][0].database).toBe("Sales");
+    ws.setDatabase(tab, "Orders");
+    expect(tab.database).toBeUndefined();
+  });
+
+  it("refreshes the catalog after DDL, not after a query, and not when turned off", async () => {
+    const { ws, api } = setupCatalog();
+    const tab = ws.open(target, "");
+    await ws.run(tab, "select 'drop'");
+    expect(api.catalogRefresh).not.toHaveBeenCalled();
+    await ws.run(tab, "create table t (a int)");
+    expect(api.catalogRefresh).toHaveBeenCalledTimes(1);
+    ws.editor = { ...ws.editor, autoRefreshOnDdl: false };
+    await ws.run(tab, "drop table t");
+    expect(api.catalogRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("model info: language, keys, catalogs, and on-demand loading of other databases", async () => {
+    const { ws, api } = setupCatalog();
+    const tab = ws.open(target, "");
+    await settle();
+    ws.handle("catalog.updated", { key: "key:node", state: "current", catalog });
+    const info = ws.intellisense(tab)()!;
+    expect(info.options).toEqual({ language: "tsql" });
+    expect(info.keys).toEqual({ current: "key:node", databases: { orders: "key:node" } });
+    expect(info.catalogs).toEqual([{ key: "key:node", catalog, version: 1 }]);
+
+    info.onMissing("Sales");
+    info.onMissing("Sales");
+    await settle();
+    expect(api.catalogGet.mock.calls.filter((c) => c[1] === "Sales")).toHaveLength(1);
+    expect(ws.intellisense(tab)()!.keys.databases).toEqual({ orders: "key:node", sales: "key:Sales" });
+  });
+
+  it("turned off: no model info and no catalog requests", async () => {
+    const { ws, api } = setupCatalog();
+    ws.editor = { ...ws.editor, intellisense: false };
+    const tab = ws.open(target, "");
+    await settle();
+    expect(api.catalogGet).not.toHaveBeenCalled();
+    expect(ws.intellisense(tab)()).toBeUndefined();
+    expect(ws.intellisenseStatus(tab).text).toBe("IntelliSense: off");
+  });
+});
+
+describe("QueryWorkspace: explorer refresh", () => {
+  it("rebuilds the catalogs of open tabs on the refreshed connection or database only", async () => {
+    const api = {
+      executeQuery: vi.fn(),
+      cancelQuery: vi.fn(async () => true),
+      catalogGet: vi.fn(async (_n: string, d?: string) => ({ key: `k:${d ?? "node"}`, state: "building" as const })),
+      catalogRefresh: vi.fn(async (_n: string, d?: string) => ({ key: `k:${d ?? "node"}`, state: "building" as const })),
+    };
+    const ws = new QueryWorkspace(api);
+    ws.open(target, "");
+    ws.open({ ...target, nodeId: "env:dev/conn:c1/db:Sales" }, "");
+    ws.open({ ...target, nodeId: "env:dev/conn:c2/db:Orders" }, "");
+
+    ws.refreshForNode("env:dev/conn:c1/db:Orders");
+    expect(api.catalogRefresh.mock.calls.map((c) => c[0])).toEqual(["env:dev/conn:c1/db:Orders"]);
+
+    ws.refreshForNode("env:dev/conn:c1");
+    expect(api.catalogRefresh).toHaveBeenCalledTimes(3);
   });
 });

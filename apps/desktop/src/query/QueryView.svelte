@@ -20,6 +20,12 @@
 
   const elapsed = $derived(((tab.running ? now : tab.startedAt + (tab.summary?.elapsedMs ?? 0)) - tab.startedAt) / 1000);
   const current = $derived(tab.view >= 0 ? tab.results[tab.view] : undefined);
+  // Each tab has its own QueryView (keyed in Workspace), but read the props at call time all the same.
+  const intellisense = () => workspace.intellisense(tab)();
+  const status = $derived(workspace.intellisenseStatus(tab));
+  /** The picker lists the connection's databases, plus the tab's own if the list has not loaded or lacks it. */
+  const database = $derived(workspace.databaseOf(tab));
+  const databaseOptions = $derived(database && !tab.databases.includes(database) ? [database, ...tab.databases] : tab.databases);
 
   async function exportAs(format: "csv" | "json") {
     if (!current) return;
@@ -74,6 +80,20 @@
       {tab.target.connection} / {tab.target.label}
       {#if tab.target.readOnly}<span class="ro" title="Changes are always rolled back in this environment">read-only</span>{/if}
     </span>
+    {#if databaseOptions.length > 0}
+      <select
+        class="database"
+        aria-label="Database"
+        title="Database this tab runs against"
+        value={database}
+        onchange={(e) => workspace.setDatabase(tab, e.currentTarget.value)}
+      >
+        {#each databaseOptions as name (name)}<option value={name}>{name}</option>{/each}
+      </select>
+    {/if}
+    <button class="link muted" title={status.title ?? "Rebuild completions for this database"} onclick={() => workspace.refreshCatalog(tab)}
+      >{status.text}</button
+    >
     <span style:flex="1"></span>
     {#if tab.running}
       <span class="muted">Running... {elapsed.toFixed(1)} s</span>
@@ -86,7 +106,7 @@
   </div>
 
   <div class="editor-host">
-    <QueryEditor bind:text={tab.text} language={tab.target.language} onRun={(selection) => workspace.run(tab, selection)} />
+    <QueryEditor bind:text={tab.text} language={tab.target.language} {intellisense} onRun={(selection) => workspace.run(tab, selection)} />
   </div>
 
   <div class="splitter" role="separator" aria-orientation="horizontal" onpointerdown={startResize}></div>
@@ -151,6 +171,21 @@
   }
   .cancel {
     color: var(--bad);
+  }
+  .database {
+    max-width: 220px;
+    padding: 1px 4px;
+    font-size: 12px;
+  }
+  .toolbar .link {
+    padding: 0;
+    border: none;
+    background: none;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .toolbar .link:hover {
+    text-decoration: underline;
   }
   .target {
     padding-left: 8px;

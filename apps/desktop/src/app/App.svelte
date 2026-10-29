@@ -16,6 +16,7 @@
   import IconButton from "./IconButton.svelte";
   import KindChips from "./KindChips.svelte";
   import Workspace from "../query/Workspace.svelte";
+  import { preloadMonaco } from "../query/preload";
   import { QueryWorkspace } from "../query/store.svelte";
   import SettingsDialog from "./SettingsDialog.svelte";
   import StatusBar from "./StatusBar.svelte";
@@ -76,6 +77,19 @@
   const workspace = new QueryWorkspace({
     executeQuery: (request) => api!.executeQuery(request),
     cancelQuery: (queryId) => api!.cancelQuery(queryId),
+    catalogGet: (nodeId, database) => api!.catalogGet(nodeId, database),
+    catalogRefresh: (nodeId, database) => api!.catalogRefresh(nodeId, database),
+    databases: async (connection) => (await api!.children(connection)).filter((n) => n.kind === "database").map((n) => n.label),
+  });
+
+  // Editor settings apply to open tabs without a restart (docs/query-editor.md, "Settings").
+  $effect(() => {
+    workspace.editor = settings.editor;
+  });
+
+  // Fetch Monaco once a connection, or anything below one, is selected, ahead of the first query tab.
+  $effect(() => {
+    if (selectedRow?.type === "node" && selectedRow.node.id.includes("/conn:")) preloadMonaco();
   });
 
   onMount(() => {
@@ -89,7 +103,7 @@
   async function start() {
     rpc = await connectSidecar(onSidecarStatus, (method, params) => {
       if (method === "auth.deviceCode") deviceCode = params as DeviceCodePrompt;
-      else if (method.startsWith("query.")) workspace.handle(method, params);
+      else if (method.startsWith("query.") || method.startsWith("catalog.")) workspace.handle(method, params);
     });
     api = createApi(rpc);
     if (runningBeforeConnected) await onRunning();
@@ -250,7 +264,7 @@
           label: "Edit connection...",
           run: () => found && (dialog = { kind: "connection", environmentId: found.env.id, initial: found.connection }),
         });
-        items.push({ label: "Refresh", run: () => model.refresh(n.id) });
+        items.push({ label: "Refresh", run: () => (model.refresh(n.id), workspace.refreshForNode(n.id)) });
         items.push({ label: "Copy name", run: () => copyName(row) });
         items.push("separator");
         items.push({
@@ -262,7 +276,8 @@
           },
         });
       } else {
-        if (n.actions.includes("refresh")) items.push({ label: "Refresh", run: () => model.refresh(n.id) });
+        if (n.actions.includes("refresh"))
+          items.push({ label: "Refresh", run: () => (model.refresh(n.id), n.kind === "database" && workspace.refreshForNode(n.id)) });
         if (n.actions.includes("copyName")) items.push({ label: "Copy name", run: () => copyName(row) });
       }
     }
