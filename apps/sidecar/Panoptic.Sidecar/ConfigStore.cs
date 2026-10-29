@@ -38,6 +38,8 @@ public sealed class ConfigStore
     {
         if (!UpdateCheckModes.All.Contains(settings.UpdateCheck))
             throw new RpcException(RpcException.InvalidParams, $"Unknown update check mode: {settings.UpdateCheck}");
+        if (settings.Explorer.RowFont is not (RowFonts.Mono or RowFonts.Ui))
+            throw new RpcException(RpcException.InvalidParams, $"Unknown row font: {settings.Explorer.RowFont}");
         lock (_lock) Commit(_file with { Settings = settings });
     }
 

@@ -86,6 +86,8 @@ export class TreeModel {
   private envKinds = new Map<string, Map<string, number>>();
   private kindList: KindSummary[] = [];
   private kindFilter: string | undefined;
+  /** explorer.envOrder: environment ids (not node ids) in manual order. */
+  private envOrder: string[] = [];
 
   constructor(
     private readonly load: (id: string) => Promise<TreeNode[]>,
@@ -157,6 +159,13 @@ export class TreeModel {
   /** Kinds present in the loaded connections, in order of first appearance, with counts. */
   kinds(): KindSummary[] {
     return this.kindList;
+  }
+
+  /** Applies explorer.envOrder. Listed environments come first in that order, the rest in order added. */
+  setEnvOrder(order: string[]): void {
+    if (JSON.stringify(order) === JSON.stringify(this.envOrder)) return;
+    this.envOrder = [...order];
+    this.onChange();
   }
 
   /** The kind being filtered on, if any; cleared automatically when that kind disappears. */
@@ -243,8 +252,15 @@ export class TreeModel {
         else visit(state.ids, depth + 1, color, ro, env);
       }
     };
-    visit(root.ids, 0, undefined, false, "");
+    visit(this.orderedEnvs(root.ids), 0, undefined, false, "");
     return out;
+  }
+
+  private orderedEnvs(ids: string[]): string[] {
+    if (this.envOrder.length === 0) return ids;
+    const rank = new Map(this.envOrder.map((envId, i) => [envId, i]));
+    const position = (id: string) => rank.get(this.nodes.get(id)?.meta?.environmentId ?? "") ?? Number.MAX_SAFE_INTEGER;
+    return [...ids].sort((a, b) => position(a) - position(b));
   }
 
   private async loadChildren(id: string): Promise<void> {

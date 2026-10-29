@@ -41,7 +41,7 @@
     | { kind: "import" }
     | { kind: "settings" }
   >();
-  let settings = $state<AppSettings>({ updateCheck: "startup" });
+  let settings = $state<AppSettings>({ updateCheck: "startup", explorer: { showKindBadge: true, rowFont: "mono", envOrder: [] } });
   const checkForUpdates = createUpdateChecker((s) => (update = s));
   let stopUpdateSchedule = () => {};
   let treeWidth = $state(readWidth());
@@ -148,12 +148,15 @@
     if (info.benchMode === "startup") await finishBenchmark(timings);
     if (info.benchMode) return;
     settings = await api!.settings();
+    model.setEnvOrder(settings.explorer.envOrder);
     update = { kind: "idle", current: await currentVersion() };
     stopUpdateSchedule = scheduleUpdateChecks(settings.updateCheck, checkForUpdates, { atLaunch: true });
   }
 
   async function saveSettings(next: AppSettings) {
     settings = await api!.saveSettings(next);
+    // Explorer settings re-render the tree once; nothing is reloaded.
+    model.setEnvOrder(settings.explorer.envOrder);
     stopUpdateSchedule();
     stopUpdateSchedule = scheduleUpdateChecks(settings.updateCheck, checkForUpdates, { atLaunch: false });
   }
@@ -339,7 +342,15 @@
       {#if sidecar === "connected" && config.environments.length === 0}
         <p class="hint muted">No environments yet.</p>
       {/if}
-      <Tree {model} {rows} bind:selectedKey onContextMenu={openMenu} onActivate={activate} />
+      <Tree
+        {model}
+        {rows}
+        bind:selectedKey
+        onContextMenu={openMenu}
+        onActivate={activate}
+        showKindBadge={settings.explorer.showKindBadge}
+        rowFont={settings.explorer.rowFont}
+      />
     </div>
   </aside>
 
@@ -369,7 +380,7 @@
     onClose={() => (dialog = undefined)}
   />
 {:else if dialog?.kind === "settings"}
-  <SettingsDialog {settings} {update} onSave={saveSettings} onCheckNow={() => checkForUpdates()} onClose={() => (dialog = undefined)} />
+  <SettingsDialog {settings} {update} environments={config.environments} onSave={saveSettings} onCheckNow={() => checkForUpdates()} onClose={() => (dialog = undefined)} />
 {:else if dialog?.kind === "import" && api}
   <ImportDialog
     {api}

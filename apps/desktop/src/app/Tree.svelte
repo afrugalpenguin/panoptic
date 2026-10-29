@@ -14,12 +14,17 @@
     selectedKey = $bindable(),
     onContextMenu,
     onActivate,
+    showKindBadge = true,
+    rowFont = "mono",
   }: {
     model: TreeModel;
     rows: Row[];
     selectedKey: string | undefined;
     onContextMenu: (row: Row, x: number, y: number) => void;
     onActivate: (row: Row) => void;
+    /** explorer.showKindBadge and explorer.rowFont: CSS switches on the tree, no row recomputation. */
+    showKindBadge?: boolean;
+    rowFont?: "mono" | "ui";
   } = $props();
 
   let scroller: HTMLDivElement;
@@ -161,6 +166,8 @@
 <div
   class="tree"
   class:focused
+  class:no-badge={!showKindBadge}
+  class:font-ui={rowFont === "ui"}
   role="tree"
   tabindex="0"
   bind:this={scroller}
@@ -217,6 +224,13 @@
     overflow: auto;
     outline: none;
     contain: strict;
+  }
+  /* Hidden badges leave no gap: display none removes the flex item and its gap. */
+  .tree.no-badge :global(.kind-badge) {
+    display: none;
+  }
+  .tree.font-ui {
+    --row-font: var(--font-ui);
   }
   .spacer {
     position: relative;

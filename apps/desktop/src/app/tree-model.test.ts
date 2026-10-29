@@ -310,4 +310,17 @@ describe("TreeModel", () => {
     await model.reload("");
     expect(model.kinds().map((k) => k.kind)).toEqual(["sql"]);
   });
+
+  it("orders environments by explorer.envOrder, the rest in order added, with one change notification", async () => {
+    const env = (id: string): TreeNode => ({ ...node(id), kind: "environment", label: id, meta: { environmentId: id.slice(4) } });
+    const onChange = vi.fn();
+    const model = new TreeModel(async (id) => (id === "" ? [env("env:a"), env("env:b"), env("env:c")] : []), onChange);
+    await model.loadRoot();
+    onChange.mockClear();
+
+    model.setEnvOrder(["c", "missing", "a"]);
+
+    expect(model.rows().map((r) => r.key)).toEqual(["env:c", "env:a", "env:b"]);
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
 });
