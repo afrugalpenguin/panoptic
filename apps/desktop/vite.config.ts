@@ -28,9 +28,10 @@ export default defineConfig(() => ({
   build: {
     // WebView2 is evergreen Chromium, so target it directly (top-level await, modern syntax).
     target: "chrome120",
-    // Monaco is one ~2.8 MB chunk by design. It is loaded on demand when the first query tab opens
+    // Monaco is one ~3.3 MB chunk by design (core editor plus the contributions in docs/query-editor.md).
+    // It is fetched when a connection is first selected and created when the first query tab opens
     // (ADR 0006), never at start-up, so the default 500 kB warning does not apply to it.
-    chunkSizeWarningLimit: 3000,
+    chunkSizeWarningLimit: 3500,
     rollupOptions: {
       input: { main: "index.html", bench: "bench.html" },
     },
