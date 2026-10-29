@@ -28,6 +28,19 @@ public sealed class TreeService(ConfigStore store, IReadOnlyDictionary<string, I
         return await BackendFor(connection).ChildrenAsync(connection, store.GetSecret(connection.Id), path, 2, cancellationToken);
     }
 
+    /// <summary>The environment, connection and database (and Cosmos container) a node belongs to.</summary>
+    public QueryTarget ResolveTarget(string nodeId)
+    {
+        var path = NodePath.Parse(nodeId);
+        if (path.Count < 2 || path[0].Type != "env" || path[1].Type != "conn")
+            throw new RpcException(RpcException.InvalidParams, "Select a connection, database or object to query.");
+        var env = store.FindEnvironment(path[0].Value) ?? throw new RpcException(RpcException.OperationFailed, "Environment no longer exists");
+        var connection = env.Connections.FirstOrDefault(c => c.Id == path[1].Value)
+            ?? throw new RpcException(RpcException.OperationFailed, "Connection no longer exists");
+        var segment = (string type) => path.Segments.Skip(2).FirstOrDefault(s => s.Type == type).Value;
+        return new QueryTarget(env, connection, segment("db") ?? connection.Database, segment("c"));
+    }
+
     public IBackend BackendFor(ConnectionConfig connection) =>
         backends.TryGetValue(connection.Kind, out var backend)
             ? backend
@@ -53,6 +66,6 @@ public sealed class TreeService(ConfigStore store, IReadOnlyDictionary<string, I
         c.Name,
         c.Kind,
         true,
-        Nodes.Browse,
+        Nodes.Queryable,
         new() { ["connectionKind"] = c.Kind, ["endpoint"] = c.Endpoint, ["connectionId"] = c.Id });
 }

@@ -65,7 +65,7 @@ public sealed class CosmosBackend(Credentials credentials) : IBackend
         return docs
             .Select(d => d.GetProperty("id").GetString()!)
             .Order(StringComparer.OrdinalIgnoreCase)
-            .Select(id => Nodes.Branch(path.Child("db", id), "database", id, "database"))
+            .Select(id => Nodes.Branch(path.Child("db", id), "database", id, "database", actions: Nodes.Queryable))
             .ToArray();
     }
 
@@ -76,7 +76,7 @@ public sealed class CosmosBackend(Credentials credentials) : IBackend
             .Select(d => (Id: d.GetProperty("id").GetString()!, Pk: PartitionKeyPaths(d)))
             .OrderBy(x => x.Id, StringComparer.OrdinalIgnoreCase)
             .Select(x => Nodes.Branch(path.Child("c", x.Id), "container", x.Id, "container",
-                new() { ["partitionKey"] = string.Join(", ", x.Pk) }))
+                new() { ["partitionKey"] = string.Join(", ", x.Pk) }, Nodes.Selectable))
             .ToArray();
     }
 
@@ -189,7 +189,7 @@ public sealed class CosmosBackend(Credentials credentials) : IBackend
             ? paths.EnumerateArray().Select(p => p.GetString()!)
             : [];
 
-    private CosmosClient ClientFor(ConnectionConfig c, string? secret)
+    public CosmosClient ClientFor(ConnectionConfig c, string? secret)
     {
         var fingerprint = $"{c.Endpoint}|{c.Auth}|{c.TenantId}|{c.TrustServerCertificate}|{Convert.ToBase64String(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(secret ?? "")))}";
         if (_clients.TryGetValue(c.Id, out var cached) && cached.Fingerprint == fingerprint) return cached.Client;

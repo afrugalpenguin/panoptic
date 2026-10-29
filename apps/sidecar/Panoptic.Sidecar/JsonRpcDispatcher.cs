@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 
 namespace Panoptic.Sidecar;
@@ -105,10 +106,16 @@ public sealed class JsonRpcDispatcher(IReadOnlyDictionary<string, RpcHandler> ha
         else id.Value.WriteTo(w);
     }
 
+    /// <summary>
+    /// Minimal escaping: this JSON goes over a pipe to the UI, never into HTML, so escaping quotes, +, &lt;
+    /// and non-ASCII the HTML-safe default way would only make 100k-row result streams bigger.
+    /// </summary>
+    public static readonly JsonWriterOptions WriterOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
     private static string Write(Action<Utf8JsonWriter> body)
     {
         using var buffer = new MemoryStream();
-        using (var w = new Utf8JsonWriter(buffer))
+        using (var w = new Utf8JsonWriter(buffer, WriterOptions))
         {
             w.WriteStartObject();
             body(w);

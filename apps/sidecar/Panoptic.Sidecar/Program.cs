@@ -27,15 +27,17 @@ var credentials = new Credentials(prompt =>
     Notify("auth.deviceCode", w => JsonSerializer.Serialize(w, prompt, SidecarJson.Default.DeviceCodePrompt)));
 var store = new ConfigStore(Environment.GetEnvironmentVariable("PANOPTIC_STORE") ?? ConfigStore.DefaultPath);
 var sql = new SqlBackend(credentials);
+var cosmos = new CosmosBackend(credentials);
 var tree = new TreeService(store, new Dictionary<string, IBackend>
 {
     [ConnectionKinds.Sql] = sql,
     [ConnectionKinds.Synapse] = sql,
-    [ConnectionKinds.Cosmos] = new CosmosBackend(credentials),
+    [ConnectionKinds.Cosmos] = cosmos,
 });
 
 var startupMs = (DateTime.Now - Process.GetCurrentProcess().StartTime).TotalMilliseconds;
-var dispatcher = new JsonRpcDispatcher(Methods.Create(new SidecarInfo(Math.Round(startupMs, 1), version, mode), store, tree));
+var query = new Panoptic.Sidecar.Query.QueryService(store, tree, sql, cosmos, Notify);
+var dispatcher = new JsonRpcDispatcher(Methods.Create(new SidecarInfo(Math.Round(startupMs, 1), version, mode), store, tree, query));
 
 // Requests run concurrently so a slow expand never blocks ping or another expand.
 var inFlight = new List<Task>();

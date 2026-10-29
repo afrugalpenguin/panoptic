@@ -7,7 +7,7 @@ public sealed record SidecarInfo(double StartupMs, string Version, string Mode);
 
 public static class Methods
 {
-    public static Dictionary<string, RpcHandler> Create(SidecarInfo info, ConfigStore? store = null, TreeService? tree = null)
+    public static Dictionary<string, RpcHandler> Create(SidecarInfo info, ConfigStore? store = null, TreeService? tree = null, Query.QueryService? query = null)
     {
         var methods = new Dictionary<string, RpcHandler>
         {
@@ -110,6 +110,28 @@ public static class Methods
                 .ToArray();
             return Task.FromResult(Rpc.Result(sources, SidecarJson.Default.ImportSourceArray));
         };
+
+        if (query is not null)
+        {
+            // Long-running: rows stream as query.rows notifications; this returns the summary at the end.
+            methods["query.execute"] = async (p, ct) =>
+                Rpc.Result(await query.ExecuteAsync(Rpc.Params(p, SidecarJson.Default.QueryRequest), ct), SidecarJson.Default.QuerySummary);
+
+            methods["query.cancel"] = (p, _) =>
+            {
+                var cancelled = query.Cancel(Rpc.Params(p, SidecarJson.Default.QueryCancelParams).QueryId);
+                return Task.FromResult<Action<System.Text.Json.Utf8JsonWriter>>(w => w.WriteBooleanValue(cancelled));
+            };
+
+            methods["query.template"] = (p, _) =>
+            {
+                var args = Rpc.Params(p, SidecarJson.Default.QueryTemplateParams);
+                var target = tree.ResolveTarget(args.NodeId);
+                var language = target.Connection.Kind == ConnectionKinds.Cosmos ? "cosmos" : "sql";
+                var text = args.Action == "selectTop" ? Query.QueryTemplates.SelectTop(target.Connection.Kind, NodePath.Parse(args.NodeId)) : "";
+                return Task.FromResult(Rpc.Result(new QueryTemplateResult(text, language), SidecarJson.Default.QueryTemplateResult));
+            };
+        }
 
         methods["tree.children"] = async (p, ct) =>
         {
