@@ -1,0 +1,41 @@
+:root {
+  color-scheme: light dark;
+  font-family: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  font-size: 14px;
+  --ok: #2f9e44;
+  --bad: #e03131;
+  --wait: #868e96;
+}
+
+body {
+  margin: 0;
+  background: Canvas;
+  color: CanvasText;
+}
+
+main {
+  padding: 24px;
+}
+
+h1 {
+  margin: 0 0 12px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+#status::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--wait);
+}
+#status[data-state="connected"]::before { background: var(--ok); }
+#status[data-state="disconnected"]::before { background: var(--bad); }
+
+pre {
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 13px;
+}

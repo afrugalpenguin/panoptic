@@ -24,3 +24,7 @@ Thumbs.db
 .DS_Store
 .vscode/*
 !.vscode/extensions.json
+
+# Sidecar publish output
+apps/sidecar/artifacts/
+apps/desktop/src-tauri/binaries/
