@@ -17,10 +17,11 @@ on:
 permissions:
   contents: write
 
-# Queue releases rather than cancelling, so every merge gets its own version in order.
+# A newer merge cancels an in-progress release: it contains everything the older one would have
+# shipped, so finishing the older one only delays the latest. Version numbers may skip.
 concurrency:
   group: release
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   release:

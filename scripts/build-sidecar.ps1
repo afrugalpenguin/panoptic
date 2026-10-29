@@ -3,13 +3,14 @@
     Publishes the .NET sidecar to where Tauri expects its externalBin.
 
 .PARAMETER Mode
-    r2r - self-contained single-file with ReadyToRun (default; release builds)
+    jit - self-contained single file, JIT-compiled (default; release builds)
+    r2r - as jit plus ReadyToRun: ~90 ms faster first query, but ~70 s more build time and 36 MB larger
     aot - Native AOT. Not usable: SqlClient and the Cosmos SDK fail at runtime under it
     fdd - framework-dependent, needs the .NET 10 runtime installed (fast dev builds)
 #>
 param(
-    [ValidateSet('aot', 'r2r', 'fdd')]
-    [string]$Mode = 'r2r'
+    [ValidateSet('jit', 'r2r', 'aot', 'fdd')]
+    [string]$Mode = 'jit'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -28,6 +29,7 @@ if (-not (Get-Command vswhere.exe -ErrorAction SilentlyContinue) -and (Test-Path
 
 $modeArgs = @(switch ($Mode) {
     'aot' { @('-p:PublishAot=true') }
+    'jit' { @('--self-contained', '-p:PublishSingleFile=true', '-p:IncludeNativeLibrariesForSelfExtract=true') }
     'r2r' { @('--self-contained', '-p:PublishSingleFile=true', '-p:PublishReadyToRun=true', '-p:IncludeNativeLibrariesForSelfExtract=true') }
     'fdd' { @('--no-self-contained', '-p:PublishSingleFile=true') }
 })

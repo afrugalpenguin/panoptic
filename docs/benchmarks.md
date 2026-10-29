@@ -83,3 +83,16 @@ Home, 2026-10-29. Once SqlClient, the Cosmos SDK and Azure.Identity were added, 
 
 ReadyToRun is the release mode. 58 ms still runs in parallel with WebView2 start-up, so it does not
 move first paint.
+
+## ReadyToRun or not (release speed)
+
+Home, 2026-10-29. Self-contained single-file sidecar, five starts each (first is cold, with bundle extraction):
+
+| Mode | Publish (home) | Size | First response (cold, warm) | First SQL query | First Cosmos call |
+| --- | --- | --- | --- | --- | --- |
+| ReadyToRun | 17 s (~73 s in CI) | 134 MB | 478 ms, ~58 ms | ~117 ms | ~2.1 s |
+| JIT (shipped) | 2 s | 98 MB | 417 ms, ~68 ms | ~207 ms | ~2.2 s |
+| JIT, compressed single file | 4 s | 45 MB | 187 ms, ~106 ms | ~280 ms | ~2.2 s |
+
+JIT ships: the first query of a session costs about 90 ms more but stays inside the 300 ms expand budget,
+and each release saves over a minute. The ~2 s first Cosmos call is SDK warm-up and the same in every mode.
