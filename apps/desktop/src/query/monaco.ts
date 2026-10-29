@@ -10,6 +10,7 @@ import "monaco-editor/editor/contrib/bracketMatching/browser/bracketMatching";
 import "monaco-editor/editor/contrib/folding/browser/folding";
 import "monaco-editor/editor/contrib/comment/browser/comment";
 import "monaco-editor/editor/contrib/multicursor/browser/multicursor";
+import "monaco-editor/editor/contrib/dropOrPasteInto/browser/dropIntoEditorContribution";
 import EditorWorker from "monaco-editor/editor/editor.worker?worker";
 import IntelliSenseWorker from "./intellisense/worker-entry?worker";
 import { IntelliSenseClient } from "./intellisense/client";

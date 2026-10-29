@@ -12,10 +12,11 @@ Decided 29 Oct 2026. Pairs with docs/explorer-ux.md; the same principles apply.
 
 ## Monaco
 
-- Import `monaco-editor/esm/vs/editor/editor.api` plus only these contributions: suggest, hover, find, bracket matching, folding, comment toggling, multi-cursor. No languages other than the two defined below. Never import the `monaco-editor` barrel.
+- Import `monaco-editor/esm/vs/editor/editor.api` plus only these contributions: suggest, hover, find, bracket matching, folding, comment toggling, multi-cursor, drop into editor. No languages other than the two defined below. Never import the `monaco-editor` barrel.
 - The Monaco chunk is a separate Vite chunk. Fetch starts when a connection row is selected in the explorer; the editor instance is created when the first query tab opens. Subsequent tabs reuse the loaded module and create a model each.
 - Syntax colouring: Monaco's built-in Monarch `sql` tokenizer for T-SQL (registered as language id `tsql`, keyword list extended with T-SQL additions), and a hand-written Monarch definition for Cosmos SQL (language id `cosmos-sql`). Colouring never uses a parser.
 - Font follows `explorer.rowFont` for the monospace choice (Consolas / Cascadia Mono). Theme uses the same palette as the tree; the tab strip env colour band already exists and applies to query tabs.
+- Dragging an explorer row into the editor inserts its name at the drop point: SQL objects schema-qualified (`dbo.Orders`, brackets only where needed), columns and databases by name, Cosmos containers by name and UDFs as `udf.name`. Rows with nothing to insert (folders, connections, Cosmos names that are not identifiers) don't start a drag. The Tauri window has `dragDropEnabled` off, because WebView2 otherwise swallows HTML5 drag and drop.
 - A query tab is bound to a connection and a database. The database is a dropdown in the tab toolbar; `USE x` in the batch also switches the catalog for the statements after it.
 
 ## Catalog

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dragText } from "./drag-text";
   import type { Row, TreeModel } from "./tree-model";
   import ConnectionRow from "./rows/ConnectionRow.svelte";
   import EnvHeaderRow from "./rows/EnvHeaderRow.svelte";
@@ -157,6 +158,16 @@
     }
   }
 
+  /** Dragging a row into the query editor inserts its name; Monaco's drop handler places the text. */
+  function onRowDragStart(e: DragEvent, row: Row) {
+    let connection = row.type === "node" ? row.node : undefined;
+    while (connection && connection.kind !== "connection") connection = model.node(model.parentOf(connection.id) ?? "");
+    const text = row.type === "node" ? dragText(row.node, connection?.meta?.connectionKind ?? connection?.icon) : undefined;
+    if (!text || !e.dataTransfer) return e.preventDefault();
+    e.dataTransfer.setData("text/plain", text);
+    e.dataTransfer.effectAllowed = "copy";
+  }
+
   function onRowMouseDown(e: MouseEvent, row: Row) {
     selectedKey = row.key;
     if (e.button === 0 && (e.target as HTMLElement).classList.contains("chevron")) toggle(row);
@@ -193,6 +204,8 @@
               style:height="{row.height}px"
               style:margin-top="{row.gapBefore}px"
               style:padding-left="{row.indent + 4 + (row.rowKind === "header" ? 6 : 0)}px"
+              draggable={row.type === "node"}
+              ondragstart={(e) => onRowDragStart(e, row)}
               onmousedown={(e) => onRowMouseDown(e, row)}
               ondblclick={() => onActivate(row)}
               oncontextmenu={(e) => {

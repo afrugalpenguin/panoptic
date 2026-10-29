@@ -44,6 +44,8 @@
         renderLineHighlight: "line",
         tabSize: 4,
         wordWrap: "off",
+        // Explorer rows drop their name as plain text; there is nothing else to offer, so no "drop as" picker.
+        dropIntoEditor: { enabled: true, showDropSelector: "never" },
       });
       const model = editor.getModel();
       if (model && intellisense) models.set(model, intellisense);
