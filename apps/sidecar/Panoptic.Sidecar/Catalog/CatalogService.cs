@@ -88,8 +88,6 @@ public sealed class CatalogService(Func<CatalogParams, QueryTarget> resolve, Cat
 /// <summary>Catalog builds against the real backends.</summary>
 public sealed class CatalogSources(ConfigStore store, SqlBackend sql, CosmosBackend cosmos) : ICatalogSource
 {
-    public const int DefaultSampleDocs = 50;
-
     public async Task<string?> StampAsync(QueryTarget target, CancellationToken ct)
     {
         if (target.Connection.Kind == ConnectionKinds.Cosmos) return null;
@@ -103,7 +101,7 @@ public sealed class CatalogSources(ConfigStore store, SqlBackend sql, CosmosBack
         {
             if (target.Database is null) throw new RpcException(RpcException.InvalidParams, "Select a Cosmos database or container for IntelliSense.");
             var client = cosmos.ClientFor(target.Connection, store.GetSecret(target.Connection.Id));
-            return await CosmosCatalog.BuildAsync(client, target.Database, DefaultSampleDocs, ct);
+            return await CosmosCatalog.BuildAsync(client, target.Database, store.Settings.Editor.CatalogSampleDocs, ct);
         }
         await using var conn = await sql.OpenAsync(target.Connection, store.GetSecret(target.Connection.Id), target.Database, ct);
         return await SqlCatalog.BuildAsync(conn, ct);

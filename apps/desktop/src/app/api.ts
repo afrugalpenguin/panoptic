@@ -48,9 +48,20 @@ export interface ExplorerSettings {
   envOrder: string[];
 }
 
+/** Mirrors EditorSettings in the sidecar's Model.cs (docs/query-editor.md, "Settings"). */
+export interface EditorSettings {
+  intellisense: boolean;
+  /** Absent: the language default (lower for T-SQL, upper for Cosmos). */
+  keywordCase?: "lower" | "upper" | "preserve" | null;
+  /** Documents sampled per Cosmos container for property paths, 10 to 500. */
+  catalogSampleDocs: number;
+  autoRefreshOnDdl: boolean;
+}
+
 export interface AppSettings {
   updateCheck: import("../update-schedule").UpdateCheckMode;
   explorer: ExplorerSettings;
+  editor: EditorSettings;
   /** The version whose changes the user has been shown (ADR 0013); absent means never recorded. */
   lastSeenVersion?: string | null;
 }

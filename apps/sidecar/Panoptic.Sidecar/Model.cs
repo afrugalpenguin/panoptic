@@ -95,11 +95,26 @@ public sealed record ExplorerSettings(bool ShowKindBadge = true, string RowFont 
     public string[] EnvOrder { get; init; } = EnvOrder ?? [];
 }
 
+public static class KeywordCases
+{
+    public const string Lower = "lower";
+    public const string Upper = "upper";
+    public const string Preserve = "preserve";
+}
+
+/// <summary>Query editor settings (docs/query-editor.md, "Settings").</summary>
+/// <param name="KeywordCase">Null: the language default (lower for T-SQL, upper for Cosmos).</param>
+/// <param name="CatalogSampleDocs">Documents sampled per Cosmos container for property path completion, 10 to 500.</param>
+public sealed record EditorSettings(bool Intellisense = true, string? KeywordCase = null, int CatalogSampleDocs = 50, bool AutoRefreshOnDdl = true);
+
 /// <param name="LastSeenVersion">The app version whose changes the user has been shown (ADR 0013). Null means never
 /// recorded: a fresh install, or a store written before this setting existed.</param>
-public sealed record AppSettings(string UpdateCheck = UpdateCheckModes.Startup, ExplorerSettings? Explorer = null, string? LastSeenVersion = null)
+public sealed record AppSettings(string UpdateCheck = UpdateCheckModes.Startup, ExplorerSettings? Explorer = null, string? LastSeenVersion = null,
+    EditorSettings? Editor = null)
 {
     public ExplorerSettings Explorer { get; init; } = Explorer ?? new ExplorerSettings();
+
+    public EditorSettings Editor { get; init; } = Editor ?? new EditorSettings();
 
     public static AppSettings Default => new();
 }

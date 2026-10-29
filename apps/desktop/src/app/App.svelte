@@ -46,7 +46,11 @@
   >();
   /** The bundled changelog, parsed once at start-up; empty when the build has none. */
   let changelog = $state.raw<ChangelogSection[]>([]);
-  let settings = $state<AppSettings>({ updateCheck: "startup", explorer: { showKindBadge: true, rowFont: "mono", envOrder: [] } });
+  let settings = $state<AppSettings>({
+    updateCheck: "startup",
+    explorer: { showKindBadge: true, rowFont: "mono", envOrder: [] },
+    editor: { intellisense: true, catalogSampleDocs: 50, autoRefreshOnDdl: true },
+  });
   const checkForUpdates = createUpdateChecker((s) => (update = s));
   let stopUpdateSchedule = () => {};
   let treeWidth = $state(readWidth());

@@ -42,6 +42,10 @@ public sealed class ConfigStore
             throw new RpcException(RpcException.InvalidParams, $"Unknown row font: {settings.Explorer.RowFont}");
         if (settings.LastSeenVersion is not null && !System.Text.RegularExpressions.Regex.IsMatch(settings.LastSeenVersion, @"^\d+\.\d+\.\d+$"))
             throw new RpcException(RpcException.InvalidParams, $"Invalid last seen version: {settings.LastSeenVersion}");
+        if (settings.Editor.KeywordCase is not (null or KeywordCases.Lower or KeywordCases.Upper or KeywordCases.Preserve))
+            throw new RpcException(RpcException.InvalidParams, $"Unknown keyword case: {settings.Editor.KeywordCase}");
+        if (settings.Editor.CatalogSampleDocs is < 10 or > 500)
+            throw new RpcException(RpcException.InvalidParams, "Cosmos sample size must be between 10 and 500 documents");
         lock (_lock) Commit(_file with { Settings = settings });
     }
 

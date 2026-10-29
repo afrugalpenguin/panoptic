@@ -135,6 +135,32 @@ public sealed class ConfigStoreTests : IDisposable
         Assert.Equal(UpdateCheckModes.Startup, reloaded.UpdateCheck);
     }
 
+    [Fact]
+    public void Editor_settings_default_and_round_trip()
+    {
+        var store = new ConfigStore(_path);
+        Assert.Equal(new EditorSettings(), store.Settings.Editor);
+        Assert.True(store.Settings.Editor.Intellisense);
+        Assert.Null(store.Settings.Editor.KeywordCase);
+        Assert.Equal(50, store.Settings.Editor.CatalogSampleDocs);
+        Assert.True(store.Settings.Editor.AutoRefreshOnDdl);
+
+        store.SaveSettings(store.Settings with { Editor = new EditorSettings(false, KeywordCases.Upper, 200, false) });
+
+        Assert.Equal(new EditorSettings(false, KeywordCases.Upper, 200, false), new ConfigStore(_path).Settings.Editor);
+    }
+
+    [Theory]
+    [InlineData("title", 50)]
+    [InlineData(null, 9)]
+    [InlineData(null, 501)]
+    public void Invalid_editor_settings_are_rejected(string? keywordCase, int sampleDocs)
+    {
+        var store = new ConfigStore(_path);
+        var ex = Assert.Throws<RpcException>(() => store.SaveSettings(store.Settings with { Editor = new EditorSettings(KeywordCase: keywordCase, CatalogSampleDocs: sampleDocs) }));
+        Assert.Equal(RpcException.InvalidParams, ex.Code);
+    }
+
     [Theory]
     [InlineData("0.2")]
     [InlineData("v0.2.13")]
