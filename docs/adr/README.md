@@ -13,5 +13,5 @@ One ADR per decision in the plan's decisions table. Write the ADR before the cod
 | [0007](0007-auth.md) | Entra first, then SQL auth, then Cosmos keys | Accepted |
 | [0008](0008-connection-store.md) | Encrypted local connection store, secrets in the OS keychain | Accepted |
 | [0009](0009-telemetry.md) | No telemetry | Accepted |
-| [0010](0010-distribution.md) | Per-user MSI with auto-update from GitHub Releases | Accepted |
+| [0010](0010-distribution.md) | Per-user installer with auto-update from GitHub Releases | Accepted |
 | [0011](0011-code-signing.md) | Unsigned MSI for M0 | Accepted |

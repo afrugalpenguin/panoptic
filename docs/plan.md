@@ -33,7 +33,7 @@ Panoptic: seeing everything from one position. The Ctrl+P palette inside it is c
 | Auth | Entra (MSAL.NET) first, SQL auth second, key-based Cosmos third | Matches how Cenata Azure SQL and Cosmos are actually reached. Tokens cached per connection by the sidecar, never written to disk unencrypted. |
 | Connection store | Encrypted local file, OS keychain for secrets | Export and import as a single file so the dotfiles repo can carry it. |
 | Telemetry | None | Fail-closed on anything that phones home. |
-| Distribution | Per-user MSI on GitHub Releases, Tauri updater plugin checks on launch | The work laptop is the real test bed; it must pick up every build without manual installs. The update check is the one outbound call and goes only to GitHub Releases. |
+| Distribution | Per-user NSIS installer on GitHub Releases, Tauri updater plugin checks on launch | The work laptop is the real test bed; it must pick up every build without manual installs. The update check is the one outbound call and goes only to GitHub Releases. |
 | Code signing | Unsigned (Authenticode) in M0, updater payloads signed with a Tauri updater key | Prove SmartScreen and Intune behaviour first; buy a certificate or Azure Trusted Signing only if install is blocked or before v1. |
 
 ## Prior art
@@ -94,12 +94,12 @@ Result sets stream as notifications of 500-row batches so the grid paints the fi
 
 Each milestone has one definition of done, and the next one does not start until it is met on the work laptop, not just at home.
 
-- **M0 Measure.** Numbers in `docs/benchmarks.md` for cold start, tree and grid frame times, Entra sign-in, and a per-user MSI installed on the work laptop that auto-updates from GitHub Releases. ADRs written for the UI framework choice.
+- **M0 Measure.** Numbers in `docs/benchmarks.md` for cold start, tree and grid frame times, Entra sign-in, and a per-user installer on the work laptop that auto-updates from GitHub Releases. ADRs written for the UI framework choice.
 - **M1 Tree.** Two SQL Server connections and one Cosmos account under one environment node, lazy-loaded through the node contract, every expand under 300 ms, nothing else on screen. If this is not enjoyable to click around, stop here.
 - **M2 Query and grid.** Monaco query pane bound to the selected connection, streamed results, cancel, CSV and JSON export, Cosmos SQL as a Monaco language. Select top 1000 on any table or container.
 - **M3 Filters, actions.** Type-to-filter scoped to a subtree, saved filters, the Ctrl+P palette across every loaded node, Script as CREATE, Open definition, Copy name, read-only environment flag that disables writes.
 - **M4 Diff.** Diff with... on any two nodes of the same kind: table DDL via dbml-diff, proc and view bodies, Cosmos indexing policies and documents, shown in a Monaco diff view.
-- **M5 Agent, packaging.** Send to agent (schema plus sample rows to Claude Code or Copilot CLI via a configurable command), connection export and import, Authenticode-signed MSI, README with screenshots, v1 tag. (Auto-update moved to M0.)
+- **M5 Agent, packaging.** Send to agent (schema plus sample rows to Claude Code or Copilot CLI via a configurable command), connection export and import, Authenticode-signed installer, README with screenshots, v1 tag. (Auto-update moved to M0.)
 
 ## Risks and the cheap tests that retire them
 
@@ -111,7 +111,7 @@ Each milestone has one definition of done, and the next one does not start until
 | Cosmos object listing is slower than SQL | Each container needs separate calls for policy, procs, triggers | Time `GetContainerQueryIterator` plus per-container reads on a real account; cache aggressively and expand lazily. |
 | Scope creep toward rebuilding SSMS | Every right-click menu item is a day | Every action must come from the backend's `actions()` list and have a deep link fallback. Anything admin-shaped is refused by the non-goals. |
 | It joins the pile of unfinished tools | Honest risk given the project count | M1 is a tree that shows two SQL servers and one Cosmos account and expands in under a second, nothing else. If that milestone is not fun to use, stop. |
-| Corporate install | Can't run on the work laptop, so never gets daily use | Tauri builds a per-user MSI with no elevation. Verify on the current laptop in M0; if blocked, ask for an Intune EPM rule early. |
+| Corporate install | Can't run on the work laptop, so never gets daily use | Tauri builds a per-user NSIS installer with no elevation (its MSI is per-machine only). Verify on the current laptop in M0; if blocked, ask for an Intune EPM rule early. |
 
 ## Repo setup and conventions
 
@@ -134,7 +134,7 @@ The first session is M0 and nothing else. It produces measurements, not features
 - [ ] Render a synthetic 50k-node virtualised tree and a 100k-row grid from fixture data. Record frame times. Decide Svelte versus plain TS on these numbers and write the ADR.
 - [ ] Prove Entra sign-in from the sidecar on the work laptop (WAM broker, device-code fallback). Record which worked.
 - [ ] Connect to one real SQL Server and one real Cosmos account read-only, list databases through the node contract, and show them under one fake environment node.
-- [ ] Tag-triggered release workflow: per-user MSI plus signed updater manifest on GitHub Releases. Install once on the work laptop, then confirm it updates itself to the next tag.
+- [ ] Tag-triggered release workflow: per-user NSIS installer plus signed updater manifest on GitHub Releases. Install once on the work laptop, then confirm it updates itself to the next tag.
 
 Prompt to paste:
 

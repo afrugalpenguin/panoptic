@@ -1,4 +1,4 @@
-# 0010. Per-user MSI with auto-update from GitHub Releases
+# 0010. Per-user installer with auto-update from GitHub Releases
 
 - Status: Accepted
 - Date: 2026-10-29
@@ -9,7 +9,9 @@ The work laptop is the real test bed for Entra, Intune and real data. Copying MS
 
 ## Decision
 
-A tag-triggered GitHub Actions workflow builds a per-user (no elevation) MSI and publishes it with an updater manifest to GitHub Releases. The Tauri updater plugin checks on launch and installs in place. Update payloads are signed with a Tauri updater key held in GitHub Secrets.
+A tag-triggered GitHub Actions workflow builds a per-user NSIS installer (installMode currentUser, installs to %LOCALAPPDATA%, no elevation) and publishes it with an updater manifest to GitHub Releases. The Tauri updater plugin checks on launch and installs in place. Update payloads are signed with a Tauri updater key held in GitHub Secrets.
+
+The plan said MSI. Tauri's WiX MSI always installs per-machine, which needs elevation and would prompt UAC on every update; NSIS currentUser meets the intent (per-user, no elevation) and is supported by the updater.
 
 ## Consequences
 
