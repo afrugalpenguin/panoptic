@@ -107,3 +107,57 @@ public class CosmosCatalogTests
         Assert.Equal(["tags:array", "tags[]:number,string"], paths.Select(p => $"{p.Path}:{string.Join(',', p.Types)}"));
     }
 }
+
+public sealed class CatalogCacheTests : IDisposable
+{
+    private readonly string _folder = Path.Combine(Path.GetTempPath(), "panoptic-catalog-" + Guid.NewGuid().ToString("N"));
+    private static readonly DatabaseCatalog Sample = new("s1", ["dbo"], [new("T", "dbo", ObjectKinds.Table, [new("Id", "int", false)], null)], ["int"], null);
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_folder)) Directory.Delete(_folder, true);
+    }
+
+    [Fact]
+    public void Cache_round_trips()
+    {
+        var cache = new CatalogCache(_folder);
+        var key = CatalogCache.KeyOf("conn1", "Orders");
+        Assert.Null(cache.Read(key));
+        cache.Write(key, Sample);
+        var read = cache.Read(key)!;
+        Assert.Equal("s1", read.Stamp);
+        Assert.Equal("Id", read.Objects[0].Columns![0].Name);
+    }
+
+    [Fact]
+    public void Cache_returns_null_for_a_corrupt_file()
+    {
+        var cache = new CatalogCache(_folder);
+        var key = CatalogCache.KeyOf("conn1", null);
+        Directory.CreateDirectory(_folder);
+        File.WriteAllBytes(Path.Combine(_folder, key + ".bin"), [1, 2, 3]);
+        Assert.Null(cache.Read(key));
+    }
+
+    [Fact]
+    public void Cache_file_is_encrypted()
+    {
+        var cache = new CatalogCache(_folder);
+        var key = CatalogCache.KeyOf("conn1", "Orders");
+        cache.Write(key, Sample);
+        var bytes = File.ReadAllBytes(Path.Combine(_folder, key + ".bin"));
+        Assert.DoesNotContain("dbo", System.Text.Encoding.UTF8.GetString(bytes));
+    }
+
+    [Fact]
+    public void Key_has_no_clear_text_names_and_depends_on_both_parts()
+    {
+        var key = CatalogCache.KeyOf("conn1", "Orders");
+        Assert.DoesNotContain("conn1", key);
+        Assert.DoesNotContain("Orders", key, StringComparison.OrdinalIgnoreCase);
+        Assert.Matches("^[0-9a-f]{32}$", key);
+        Assert.NotEqual(key, CatalogCache.KeyOf("conn1", "Other"));
+        Assert.NotEqual(key, CatalogCache.KeyOf("conn2", "Orders"));
+    }
+}

@@ -126,6 +126,10 @@ public sealed record StoreFile(AppConfig Config, Dictionary<string, string> Secr
 [JsonSerializable(typeof(QuerySummary))]
 [JsonSerializable(typeof(QueryTemplateParams))]
 [JsonSerializable(typeof(QueryTemplateResult))]
+[JsonSerializable(typeof(Catalog.DatabaseCatalog))]
+[JsonSerializable(typeof(Catalog.CatalogParams))]
+[JsonSerializable(typeof(Catalog.CatalogResult))]
+[JsonSerializable(typeof(Catalog.CatalogNotice))]
 public sealed partial class SidecarJson : JsonSerializerContext;
 
 public static class Rpc
