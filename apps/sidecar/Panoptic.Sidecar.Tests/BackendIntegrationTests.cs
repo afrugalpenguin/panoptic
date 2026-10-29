@@ -52,6 +52,33 @@ public class BackendIntegrationTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task Sql_lists_databases_the_login_cannot_reach_through_master()
+    {
+        var password = Environment.GetEnvironmentVariable("PANOPTIC_TEST_SQL_PASSWORD");
+        if (string.IsNullOrEmpty(password)) return;
+
+        // A login that is a user in Inventory only, like an Entra user who exists as a contained
+        // user in one client database: SSMS still lists every database, and so must Panoptic.
+        var backend = new SqlBackend(NoEntra);
+        const string limitedPassword = "Limited!Pass123";
+        await using (var admin = await backend.OpenAsync(DevSql, password, "master", default))
+        await using (var cmd = admin.CreateCommand())
+        {
+            cmd.CommandText = $"""
+                IF SUSER_ID('panoptic_limited') IS NULL CREATE LOGIN panoptic_limited WITH PASSWORD = '{limitedPassword}', CHECK_POLICY = OFF;
+                EXEC('USE Inventory; IF USER_ID(''panoptic_limited'') IS NULL CREATE USER panoptic_limited FOR LOGIN panoptic_limited;');
+                """;
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        var limited = DevSql with { User = "panoptic_limited" };
+        var dbs = await Expand(backend, limited, limitedPassword, NodePath.Parse("env:dev/conn:sql1"));
+
+        Assert.Contains(dbs, d => d.Label == "Inventory");
+        Assert.Contains(dbs, d => d.Label == "Orders");
+    }
+
+    [Fact]
     public async Task Sql_login_failure_is_an_operation_error()
     {
         if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("PANOPTIC_TEST_SQL_PASSWORD"))) return;
