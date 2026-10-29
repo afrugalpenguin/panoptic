@@ -15,6 +15,14 @@
   --ok: #1a7f37;
   --bad: #cf222e;
   --warn: #9a6700;
+
+  /* Explorer tree (docs/explorer-ux.md). The spec's colours are for the dark theme. */
+  --tree-bright: #111418;
+  --tree-dim: #6a6a6a;
+  --tree-dim-selected: #4a5568;
+  --tree-selected: #d6e2f5;
+  --tree-folder: #303438;
+  --row-font: var(--font-mono);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -31,6 +39,12 @@
     --ok: #3fb950;
     --bad: #f85149;
     --warn: #d29922;
+
+    --tree-bright: #ffffff;
+    --tree-dim: #6a6a6a;
+    --tree-dim-selected: #9aa3b5;
+    --tree-selected: #2b3650;
+    --tree-folder: #d0d0d0;
   }
 }
 

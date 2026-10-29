@@ -107,6 +107,29 @@ public sealed class ConfigStoreTests : IDisposable
     }
 
     [Fact]
+    public void Explorer_settings_default_and_persist()
+    {
+        var store = new ConfigStore(_path);
+        Assert.True(store.Settings.Explorer.ShowKindBadge);
+        Assert.Equal(RowFonts.Mono, store.Settings.Explorer.RowFont);
+        Assert.Empty(store.Settings.Explorer.EnvOrder);
+
+        store.SaveSettings(store.Settings with { Explorer = new ExplorerSettings(false, RowFonts.Ui, ["prod", "dev"]) });
+
+        var reloaded = new ConfigStore(_path).Settings.Explorer;
+        Assert.False(reloaded.ShowKindBadge);
+        Assert.Equal(RowFonts.Ui, reloaded.RowFont);
+        Assert.Equal(["prod", "dev"], reloaded.EnvOrder);
+    }
+
+    [Fact]
+    public void Unknown_row_font_is_rejected()
+    {
+        var store = new ConfigStore(_path);
+        Assert.Throws<RpcException>(() => store.SaveSettings(store.Settings with { Explorer = new ExplorerSettings(RowFont: "comic-sans") }));
+    }
+
+    [Fact]
     public void Unknown_update_check_mode_is_rejected()
     {
         var store = new ConfigStore(_path);
@@ -197,6 +220,7 @@ public sealed class TreeServiceTests : IDisposable
         var env = Assert.Single(envs);
         Assert.Equal("environment", env.Kind);
         Assert.Equal("true", env.Meta!["readOnly"]);
+        Assert.Equal("1", env.Meta!["connectionCount"]);
 
         var conn = Assert.Single(await tree.ChildrenAsync(env.Id, default));
         Assert.Equal("connection", conn.Kind);

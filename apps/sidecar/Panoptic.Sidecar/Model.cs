@@ -82,8 +82,22 @@ public static class UpdateCheckModes
     public static readonly string[] All = [Startup, Hourly, Never];
 }
 
-public sealed record AppSettings(string UpdateCheck = UpdateCheckModes.Startup)
+public static class RowFonts
 {
+    public const string Mono = "mono";
+    public const string Ui = "ui";
+}
+
+/// <summary>Explorer display settings (docs/explorer-ux.md). EnvOrder lists environment ids in manual order; empty means order added.</summary>
+public sealed record ExplorerSettings(bool ShowKindBadge = true, string RowFont = RowFonts.Mono, string[]? EnvOrder = null)
+{
+    public string[] EnvOrder { get; init; } = EnvOrder ?? [];
+}
+
+public sealed record AppSettings(string UpdateCheck = UpdateCheckModes.Startup, ExplorerSettings? Explorer = null)
+{
+    public ExplorerSettings Explorer { get; init; } = Explorer ?? new ExplorerSettings();
+
     public static AppSettings Default => new();
 }
 

@@ -40,8 +40,17 @@ export interface AppConfig {
   environments: EnvironmentConfig[];
 }
 
+/** Mirrors ExplorerSettings in the sidecar's Model.cs (docs/explorer-ux.md, "Settings"). */
+export interface ExplorerSettings {
+  showKindBadge: boolean;
+  rowFont: "mono" | "ui";
+  /** Environment ids in manual order; empty means order added. */
+  envOrder: string[];
+}
+
 export interface AppSettings {
   updateCheck: import("../update-schedule").UpdateCheckMode;
+  explorer: ExplorerSettings;
 }
 
 export interface TestConnectionResult {

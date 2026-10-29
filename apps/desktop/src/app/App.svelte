@@ -11,12 +11,14 @@
   import DetailPane from "./DetailPane.svelte";
   import EnvironmentDialog from "./EnvironmentDialog.svelte";
   import ImportDialog from "./ImportDialog.svelte";
+  import IconButton from "./IconButton.svelte";
+  import KindChips from "./KindChips.svelte";
   import Workspace from "../query/Workspace.svelte";
   import { QueryWorkspace } from "../query/store.svelte";
   import SettingsDialog from "./SettingsDialog.svelte";
   import StatusBar from "./StatusBar.svelte";
   import Tree from "./Tree.svelte";
-  import { TreeModel, type LoadReport, type Row } from "./tree-model";
+  import { TreeModel, type KindSummary, type LoadReport, type Row } from "./tree-model";
 
   let { info }: { info: StartupInfo } = $props();
 
@@ -25,6 +27,8 @@
   let sidecarText = $state("Starting...");
   let config = $state<AppConfig>({ environments: [] });
   let rows = $state.raw<Row[]>([]);
+  let kinds = $state.raw<KindSummary[]>([]);
+  let kindFilter = $state<string>();
   let selectedKey = $state<string>();
   let lastLoad = $state<LoadReport>();
   let inFlight = $state<{ label: string; startedAt: number }>();
@@ -38,7 +42,7 @@
     | { kind: "import" }
     | { kind: "settings" }
   >();
-  let settings = $state<AppSettings>({ updateCheck: "startup" });
+  let settings = $state<AppSettings>({ updateCheck: "startup", explorer: { showKindBadge: true, rowFont: "mono", envOrder: [] } });
   const checkForUpdates = createUpdateChecker((s) => (update = s));
   let stopUpdateSchedule = () => {};
   let treeWidth = $state(readWidth());
@@ -47,6 +51,8 @@
     (id) => api!.children(id),
     () => {
       rows = model.rows();
+      kinds = model.kinds();
+      kindFilter = model.activeKind();
       const loading = model.inFlight()[0];
       inFlight = loading ? { label: model.node(loading.id)?.label ?? "tree", startedAt: loading.startedAt } : undefined;
     },
@@ -126,6 +132,7 @@
     const sidecarReadyEpochMs = nowEpochMs();
     config = await api!.config();
     await model.loadRoot();
+    await model.preload(envNodeIds());
 
     const fcp = await firstPaintEpochMs();
     const timings = {
@@ -142,21 +149,28 @@
     if (info.benchMode === "startup") await finishBenchmark(timings);
     if (info.benchMode) return;
     settings = await api!.settings();
+    model.setEnvOrder(settings.explorer.envOrder);
     update = { kind: "idle", current: await currentVersion() };
     stopUpdateSchedule = scheduleUpdateChecks(settings.updateCheck, checkForUpdates, { atLaunch: true });
   }
 
   async function saveSettings(next: AppSettings) {
     settings = await api!.saveSettings(next);
+    // Explorer settings re-render the tree once; nothing is reloaded.
+    model.setEnvOrder(settings.explorer.envOrder);
     stopUpdateSchedule();
     stopUpdateSchedule = scheduleUpdateChecks(settings.updateCheck, checkForUpdates, { atLaunch: false });
   }
 
   /** Re-reads environments and connections after a config change without losing expanded subtrees. */
+  /** Node ids of every environment, matching the sidecar's node paths. */
+  const envNodeIds = () => config.environments.map((e) => `env:${encodeURIComponent(e.id)}`);
+
   async function configChanged(next?: AppConfig) {
     config = next ?? (await api!.config());
     await model.reload("");
     for (const env of config.environments) await model.reload(`env:${encodeURIComponent(env.id)}`);
+    await model.preload(envNodeIds());
   }
 
   const envOf = (id: string) => config.environments.find((e) => e.id === id);
@@ -310,16 +324,34 @@
     <div class="toolbar">
       <span class="title">Explorer</span>
       <span style:flex="1"></span>
-      <button title="Import from SSMS, Azure Data Studio or VS Code" disabled={sidecar !== "connected"} onclick={() => (dialog = { kind: "import" })}>Import</button>
-      <button title="New environment" onclick={() => (dialog = { kind: "environment" })}>+ Env</button>
-      <button title="New connection" disabled={sidecar !== "connected"} onclick={() => addConnection()}>+ Connection</button>
-      <button title="Settings" aria-label="Settings" disabled={sidecar !== "connected"} onclick={() => (dialog = { kind: "settings" })}>Settings</button>
+      <IconButton icon="import" label="Import from SSMS, Azure Data Studio or VS Code" disabled={sidecar !== "connected"} onclick={() => (dialog = { kind: "import" })} />
+      <IconButton icon="environment" label="New environment" onclick={() => (dialog = { kind: "environment" })} />
+      <IconButton icon="connection" label="New connection" disabled={sidecar !== "connected"} onclick={() => addConnection()} />
+      <IconButton icon="settings" label="Settings" disabled={sidecar !== "connected"} onclick={() => (dialog = { kind: "settings" })} />
     </div>
+    {#if kinds.length > 1}
+      <KindChips
+        {kinds}
+        active={kindFilter}
+        onSelect={(kind) => {
+          kindFilter = kind;
+          model.setKindFilter(kind);
+        }}
+      />
+    {/if}
     <div class="tree-host">
       {#if sidecar === "connected" && config.environments.length === 0}
         <p class="hint muted">No environments yet.</p>
       {/if}
-      <Tree {model} {rows} bind:selectedKey onContextMenu={openMenu} onActivate={activate} />
+      <Tree
+        {model}
+        {rows}
+        bind:selectedKey
+        onContextMenu={openMenu}
+        onActivate={activate}
+        showKindBadge={settings.explorer.showKindBadge}
+        rowFont={settings.explorer.rowFont}
+      />
     </div>
   </aside>
 
@@ -349,7 +381,7 @@
     onClose={() => (dialog = undefined)}
   />
 {:else if dialog?.kind === "settings"}
-  <SettingsDialog {settings} {update} onSave={saveSettings} onCheckNow={() => checkForUpdates()} onClose={() => (dialog = undefined)} />
+  <SettingsDialog {settings} {update} environments={config.environments} onSave={saveSettings} onCheckNow={() => checkForUpdates()} onClose={() => (dialog = undefined)} />
 {:else if dialog?.kind === "import" && api}
   <ImportDialog
     {api}
@@ -405,14 +437,10 @@
   .toolbar {
     display: flex;
     align-items: center;
-    gap: 6px;
-    height: 34px;
-    padding: 0 8px 0 12px;
+    gap: 2px;
+    height: 40px;
+    padding: 0 6px 0 12px;
     border-bottom: 1px solid var(--border);
-  }
-  .toolbar button {
-    padding: 1px 8px;
-    font-size: 12px;
   }
   .title {
     font-size: 11px;
