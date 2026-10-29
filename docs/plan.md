@@ -6,7 +6,7 @@ Oct 29, 2026 · @Mac
 
 A native, instant-start workbench whose core is one object explorer that holds every environment at once: dev, UAT, prod, client sandboxes, SQL Server and Cosmos side by side, same node shape all the way down. Everything else (query editor, results grid, agent handoff) hangs off a selected node. The target feel is SSMS's tree with Zed's responsiveness: window open in under 500 ms, any node expanded in under 300 ms, 100k-row grid scrolling at 60 fps.
 
-The one feature no existing client has: select the same object in two environments and diff it (table schema, proc body, Cosmos indexing policy, a config document).
+Panoptic is a platform-agnostic SSMS replacement: the tree, query pane and grid that SSMS gives you for SQL Server, for every engine and every environment at once, at native speed. It earns its place by doing that well, not by adding features SSMS lacks.
 
 **Non-goals for v1**
 
@@ -15,6 +15,7 @@ The one feature no existing client has: select the same object in two environmen
 - Write-heavy data editing. Read, query and export; inline edits can come later behind a safe-mode gate.
 - Cenata-specific connectors (Freshdesk, ADO, tenant logic). The core stays generic; those arrive as plugins in a separate repo.
 - Mac and Linux builds. The stack supports them for free, but Windows is the only tested target until v1 ships.
+- Cross-environment diff (pick the same object in two environments and compare them). A good idea, but not core: a possible plugin once SSMS is no longer needed, and nothing before v1 depends on it.
 
 **Name**
 
@@ -25,9 +26,9 @@ Panoptic: seeing everything from one position. The Ctrl+P palette inside it is c
 | Decision | Choice | Why |
 | --- | --- | --- |
 | Stack | Tauri 2 shell, TypeScript UI with Monaco, .NET 10 sidecar for data access | Microsoft.Data.SqlClient and the Cosmos .NET SDK are the only mature drivers with Entra auth. The TS UI reuses Angular-era skills. Tauri gives Mac later with no rework. |
-| v1 scope | SQL Server + Cosmos under one tree | The multi-backend tree is the only part no vendor sells. Proving the node model on two very different backends early stops it becoming SQL-shaped. |
+| v1 scope | SQL Server, Cosmos and Synapse under one tree; other engines later | The multi-backend tree is the only part no vendor sells. Proving the node model on two very different backends early stops it becoming SQL-shaped. Synapse SQL pools speak TDS, so they reuse the SQL Server backend with their own catalog differences (external tables, no keys on serverless). |
 | Repo | Personal GitHub (afrugalpenguin), open source, MIT | Generic tool, portfolio piece. Cenata-specific connectors live in a separate private repo as plugins. |
-| UI framework | Svelte 5 or plain TS with a virtualised tree and grid | React or Angular would be familiar but heavier; the tree and grid are the product and must be hand-tuned. Decide in M0 with a benchmark, not a preference. |
+| UI framework | Svelte 5 with a hand-written virtualised tree and grid | Decided in M0 (ADR 0004): plain TS and Svelte tied at 60 fps on the benchmark, so Svelte wins on productivity for the rest of the UI. |
 | Sidecar protocol | JSON-RPC 2.0 over stdio, Tauri sidecar lifecycle | No ports, no CORS, no firewall prompts on the work laptop. Streaming result sets as batched notifications. |
 | Query editor | Monaco | Already does T-SQL highlighting; Cosmos SQL grammar added as a custom language. |
 | Auth | Entra (MSAL.NET) first, SQL auth second, key-based Cosmos third | Matches how Cenata Azure SQL and Cosmos are actually reached. Tokens cached per connection by the sidecar, never written to disk unencrypted. |
@@ -35,34 +36,34 @@ Panoptic: seeing everything from one position. The Ctrl+P palette inside it is c
 | Telemetry | None | Fail-closed on anything that phones home. |
 | Distribution | Per-user NSIS installer on GitHub Releases, Tauri updater plugin checks on launch | The work laptop is the real test bed; it must pick up every build without manual installs. The update check is the one outbound call and goes only to GitHub Releases. |
 | Code signing | Unsigned (Authenticode) in M0, updater payloads signed with a Tauri updater key | Prove SmartScreen and Intune behaviour first; buy a certificate or Azure Trusted Signing only if install is blocked or before v1. |
+| Cross-environment diff | Not in v1 and not core; later, as a plugin | Panoptic is an SSMS replacement, not a comparison tool. The node contract makes a diff plugin cheap to add later, so nothing is lost by waiting. |
 
 ## Prior art
 
-Nothing ships the full combination of native speed, an environment-first tree, SQL Server and Cosmos at equal depth, and diff across both. The nearest is DBeaver's paid editions, which put SQL Server and Cosmos NoSQL in one navigator and offer schema compare between connections, but Cosmos there is read-only with a SELECT, FROM, WHERE subset and no indexing policies, procs or triggers in the tree, and the whole thing is an Eclipse Java app. Not an option here on cost or speed.
+Nothing ships the full combination of native speed, an environment-first tree, and SQL Server and Cosmos at equal depth. The nearest is DBeaver's paid editions, which put SQL Server and Cosmos NoSQL in one navigator, but Cosmos there is read-only with a SELECT, FROM, WHERE subset and no indexing policies, procs or triggers in the tree, and the whole thing is an Eclipse Java app. Not an option here on cost or speed.
 
-| Tool | Multi-connection tree | SQL Server | Cosmos | Cross-env diff | Native and fast |
-| --- | --- | --- | --- | --- | --- |
-| SSMS | Yes, the benchmark | Full | No | No | No |
-| mssql extension (VS Code) | Connection groups | Good, read and query | No | No | No, Electron |
-| TablePlus | No, tab per connection | Good | No | No | Yes |
-| DataGrip | Yes | Good | Third-party JDBC driver only | SQL only | No, JVM |
-| DBeaver paid | Yes | Good | Read-only, shallow | SQL only, paid | No, Eclipse |
-| CosmosDbExplorer | Named DEV/QA/PROD connections | No | Full CRUD | No | Yes, WPF |
-| Redgate SQL Compare | No | Diff only | No | SQL only | Yes |
+| Tool | Multi-connection tree | SQL Server | Cosmos | Native and fast |
+| --- | --- | --- | --- | --- |
+| SSMS | Yes, the benchmark | Full | No | No |
+| mssql extension (VS Code) | Connection groups | Good, read and query | No | No, Electron |
+| TablePlus | No, tab per connection | Good | No | Yes |
+| DataGrip | Yes | Good | Third-party JDBC driver only | No, JVM |
+| DBeaver paid | Yes | Good | Read-only, shallow | No, Eclipse |
+| CosmosDbExplorer | Named DEV/QA/PROD connections | No | Full CRUD | Yes, WPF |
 
 The differentiators to lead with are speed and Cosmos as a first-class citizen. The multi-environment tree is necessary but not unique.
 
-Sources: [DBeaver Cosmos NoSQL driver](https://dbeaver.com/docs/dbeaver/Database-driver-Azure-CosmosDB-for-NoSQL/), [DBeaver schema compare](https://dbeaver.com/docs/dbeaver/Schema-compare/), [DataGrip Cosmos thread](https://intellij-support.jetbrains.com/hc/en-us/community/posts/360000404120/comments/360000749800), [CosmosDbExplorer](https://github.com/sachabruttin/CosmosDbExplorer), [TablePlus sidebar](https://docs.tableplus.com/gui-tools/the-interface/left-sidebar), [mssql extension v1.46](https://devblogs.microsoft.com/azure-sql/?p=7650).
+Sources: [DBeaver Cosmos NoSQL driver](https://dbeaver.com/docs/dbeaver/Database-driver-Azure-CosmosDB-for-NoSQL/), [DataGrip Cosmos thread](https://intellij-support.jetbrains.com/hc/en-us/community/posts/360000404120/comments/360000749800), [CosmosDbExplorer](https://github.com/sachabruttin/CosmosDbExplorer), [TablePlus sidebar](https://docs.tableplus.com/gui-tools/the-interface/left-sidebar), [mssql extension v1.46](https://devblogs.microsoft.com/azure-sql/?p=7650).
 
 ## The tree
 
-The tree is environment-first, and every backend presents the same node contract, so the UI never knows whether it is drawing SQL Server or Cosmos. A node is `{ id, kind, label, icon, hasChildren, actions[], meta }`; a backend provides `children(nodeId)`, `actions(nodeId)` and `invoke(nodeId, actionId)`. Diff works on any two nodes of the same kind.
+The tree is environment-first, and every backend presents the same node contract, so the UI never knows whether it is drawing SQL Server or Cosmos. A node is `{ id, kind, label, icon, hasChildren, actions[], meta }`; a backend provides `children(nodeId)`, `actions(nodeId)` and `invoke(nodeId, actionId)`.
 
 **Hierarchy**
 
 1. Environment (dev, UAT, prod, a client sandbox): a colour band and a name, user-defined, with an optional read-only flag that disables every write action beneath it.
-2. Connection: a SQL Server instance or a Cosmos account. Several per environment.
-3. SQL Server: Databases, then per database Tables, Views, Programmability (procs, functions, types), Synonyms, Security (read-only listing only). Cosmos: Databases, then per database Containers, then per container Items (sampled), Indexing policy, Stored procedures, Triggers, UDFs, Partition key and throughput as leaf properties.
+2. Connection: a SQL Server instance, a Cosmos account or a Synapse SQL endpoint (dedicated or serverless). Several per environment.
+3. SQL Server: Databases, then per database Tables, Views, Programmability (procs, functions, types), Synonyms, Security (read-only listing only). Synapse: as SQL Server, plus External tables. Cosmos: Databases, then per database Containers, then per container Items (sampled), Indexing policy, Stored procedures, Triggers, UDFs, Partition key and throughput as leaf properties.
 4. Leaf objects: Table has Columns, Keys, Indexes, Constraints, Triggers; Proc and View have a Definition leaf that opens in Monaco read-only.
 
 **Behaviours that make it fast**
@@ -72,11 +73,7 @@ The tree is environment-first, and every backend presents the same node contract
 - Virtualised rendering. The tree only draws visible rows; 50k nodes must not cost more than drawing the roughly 500 rows on screen.
 - Filter as you type, scoped to the selected subtree, matching on name, schema and object type. Filters are saveable and apply per environment or globally, like the mssql extension's saved filters but across every connection at once.
 - Keyboard first. Arrow keys, type-to-jump, Enter to open the default action, and Seek (Ctrl+P), the palette that searches every loaded node across every environment.
-- Right-click actions come from the backend, not the UI: Select top 1000, Script as CREATE, Open definition, Copy name, Diff with..., Send to agent. The list grows without touching the tree component.
-
-**Diff**
-
-Pick a node, choose Diff with..., pick the matching node in another environment. The sidecar produces a canonical text form of each (DDL for SQL objects, normalised JSON for Cosmos policies and documents) and the UI shows a Monaco diff view. Table DDL goes through dbml-diff so the SQL half is not written twice.
+- Right-click actions come from the backend, not the UI: Select top 1000, Script as CREATE, Open definition, Copy name, Send to agent. The list grows without touching the tree component.
 
 ## Architecture
 
@@ -84,13 +81,13 @@ Pick a node, choose Diff with..., pick the matching node in another environment.
 
 The two accented boxes are the whole design: the tree draws nodes, the node contract supplies them, and everything backend-specific sits behind that one interface in the sidecar.
 
-The UI holds no connection strings, tokens or SQL. It asks the sidecar for nodes, actions and result batches over JSON-RPC and renders what comes back. The sidecar owns connections, auth, the catalog queries and the canonical text forms used by diff. A crashed sidecar is restarted by Tauri and the UI shows every connection as disconnected until it answers `ping` again.
+The UI holds no connection strings, tokens or SQL. It asks the sidecar for nodes, actions and result batches over JSON-RPC and renders what comes back. The sidecar owns connections, auth and the catalog queries. A crashed sidecar is restarted by Tauri and the UI shows every connection as disconnected until it answers `ping` again.
 
 Result sets stream as notifications of 500-row batches so the grid paints the first rows before the query finishes; the UI can cancel mid-stream and the sidecar cancels the command. The shared node model package is generated from the sidecar's C# records at build time so the two sides cannot drift.
 
 ## Milestones
 
-&#91;embedded content: milestones · M0 to M5, v1 at the end of March 2027\]
+&#91;embedded content: milestones · M0 to M4, v1 at the end of March 2027\]
 
 Each milestone has one definition of done, and the next one does not start until it is met on the work laptop, not just at home.
 
@@ -98,8 +95,7 @@ Each milestone has one definition of done, and the next one does not start until
 - **M1 Tree.** Two SQL Server connections and one Cosmos account under one environment node, lazy-loaded through the node contract, every expand under 300 ms, nothing else on screen. If this is not enjoyable to click around, stop here.
 - **M2 Query and grid.** Monaco query pane bound to the selected connection, streamed results, cancel, CSV and JSON export, Cosmos SQL as a Monaco language. Select top 1000 on any table or container.
 - **M3 Filters, actions.** Type-to-filter scoped to a subtree, saved filters, the Ctrl+P palette across every loaded node, Script as CREATE, Open definition, Copy name, read-only environment flag that disables writes.
-- **M4 Diff.** Diff with... on any two nodes of the same kind: table DDL via dbml-diff, proc and view bodies, Cosmos indexing policies and documents, shown in a Monaco diff view.
-- **M5 Agent, packaging.** Send to agent (schema plus sample rows to Claude Code or Copilot CLI via a configurable command), connection export and import, Authenticode-signed installer, README with screenshots, v1 tag. (Auto-update moved to M0.)
+- **M4 Agent, packaging.** Send to agent (schema plus sample rows to Claude Code or Copilot CLI via a configurable command), connection export and import, Authenticode-signed installer, README with screenshots, v1 tag. (Auto-update moved to M0.)
 
 ## Risks and the cheap tests that retire them
 

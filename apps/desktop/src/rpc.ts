@@ -23,7 +23,10 @@ export class RpcClient {
   private nextId = 1;
   private readonly pending = new Map<number, Pending>();
 
-  constructor(private readonly send: (line: string) => Promise<void>) {}
+  constructor(
+    private readonly send: (line: string) => Promise<void>,
+    private readonly onNotification: (method: string, params: unknown) => void = () => {},
+  ) {}
 
   request<T = unknown>(method: string, params?: unknown, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> {
     const id = this.nextId++;
@@ -40,10 +43,14 @@ export class RpcClient {
   }
 
   receive(line: string): void {
-    let msg: { id?: unknown; result?: unknown; error?: { code: number; message: string } };
+    let msg: { id?: unknown; method?: unknown; params?: unknown; result?: unknown; error?: { code: number; message: string } };
     try {
       msg = JSON.parse(line);
     } catch {
+      return;
+    }
+    if (typeof msg?.method === "string" && msg.id === undefined) {
+      this.onNotification(msg.method, msg.params);
       return;
     }
     if (typeof msg?.id !== "number") return;

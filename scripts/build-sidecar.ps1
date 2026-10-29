@@ -3,13 +3,13 @@
     Publishes the .NET sidecar to where Tauri expects its externalBin.
 
 .PARAMETER Mode
-    aot - Native AOT, self-contained single native exe (default; release builds)
-    r2r - self-contained single-file with ReadyToRun
+    r2r - self-contained single-file with ReadyToRun (default; release builds)
+    aot - Native AOT. Not usable: SqlClient and the Cosmos SDK fail at runtime under it
     fdd - framework-dependent, needs the .NET 10 runtime installed (fast dev builds)
 #>
 param(
     [ValidateSet('aot', 'r2r', 'fdd')]
-    [string]$Mode = 'aot'
+    [string]$Mode = 'r2r'
 )
 
 $ErrorActionPreference = 'Stop'

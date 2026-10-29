@@ -1,6 +1,6 @@
 [package]
 name = "panoptic"
-version = "0.1.0"
+version = "0.2.0"
 description = "Native multi-environment object explorer for SQL Server and Cosmos DB"
 authors = ["afrugalpenguin"]
 license = "MIT"

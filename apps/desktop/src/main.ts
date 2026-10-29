@@ -1,85 +1,11 @@
-import { connectSidecar, type PingResult } from "./sidecar";
-import { finishBenchmark, firstPaintEpochMs, getStartupInfo, nowEpochMs, type StartupInfo } from "./startup";
-import { checkForUpdates, type UpdateState } from "./updates";
-
-const status = document.querySelector<HTMLElement>("#status")!;
-const details = document.querySelector<HTMLElement>("#details")!;
-const pingButton = document.querySelector<HTMLButtonElement>("#ping")!;
-const version = document.querySelector<HTMLElement>("#version")!;
-const updateBar = document.querySelector<HTMLElement>("#update")!;
-
-function show(state: "connected" | "disconnected" | "connecting", text: string) {
-  status.dataset.state = state;
-  status.textContent = text;
-}
-
-async function start(info: StartupInfo) {
-  show("connecting", "Connecting to sidecar...");
-  const rpc = await connectSidecar((code) => {
-    show("disconnected", `Sidecar disconnected (exit ${code ?? "unknown"})`);
-    pingButton.disabled = true;
-  });
-
-  const ping = async () => {
-    const t0 = performance.now();
-    const r = await rpc.request<PingResult>("ping");
-    const roundTripMs = performance.now() - t0;
-    show("connected", "Sidecar connected");
-    details.textContent = [
-      `sidecar start-up   ${r.startupMs} ms (${r.mode})`,
-      `ping round trip    ${roundTripMs.toFixed(1)} ms`,
-      `ui load to ready   ${performance.now().toFixed(0)} ms`,
-      `sidecar            v${r.version}, pid ${r.pid}`,
-    ].join("\n");
-  };
-
-  pingButton.addEventListener("click", () => ping().catch((e) => show("disconnected", String(e))));
-  const first = await rpc.request<PingResult>("ping").catch((e) => (show("disconnected", String(e)), null));
-  const sidecarReadyEpochMs = nowEpochMs();
-  await ping().catch((e) => show("disconnected", String(e)));
-
-  const fcpEpochMs = await firstPaintEpochMs();
-  const startup = {
-    kind: "startup",
-    mainStartEpochMs: info.mainStartEpochMs,
-    firstPaintEpochMs: fcpEpochMs,
-    sidecarReadyEpochMs,
-    mainToFirstPaintMs: Math.round(fcpEpochMs - info.mainStartEpochMs),
-    mainToSidecarReadyMs: Math.round(sidecarReadyEpochMs - info.mainStartEpochMs),
-    sidecarStartupMs: first?.startupMs ?? null,
-    sidecarMode: first?.mode ?? null,
-  };
-  details.textContent =
-    `main to first paint    ${startup.mainToFirstPaintMs} ms
-` +
-    `main to sidecar ready  ${startup.mainToSidecarReadyMs} ms
-` +
-    details.textContent;
-  if (info.benchMode === "startup") await finishBenchmark(startup);
-}
-
-function showUpdate(s: UpdateState) {
-  version.textContent = `v${s.current}`;
-  updateBar.replaceChildren();
-  updateBar.hidden = s.kind === "idle";
-  if (s.kind === "downloading") updateBar.textContent = `Downloading v${s.next}...`;
-  if (s.kind === "error") updateBar.textContent = `Update check failed: ${s.message}`;
-  if (s.kind === "ready") {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = "Restart to update";
-    button.addEventListener("click", () => {
-      button.disabled = true;
-      s.install().catch((e) => showUpdate({ kind: "error", current: s.current, message: String(e) }));
-    });
-    updateBar.append(`v${s.next} is ready. `, button);
-  }
-}
+import { mount } from "svelte";
+import App from "./app/App.svelte";
+import "./app/app.css";
+import { getStartupInfo } from "./startup";
 
 const info = await getStartupInfo();
 if (info.benchMode === "ui") {
   location.replace("/bench.html?auto=1");
 } else {
-  start(info);
-  if (!info.benchMode) checkForUpdates(showUpdate);
+  mount(App, { target: document.body, props: { info } });
 }

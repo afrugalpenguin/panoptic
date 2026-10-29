@@ -7,13 +7,22 @@
     <Nullable>enable</Nullable>
     <AssemblyName>panoptic-sidecar</AssemblyName>
     <RootNamespace>Panoptic.Sidecar</RootNamespace>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <!-- Set by scripts/build-sidecar.ps1: aot, r2r or fdd. Reported by ping. -->
     <PanopticMode Condition="'$(PanopticMode)' == ''">dev</PanopticMode>
   </PropertyGroup>
 
   <ItemGroup>
     <AssemblyMetadata Include="PublishMode" Value="$(PanopticMode)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Azure.Identity" Version="1.21.0" />
+    <PackageReference Include="Azure.Identity.Broker" Version="1.7.0" />
+    <PackageReference Include="Microsoft.Azure.Cosmos" Version="3.63.3" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="7.1.1" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.14" />
   </ItemGroup>
 
 </Project>

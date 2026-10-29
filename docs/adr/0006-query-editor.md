@@ -9,7 +9,7 @@ A query editor needs T-SQL highlighting now and Cosmos SQL later, but building a
 
 ## Decision
 
-Embed Monaco for the query pane and diff view only. Add Cosmos SQL as a custom Monaco language.
+Embed Monaco for the query pane only. Add Cosmos SQL as a custom Monaco language.
 
 ## Consequences
 

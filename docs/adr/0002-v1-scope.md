@@ -1,4 +1,4 @@
-# 0002. v1 covers SQL Server and Cosmos DB under one tree
+# 0002. v1 covers SQL Server, Cosmos DB and Synapse under one tree
 
 - Status: Accepted
 - Date: 2026-10-29
@@ -9,7 +9,7 @@ The multi-backend, environment-first tree is the part no vendor sells. A tree bu
 
 ## Decision
 
-v1 ships SQL Server and Cosmos DB for NoSQL at equal depth, both behind the same node contract. Admin surfaces, a general editor, write-heavy editing and Cenata-specific connectors are out of scope.
+v1 is a working SSMS replacement: SQL Server, Cosmos DB for NoSQL and Azure Synapse SQL pools, all behind the same node contract. Synapse speaks TDS and reuses the SQL Server backend with its catalog differences. Other engines come later through the same contract. Admin surfaces, a general editor, write-heavy editing, cross-environment diff and Cenata-specific connectors are out of scope for v1.
 
 ## Consequences
 

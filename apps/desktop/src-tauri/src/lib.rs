@@ -30,6 +30,16 @@ fn startup_info() -> StartupInfo {
     }
 }
 
+/// True when running from the per-user installer (which drops uninstall.exe next to the app).
+/// A portable copy unzipped anywhere else cannot be updated in place.
+#[tauri::command]
+fn is_installed() -> bool {
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| dir.join("uninstall.exe").exists()))
+        .unwrap_or(false)
+}
+
 /// Bench mode only: writes results to the path the launcher chose, then exits.
 #[tauri::command]
 fn bench_finish(app: AppHandle, results: String) -> Result<(), String> {
@@ -60,7 +70,13 @@ fn sidecar_stop(sidecar: State<Sidecar>) -> Result<(), String> {
 }
 
 fn spawn_sidecar(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    let (mut rx, child) = app.shell().sidecar("panoptic-sidecar")?.spawn()?;
+    let mut command = app.shell().sidecar("panoptic-sidecar")?;
+    // WAM (Entra sign-in) dialogs need a parent window, which only the shell can provide.
+    #[cfg(windows)]
+    if let Some(hwnd) = app.get_webview_window("main").and_then(|w| w.hwnd().ok()) {
+        command = command.env("PANOPTIC_PARENT_HWND", (hwnd.0 as isize).to_string());
+    }
+    let (mut rx, child) = command.spawn()?;
     *app.state::<Sidecar>().0.lock().unwrap() = Some(child);
 
     let app = app.clone();
@@ -97,7 +113,7 @@ pub fn run() {
             spawn_sidecar(app.handle())?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![sidecar_send, sidecar_stop, startup_info, bench_finish])
+        .invoke_handler(tauri::generate_handler![sidecar_send, sidecar_stop, startup_info, bench_finish, is_installed])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {

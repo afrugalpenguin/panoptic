@@ -57,7 +57,20 @@ jobs:
           tauriScript: pnpm tauri
           tagName: ${{ github.ref_name }}
           releaseName: Panoptic ${{ github.ref_name }}
-          releaseBody: Per-user installer, no elevation. Unsigned, so SmartScreen will warn on first install. Installed copies update themselves on launch.
+          releaseBody: Two ways to run it. The setup.exe installer is per-user (no elevation) and updates itself on launch. The portable zip needs no install, so unzip it anywhere and run panoptic.exe; it tells you when a new version exists. Builds are unsigned, so SmartScreen may warn.
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
+
+      - name: Attach portable zip
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          $dir = "portable/Panoptic"
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          Copy-Item apps/desktop/src-tauri/target/release/panoptic.exe, apps/desktop/src-tauri/target/release/panoptic-sidecar.exe $dir
+          $zip = "Panoptic_${version}_x64-portable.zip"
+          Compress-Archive -Path $dir -DestinationPath $zip
+          gh release upload "${{ github.ref_name }}" $zip --clobber
