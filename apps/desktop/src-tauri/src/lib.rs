@@ -60,7 +60,13 @@ fn sidecar_stop(sidecar: State<Sidecar>) -> Result<(), String> {
 }
 
 fn spawn_sidecar(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    let (mut rx, child) = app.shell().sidecar("panoptic-sidecar")?.spawn()?;
+    let mut command = app.shell().sidecar("panoptic-sidecar")?;
+    // WAM (Entra sign-in) dialogs need a parent window, which only the shell can provide.
+    #[cfg(windows)]
+    if let Some(hwnd) = app.get_webview_window("main").and_then(|w| w.hwnd().ok()) {
+        command = command.env("PANOPTIC_PARENT_HWND", (hwnd.0 as isize).to_string());
+    }
+    let (mut rx, child) = command.spawn()?;
     *app.state::<Sidecar>().0.lock().unwrap() = Some(child);
 
     let app = app.clone();

@@ -98,9 +98,9 @@ export class TreeModel {
     else this.onChange();
   }
 
-  /** Reloads everything: used when environments or connections change. */
-  async reloadRoot(): Promise<void> {
-    await this.refresh("");
+  /** Refetches one already-loaded level, keeping descendants' caches. Used when config changes. */
+  async reload(id: string): Promise<void> {
+    if (this.children.has(id)) await this.loadChildren(id);
   }
 
   rows(): Row[] {

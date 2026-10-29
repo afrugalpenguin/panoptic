@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "test": "vitest run",
-    "sidecar": "powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/build-sidecar.ps1 -Mode aot",
+    "check": "svelte-check --tsconfig ./tsconfig.json --threshold warning",
+    "sidecar": "powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/build-sidecar.ps1 -Mode r2r",
     "sidecar:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/build-sidecar.ps1 -Mode fdd",
     "tauri": "tauri"
   },
@@ -20,6 +21,7 @@
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
     "@tauri-apps/cli": "^2",
     "svelte": "^5.57.3",
+    "svelte-check": "^4.7.7",
     "typescript": "~6.0.3",
     "vite": "^8.0.16",
     "vitest": "^4"

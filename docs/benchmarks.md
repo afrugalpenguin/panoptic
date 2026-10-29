@@ -69,3 +69,16 @@ TBD.
 | --- | --- | --- |
 | 2026-10-29 | Home | Unsigned NSIS install of v0.1.0: Defender quarantined `panoptic.exe` as `Trojan:Win32/Bearfoos.A!ml` as the installer wrote it. Static scans of the exe, sidecar and installer were clean, and the same exe copied or run from the repo was not flagged, so the trigger is the install behaviour. A folder exclusion for `%LOCALAPPDATA%\Panoptic` fixed it; the GitHub v0.1.0 release then installed and ran. |
 | | Work laptop | TBD: does SmartScreen allow it, does Defender for Endpoint quarantine it, can a local exclusion be added? |
+
+## Sidecar publish mode (M1)
+
+Home, 2026-10-29. Once SqlClient, the Cosmos SDK and Azure.Identity were added, a stdio smoke test
+(configure dev SQL and Cosmos, walk the tree) gave:
+
+| Mode | Start-up | Size | Result |
+| --- | --- | --- | --- |
+| Native AOT | 18 ms | 32 MB | **Broken**: SqlClient "type initializer threw", Cosmos "configuration system failed to initialize" |
+| ReadyToRun, self-contained single file | 58 ms | 134 MB | Works. SQL expands 1 to 16 ms; Cosmos expands 6 to 47 ms after a one-off 2.1 s first call (SDK account metadata) |
+
+ReadyToRun is the release mode. 58 ms still runs in parallel with WebView2 start-up, so it does not
+move first paint.

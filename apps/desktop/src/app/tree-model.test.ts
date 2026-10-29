@@ -130,4 +130,17 @@ describe("TreeModel", () => {
     expect(model.parentOf("a/x")).toBe("a");
     expect(model.parentOf("a")).toBe("");
   });
+
+  it("reload refetches one level but keeps loaded descendants", async () => {
+    const children: Record<string, TreeNode[]> = { "": [node("a")], a: [node("a/x")], "a/x": [node("a/x/1", false)] };
+    const { model, load } = fixture(children);
+    await model.loadRoot();
+    await model.toggle("a");
+    await model.toggle("a/x");
+
+    children.a = [node("a/x"), node("a/y", false)];
+    await model.reload("a");
+    expect(labels(model)).toEqual(["a", "  x", "    1", "  y"]);
+    expect(load).toHaveBeenCalledTimes(4);
+  });
 });

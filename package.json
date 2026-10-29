@@ -6,6 +6,6 @@
   "scripts": {
     "dev": "pnpm --filter @panoptic/desktop tauri dev",
     "build": "pnpm --filter @panoptic/desktop tauri build",
-    "test": "pnpm --filter @panoptic/desktop test && dotnet test apps/sidecar"
+    "test": "pnpm --filter @panoptic/desktop check && pnpm --filter @panoptic/desktop test && dotnet test apps/sidecar"
   }
 }

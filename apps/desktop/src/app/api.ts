@@ -13,7 +13,7 @@ export interface TreeNode {
   meta?: Record<string, string>;
 }
 
-export type ConnectionKind = "sql" | "cosmos";
+export type ConnectionKind = "sql" | "synapse" | "cosmos";
 export type AuthKind = "entra" | "sql" | "key";
 
 export interface ConnectionConfig {
