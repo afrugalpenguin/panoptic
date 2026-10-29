@@ -18,6 +18,15 @@ fn sidecar_send(line: String, sidecar: State<Sidecar>) -> Result<(), String> {
     child.write(format!("{line}\n").as_bytes()).map_err(|e| e.to_string())
 }
 
+/// Stops the sidecar so the installer can replace its exe during an update.
+#[tauri::command]
+fn sidecar_stop(sidecar: State<Sidecar>) -> Result<(), String> {
+    match sidecar.0.lock().map_err(|e| e.to_string())?.take() {
+        Some(child) => child.kill().map_err(|e| e.to_string()),
+        None => Ok(()),
+    }
+}
+
 fn spawn_sidecar(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let (mut rx, child) = app.shell().sidecar("panoptic-sidecar")?.spawn()?;
     *app.state::<Sidecar>().0.lock().unwrap() = Some(child);
@@ -48,12 +57,14 @@ fn spawn_sidecar(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(Sidecar::default())
         .setup(|app| {
             spawn_sidecar(app.handle())?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![sidecar_send])
+        .invoke_handler(tauri::generate_handler![sidecar_send, sidecar_stop])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {

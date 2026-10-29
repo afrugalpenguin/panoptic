@@ -15,8 +15,11 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+serde_json = "1"
 tauri = { version = "2", features = [] }
+tauri-plugin-process = "2"
 tauri-plugin-shell = "2"
+tauri-plugin-updater = "2"
 
 # https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
