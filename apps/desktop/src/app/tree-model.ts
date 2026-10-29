@@ -156,6 +156,26 @@ export class TreeModel {
     this.onChange();
   }
 
+  /** Collapses every node, so re-expanding shows each level closed. */
+  collapseAll(): void {
+    this.expanded.clear();
+    this.onChange();
+  }
+
+  /**
+   * Expand all: opens every environment as far as its connections and closes everything deeper.
+   * Connection lists are config only, so this never calls a server.
+   */
+  async expandEnvironments(): Promise<void> {
+    const root = this.children.get("");
+    const envs = root?.status === "loaded" ? root.ids.filter((id) => this.nodes.get(id)?.hasChildren) : [];
+    this.expanded.clear();
+    for (const id of envs) this.expanded.add(id);
+    this.onChange();
+    const unloaded = envs.filter((id) => !this.children.has(id) || this.children.get(id)!.status === "error");
+    await Promise.all(unloaded.map((id) => this.loadChildren(id)));
+  }
+
   /** Reloads a node's children. Descendants' caches are dropped so they reload when expanded. */
   async refresh(id: string): Promise<void> {
     this.forgetBelow(id);
