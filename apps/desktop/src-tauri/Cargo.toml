@@ -22,10 +22,9 @@ tauri-plugin-process = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-updater = "2"
 
-# https://tauri.app/concept/size/#cargo-configuration
+# No LTO and default codegen units: the shell is a thin pipe, so whole-program optimisation buys
+# nothing visible but costs minutes on every release build.
 [profile.release]
-codegen-units = 1
-lto = true
 opt-level = 3
 panic = "abort"
 strip = true

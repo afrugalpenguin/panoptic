@@ -1,33 +1,51 @@
 name: Release
 
-# Push a tag vX.Y.Z on main (after scripts/set-version.ps1 -Version X.Y.Z is merged).
-# Publishes the per-user NSIS installer, its updater signature and latest.json to GitHub Releases;
-# installed copies pick it up from releases/latest/download/latest.json on next launch.
+# Every merge to main ships. Version is major.minor from apps/desktop/package.json plus this
+# workflow's run number as the patch, so releases never need a manual bump or tag. Bump the minor
+# in package.json (scripts/set-version.ps1) to start a new series.
+# Publishes the per-user installer, its updater signature, latest.json and a portable zip;
+# installed copies pick the update up from releases/latest/download/latest.json on next launch.
+# Tests are not re-run here: every change reached main through a PR that passed CI.
 on:
   push:
-    tags: ['v*']
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+  workflow_dispatch:
 
 permissions:
   contents: write
 
+# Queue releases rather than cancelling, so every merge gets its own version in order.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
 
-      - name: Check tag matches app version
+      - name: Set version
         shell: pwsh
         run: |
-          $version = (Get-Content apps/desktop/package.json -Raw | ConvertFrom-Json).version
-          if ("v$version" -ne "${{ github.ref_name }}") {
-            throw "Tag ${{ github.ref_name }} does not match apps/desktop/package.json version $version"
-          }
+          $base = (Get-Content apps/desktop/package.json -Raw | ConvertFrom-Json).version.Split('.')
+          $version = "$($base[0]).$($base[1]).${{ github.run_number }}"
+          ./scripts/set-version.ps1 -Version $version
+          "VERSION=$version" >> $env:GITHUB_ENV
 
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('apps/sidecar/**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
 
       - uses: pnpm/action-setup@v4
 
@@ -41,11 +59,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/desktop/src-tauri
+          shared-key: release
 
       - run: pnpm install --frozen-lockfile
-
-      - name: Test (UI + sidecar)
-        run: pnpm test
 
       - uses: tauri-apps/tauri-action@v0
         env:
@@ -55,8 +71,9 @@ jobs:
         with:
           projectPath: apps/desktop
           tauriScript: pnpm tauri
-          tagName: ${{ github.ref_name }}
-          releaseName: Panoptic ${{ github.ref_name }}
+          tagName: v${{ env.VERSION }}
+          releaseName: Panoptic v${{ env.VERSION }}
+          releaseCommitish: ${{ github.sha }}
           releaseBody: Two ways to run it. The setup.exe installer is per-user (no elevation) and updates itself on launch. The portable zip needs no install, so unzip it anywhere and run panoptic.exe; it tells you when a new version exists. Builds are unsigned, so SmartScreen may warn.
           releaseDraft: false
           prerelease: false
@@ -67,10 +84,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $version = "${{ github.ref_name }}".TrimStart('v')
           $dir = "portable/Panoptic"
           New-Item -ItemType Directory -Force $dir | Out-Null
           Copy-Item apps/desktop/src-tauri/target/release/panoptic.exe, apps/desktop/src-tauri/target/release/panoptic-sidecar.exe $dir
-          $zip = "Panoptic_${version}_x64-portable.zip"
+          $zip = "Panoptic_${env:VERSION}_x64-portable.zip"
           Compress-Archive -Path $dir -DestinationPath $zip
-          gh release upload "${{ github.ref_name }}" $zip --clobber
+          gh release upload "v${env:VERSION}" $zip --clobber

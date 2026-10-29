@@ -30,13 +30,12 @@ pnpm build   # Native AOT sidecar + release build + installer
 
 ## Release
 
-```powershell
-.\scripts\set-version.ps1 -Version 0.1.1   # on a branch, then PR and merge
-git tag v0.1.1; git push origin v0.1.1     # from main
-```
+Every merge to `main` releases automatically as `<major>.<minor>.<run number>`; there is no
+tag step. To start a new series, bump the minor on a branch with
+`.\scripts\set-version.ps1 -Version 0.3.0` and merge it.
 
-The Release workflow builds the installer, signs the update with the updater key in
-GitHub Secrets and publishes `latest.json`. The private key lives outside the repo; if it
+The Release workflow builds the installer and portable zip, signs the update with the updater key
+in GitHub Secrets and publishes `latest.json`. The private key lives outside the repo; if it
 is lost, installed copies can no longer update.
 
 ## License
