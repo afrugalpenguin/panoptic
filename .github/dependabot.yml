@@ -1,0 +1,56 @@
+# Weekly dependency updates, one grouped PR per ecosystem: every merge to main releases, so a week's
+# updates are one merge and one release rather than one per package. Security updates are raised as
+# soon as an advisory lands, independent of this schedule (repo setting: Dependabot alerts).
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directory: /apps/sidecar
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      nuget:
+        patterns: ["*"]
+    commit-message:
+      prefix: build
+      include: scope
+    labels: [dependencies]
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      npm:
+        patterns: ["*"]
+    commit-message:
+      prefix: build
+      include: scope
+    labels: [dependencies]
+
+  - package-ecosystem: cargo
+    directory: /apps/desktop/src-tauri
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      cargo:
+        patterns: ["*"]
+    commit-message:
+      prefix: build
+      include: scope
+    labels: [dependencies]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci
+      include: scope
+    labels: [dependencies]
