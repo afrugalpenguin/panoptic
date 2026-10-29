@@ -116,7 +116,7 @@ public sealed class SqlBackend(Credentials credentials) : IBackend
     }
 
     private static TreeNode DatabaseNode(NodePath path, string name, bool system) =>
-        Nodes.Branch(path.Child("db", name), "database", name, "database", new() { ["system"] = system ? "true" : "false" });
+        Nodes.Branch(path.Child("db", name), "database", name, "database", new() { ["system"] = system ? "true" : "false" }, Nodes.Queryable);
 
     private async Task<TreeNode[]> Objects(ConnectionConfig c, string? secret, string db, NodePath path, string folder, CancellationToken ct)
     {
@@ -147,7 +147,7 @@ public sealed class SqlBackend(Credentials credentials) : IBackend
                 meta["baseObject"] = o.Base;
                 return Nodes.Leaf(id, kind, $"{o.Schema}.{o.Name}", kind, meta);
             }
-            return Nodes.Branch(id, kind, $"{o.Schema}.{o.Name}", kind, meta);
+            return Nodes.Branch(id, kind, $"{o.Schema}.{o.Name}", kind, meta, kind is "table" or "view" ? Nodes.Selectable : Nodes.Browse);
         }).ToArray();
     }
 

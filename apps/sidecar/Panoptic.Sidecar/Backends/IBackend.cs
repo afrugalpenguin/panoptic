@@ -18,13 +18,17 @@ public interface IBackend
 public static class Nodes
 {
     public static readonly string[] Browse = ["refresh", "copyName"];
+    /// <summary>Connections, databases: can open a query against them.</summary>
+    public static readonly string[] Queryable = ["newQuery", "refresh", "copyName"];
+    /// <summary>Tables, views, containers: can also select their first rows.</summary>
+    public static readonly string[] Selectable = ["selectTop", "newQuery", "refresh", "copyName"];
     public static readonly string[] LeafActions = ["copyName"];
 
     public static TreeNode Folder(NodePath parent, string folder, string label) =>
         new(parent.Child("f", folder).Id, "folder", label, "folder", true, Browse);
 
-    public static TreeNode Branch(NodePath id, string kind, string label, string icon, Dictionary<string, string>? meta = null) =>
-        new(id.Id, kind, label, icon, true, Browse, meta);
+    public static TreeNode Branch(NodePath id, string kind, string label, string icon, Dictionary<string, string>? meta = null, string[]? actions = null) =>
+        new(id.Id, kind, label, icon, true, actions ?? Browse, meta);
 
     public static TreeNode Leaf(NodePath id, string kind, string label, string icon, Dictionary<string, string>? meta = null) =>
         new(id.Id, kind, label, icon, false, LeafActions, meta);

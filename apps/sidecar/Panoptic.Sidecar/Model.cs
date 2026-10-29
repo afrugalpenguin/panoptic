@@ -60,6 +60,15 @@ public sealed record TestConnectionParams(ConnectionConfig Connection, string? S
 public sealed record IdParams(string Id);
 public sealed record TreeChildrenParams(string NodeId);
 public sealed record TestConnectionResult(bool Ok, double ElapsedMs, string? Error);
+public sealed record QueryRequest(string QueryId, string NodeId, string Text);
+public sealed record QueryCancelParams(string QueryId);
+public sealed record ResultSetSummary(int RowCount);
+public sealed record QuerySummary(string QueryId, ResultSetSummary[] ResultSets, double ElapsedMs, bool RolledBack, bool Cancelled, string? Error, double? RequestCharge);
+public sealed record QueryTemplateParams(string NodeId, string Action);
+/// <param name="Language">"sql" or "cosmos".</param>
+public sealed record QueryTemplateResult(string? Text, string Language);
+/// <summary>What a node id resolves to for running a query: its environment, connection and the database or container under it.</summary>
+public sealed record QueryTarget(EnvironmentConfig Environment, ConnectionConfig Connection, string? Database, string? Container);
 public sealed record DeviceCodePrompt(string Message, string UserCode, string VerificationUri);
 
 public static class UpdateCheckModes
@@ -96,6 +105,11 @@ public sealed record StoreFile(AppConfig Config, Dictionary<string, string> Secr
 [JsonSerializable(typeof(TestConnectionResult))]
 [JsonSerializable(typeof(DeviceCodePrompt))]
 [JsonSerializable(typeof(Import.ImportSource[]))]
+[JsonSerializable(typeof(QueryRequest))]
+[JsonSerializable(typeof(QueryCancelParams))]
+[JsonSerializable(typeof(QuerySummary))]
+[JsonSerializable(typeof(QueryTemplateParams))]
+[JsonSerializable(typeof(QueryTemplateResult))]
 public sealed partial class SidecarJson : JsonSerializerContext;
 
 public static class Rpc
