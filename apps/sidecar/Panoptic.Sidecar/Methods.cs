@@ -7,7 +7,7 @@ public sealed record SidecarInfo(double StartupMs, string Version, string Mode);
 
 public static class Methods
 {
-    public static Dictionary<string, RpcHandler> Create(SidecarInfo info, ConfigStore? store = null, TreeService? tree = null, Query.QueryService? query = null)
+    public static Dictionary<string, RpcHandler> Create(SidecarInfo info, ConfigStore? store = null, TreeService? tree = null, Query.QueryService? query = null, Catalog.CatalogService? catalog = null)
     {
         var methods = new Dictionary<string, RpcHandler>
         {
@@ -45,6 +45,7 @@ public static class Methods
             var id = Rpc.Params(p, SidecarJson.Default.IdParams).Id;
             foreach (var c in store.FindEnvironment(id)?.Connections ?? []) tree.Forget(c.Id);
             store.DeleteEnvironment(id);
+            catalog?.Forget();
             return Task.FromResult(Rpc.Result(store.Config, SidecarJson.Default.AppConfig));
         };
 
@@ -53,6 +54,7 @@ public static class Methods
             var args = Rpc.Params(p, SidecarJson.Default.SaveConnectionParams);
             store.SaveConnection(args.EnvironmentId, args.Connection, args.Secret);
             tree.Forget(args.Connection.Id);
+            catalog?.Forget();
             return Task.FromResult(Rpc.Result(store.Config, SidecarJson.Default.AppConfig));
         };
 
@@ -61,6 +63,7 @@ public static class Methods
             var id = Rpc.Params(p, SidecarJson.Default.IdParams).Id;
             store.DeleteConnection(id);
             tree.Forget(id);
+            catalog?.Forget();
             return Task.FromResult(Rpc.Result(store.Config, SidecarJson.Default.AppConfig));
         };
 
@@ -131,6 +134,16 @@ public static class Methods
                 var text = args.Action == "selectTop" ? Query.QueryTemplates.SelectTop(target.Connection.Kind, NodePath.Parse(args.NodeId)) : "";
                 return Task.FromResult(Rpc.Result(new QueryTemplateResult(text, language), SidecarJson.Default.QueryTemplateResult));
             };
+        }
+
+        if (catalog is not null)
+        {
+            // Answer at once from memory or disk; a fresher catalog follows as a catalog.updated notification.
+            methods["catalog.get"] = (p, _) =>
+                Task.FromResult(Rpc.Result(catalog.Get(Rpc.Params(p, SidecarJson.Default.CatalogParams)), SidecarJson.Default.CatalogResult));
+
+            methods["catalog.refresh"] = (p, _) =>
+                Task.FromResult(Rpc.Result(catalog.Refresh(Rpc.Params(p, SidecarJson.Default.CatalogParams)), SidecarJson.Default.CatalogResult));
         }
 
         methods["tree.children"] = async (p, ct) =>

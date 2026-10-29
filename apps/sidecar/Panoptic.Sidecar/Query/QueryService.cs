@@ -38,7 +38,7 @@ public sealed class QueryService(ConfigStore store, TreeService tree, SqlBackend
         var run = new Run(request.QueryId, Stopwatch.StartNew());
         try
         {
-            var target = tree.ResolveTarget(request.NodeId);
+            var target = tree.ResolveTarget(request.NodeId, request.Database);
             if (target.Connection.Kind == ConnectionKinds.Cosmos) await RunCosmos(run, target, request.Text, cts.Token);
             else await RunSql(run, target, request.Text, cts.Token);
         }

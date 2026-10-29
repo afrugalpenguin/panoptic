@@ -37,7 +37,12 @@ var tree = new TreeService(store, new Dictionary<string, IBackend>
 
 var startupMs = (DateTime.Now - Process.GetCurrentProcess().StartTime).TotalMilliseconds;
 var query = new Panoptic.Sidecar.Query.QueryService(store, tree, sql, cosmos, Notify);
-var dispatcher = new JsonRpcDispatcher(Methods.Create(new SidecarInfo(Math.Round(startupMs, 1), version, mode), store, tree, query));
+var catalog = new Panoptic.Sidecar.Catalog.CatalogService(
+    p => tree.ResolveTarget(p.NodeId, p.Database),
+    new Panoptic.Sidecar.Catalog.CatalogCache(Environment.GetEnvironmentVariable("PANOPTIC_CATALOG") ?? Panoptic.Sidecar.Catalog.CatalogCache.DefaultFolder),
+    new Panoptic.Sidecar.Catalog.CatalogSources(store, sql, cosmos),
+    (method, notice) => Notify(method, w => JsonSerializer.Serialize(w, notice, SidecarJson.Default.CatalogNotice)));
+var dispatcher = new JsonRpcDispatcher(Methods.Create(new SidecarInfo(Math.Round(startupMs, 1), version, mode), store, tree, query, catalog));
 
 // Requests run concurrently so a slow expand never blocks ping or another expand.
 var inFlight = new List<Task>();

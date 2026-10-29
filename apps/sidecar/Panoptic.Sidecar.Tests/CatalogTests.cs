@@ -1,3 +1,4 @@
+using System.Threading.Channels;
 using Panoptic.Sidecar.Catalog;
 
 namespace Panoptic.Sidecar.Tests;
@@ -159,5 +160,152 @@ public sealed class CatalogCacheTests : IDisposable
         Assert.Matches("^[0-9a-f]{32}$", key);
         Assert.NotEqual(key, CatalogCache.KeyOf("conn1", "Other"));
         Assert.NotEqual(key, CatalogCache.KeyOf("conn2", "Orders"));
+    }
+}
+
+public sealed class CatalogServiceTests : IDisposable
+{
+    private readonly string _folder = Path.Combine(Path.GetTempPath(), "panoptic-catalog-" + Guid.NewGuid().ToString("N"));
+    private static readonly QueryTarget Target = new(
+        new EnvironmentConfig("e", "Dev", "#fff", false, []),
+        new ConnectionConfig("c1", "sql", ConnectionKinds.Sql, "localhost", AuthKinds.Sql),
+        "Orders", null);
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_folder)) Directory.Delete(_folder, true);
+    }
+
+    private sealed class FakeSource : ICatalogSource
+    {
+        public string? Stamp = "s1";
+        public int Builds;
+        public TaskCompletionSource? Gate;
+
+        public Task<string?> StampAsync(QueryTarget target, CancellationToken ct) => Task.FromResult(Stamp);
+
+        public async Task<DatabaseCatalog> BuildAsync(QueryTarget target, CancellationToken ct)
+        {
+            Interlocked.Increment(ref Builds);
+            if (Gate is not null) await Gate.Task;
+            return new DatabaseCatalog(Stamp ?? "sampled", ["dbo"], [], [], null);
+        }
+    }
+
+    private (CatalogService Service, List<CatalogNotice> Notices, Func<Task<CatalogNotice>> Next) Create(ICatalogSource source)
+    {
+        var notices = new List<CatalogNotice>();
+        var signal = Channel.CreateUnbounded<CatalogNotice>();
+        var service = new CatalogService(_ => Target, new CatalogCache(_folder), source, (_, n) =>
+        {
+            lock (notices) notices.Add(n);
+            signal.Writer.TryWrite(n);
+        });
+        return (service, notices, async () =>
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            return await signal.Reader.ReadAsync(timeout.Token);
+        });
+    }
+
+    [Fact]
+    public async Task Without_a_cache_it_reports_building_then_sends_the_catalog()
+    {
+        var (service, _, next) = Create(new FakeSource());
+        var result = service.Get(new CatalogParams("node"));
+        Assert.Equal(CatalogStates.Building, result.State);
+        Assert.Null(result.Catalog);
+        var notice = await next();
+        Assert.Equal(CatalogStates.Current, notice.State);
+        Assert.Equal("s1", notice.Catalog!.Stamp);
+        Assert.Equal(result.Key, notice.Key);
+    }
+
+    [Fact]
+    public async Task With_a_cache_and_an_unchanged_stamp_it_confirms_without_rebuilding()
+    {
+        var source = new FakeSource();
+        new CatalogCache(_folder).Write(CatalogCache.KeyOf("c1", "Orders"), new DatabaseCatalog("s1", [], [], [], null));
+        var (service, _, next) = Create(source);
+
+        var result = service.Get(new CatalogParams("node"));
+        Assert.Equal(CatalogStates.Cached, result.State);
+        Assert.Equal("s1", result.Catalog!.Stamp);
+        var notice = await next();
+        Assert.Equal(CatalogStates.Current, notice.State);
+        Assert.Null(notice.Catalog);
+        Assert.Equal(0, source.Builds);
+
+        var again = service.Get(new CatalogParams("node"));
+        Assert.Equal(CatalogStates.Current, again.State);
+        Assert.NotNull(again.Catalog);
+    }
+
+    [Fact]
+    public async Task A_changed_stamp_rebuilds_and_writes_the_cache()
+    {
+        var source = new FakeSource { Stamp = "s2" };
+        var key = CatalogCache.KeyOf("c1", "Orders");
+        new CatalogCache(_folder).Write(key, new DatabaseCatalog("s1", [], [], [], null));
+        var (service, _, next) = Create(source);
+
+        Assert.Equal(CatalogStates.Cached, service.Get(new CatalogParams("node")).State);
+        var notice = await next();
+        Assert.Equal("s2", notice.Catalog!.Stamp);
+        Assert.Equal(1, source.Builds);
+        Assert.Equal("s2", new CatalogCache(_folder).Read(key)!.Stamp);
+    }
+
+    [Fact]
+    public async Task A_source_without_a_stamp_rebuilds_once_per_session()
+    {
+        var source = new FakeSource { Stamp = null };
+        new CatalogCache(_folder).Write(CatalogCache.KeyOf("c1", "Orders"), new DatabaseCatalog("old", [], [], [], null));
+        var (service, _, next) = Create(source);
+
+        Assert.Equal(CatalogStates.Cached, service.Get(new CatalogParams("node")).State);
+        Assert.Equal("sampled", (await next()).Catalog!.Stamp);
+        Assert.Equal(CatalogStates.Current, service.Get(new CatalogParams("node")).State);
+        Assert.Equal(1, source.Builds);
+    }
+
+    [Fact]
+    public async Task Concurrent_gets_build_once()
+    {
+        var source = new FakeSource { Gate = new TaskCompletionSource() };
+        var (service, _, next) = Create(source);
+        service.Get(new CatalogParams("node"));
+        service.Get(new CatalogParams("node"));
+        source.Gate.SetResult();
+        await next();
+        Assert.Equal(1, source.Builds);
+    }
+
+    [Fact]
+    public async Task Refresh_rebuilds_even_when_current()
+    {
+        var source = new FakeSource();
+        var (service, _, next) = Create(source);
+        service.Get(new CatalogParams("node"));
+        await next();
+        Assert.Equal(CatalogStates.Building, service.Refresh(new CatalogParams("node")).State);
+        await next();
+        Assert.Equal(2, source.Builds);
+    }
+
+    [Fact]
+    public async Task Build_failures_are_reported_as_a_state_not_thrown()
+    {
+        var (service, _, next) = Create(new ThrowingSource());
+        Assert.Equal(CatalogStates.Building, service.Get(new CatalogParams("node")).State);
+        var notice = await next();
+        Assert.Equal(CatalogStates.Error, notice.State);
+        Assert.Equal("boom", notice.Message);
+    }
+
+    private sealed class ThrowingSource : ICatalogSource
+    {
+        public Task<string?> StampAsync(QueryTarget target, CancellationToken ct) => throw new InvalidOperationException("boom");
+        public Task<DatabaseCatalog> BuildAsync(QueryTarget target, CancellationToken ct) => throw new InvalidOperationException("boom");
     }
 }

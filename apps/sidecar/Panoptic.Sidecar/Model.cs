@@ -60,7 +60,8 @@ public sealed record TestConnectionParams(ConnectionConfig Connection, string? S
 public sealed record IdParams(string Id);
 public sealed record TreeChildrenParams(string NodeId);
 public sealed record TestConnectionResult(bool Ok, double ElapsedMs, string? Error);
-public sealed record QueryRequest(string QueryId, string NodeId, string Text);
+/// <param name="Database">Overrides the database the node resolves to (the tab's database picker).</param>
+public sealed record QueryRequest(string QueryId, string NodeId, string Text, string? Database = null);
 public sealed record QueryCancelParams(string QueryId);
 public sealed record ResultSetSummary(int RowCount);
 public sealed record QuerySummary(string QueryId, ResultSetSummary[] ResultSets, double ElapsedMs, bool RolledBack, bool Cancelled, string? Error, double? RequestCharge);
