@@ -2,7 +2,7 @@
   import Icon from "./Icon.svelte";
   import type { Row } from "./tree-model";
 
-  let { row, onAddEnvironment }: { row: Row | undefined; onAddEnvironment: () => void } = $props();
+  let { row, onAddEnvironment, onImport }: { row: Row | undefined; onAddEnvironment: () => void; onImport: () => void } = $props();
 
   const HIDDEN_META = new Set(["json", "environmentId", "connectionId"]);
 
@@ -25,8 +25,11 @@
   {#if !row}
     <div class="empty">
       <h2>Panoptic</h2>
-      <p class="muted">Every environment in one tree. Start by adding an environment, then a connection under it.</p>
-      <button class="primary" onclick={onAddEnvironment}>New environment</button>
+      <p class="muted">Every environment in one tree. Bring your saved connections across, or start from scratch.</p>
+      <div class="actions">
+        <button class="primary" onclick={onImport}>Import from SSMS</button>
+        <button onclick={onAddEnvironment}>New environment</button>
+      </div>
       <p class="muted keys">
         Arrows to move, Right/Left to expand and collapse, type to jump, F5 to refresh, right-click for actions.
       </p>
@@ -119,6 +122,11 @@
   .empty h2 {
     font-size: 22px;
     margin-bottom: 8px;
+  }
+  .actions {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
   }
   .keys {
     margin-top: 24px;

@@ -14,7 +14,7 @@ export interface TreeNode {
 }
 
 export type ConnectionKind = "sql" | "synapse" | "cosmos";
-export type AuthKind = "entra" | "sql" | "key";
+export type AuthKind = "entra" | "sql" | "key" | "windows";
 
 export interface ConnectionConfig {
   id: string;
@@ -52,6 +52,27 @@ export interface DeviceCodePrompt {
   verificationUri: string;
 }
 
+/** A connection found in SSMS, Azure Data Studio or VS Code. Never includes a password. */
+export interface ImportCandidate {
+  name: string;
+  kind: ConnectionKind;
+  endpoint: string;
+  auth: AuthKind;
+  user?: string | null;
+  database?: string | null;
+  trustServerCertificate: boolean;
+  note?: string | null;
+  alreadyAdded: boolean;
+}
+
+export interface ImportSource {
+  source: "ssms-recent" | "ssms-registered" | "ads" | "vscode";
+  label: string;
+  path: string;
+  groups: { name: string; connections: ImportCandidate[] }[];
+  error?: string | null;
+}
+
 export function createApi(rpc: RpcClient) {
   return {
     config: () => rpc.request<AppConfig>("config.get"),
@@ -64,6 +85,7 @@ export function createApi(rpc: RpcClient) {
     testConnection: (connection: ConnectionConfig, secret?: string) =>
       // Sign-in can include an interactive Entra prompt, so allow longer than a normal call.
       rpc.request<TestConnectionResult>("connection.test", { connection, secret: secret ?? null }, 180_000),
+    scanImports: () => rpc.request<ImportSource[]>("import.scan", undefined, 30_000),
     children: (nodeId: string) => rpc.request<TreeNode[]>("tree.children", { nodeId }, 180_000),
   };
 }

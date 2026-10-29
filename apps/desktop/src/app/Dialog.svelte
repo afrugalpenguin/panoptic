@@ -1,7 +1,13 @@
 <script lang="ts">
   import { onMount, type Snippet } from "svelte";
 
-  let { title, onClose, children, footer }: { title: string; onClose: () => void; children: Snippet; footer: Snippet } = $props();
+  let {
+    title,
+    onClose,
+    children,
+    footer,
+    wide = false,
+  }: { title: string; onClose: () => void; children: Snippet; footer: Snippet; wide?: boolean } = $props();
 
   let dialog: HTMLDialogElement;
 
@@ -11,7 +17,7 @@
   });
 </script>
 
-<dialog bind:this={dialog} oncancel={(e) => (e.preventDefault(), onClose())}>
+<dialog bind:this={dialog} class:wide oncancel={(e) => (e.preventDefault(), onClose())}>
   <form method="dialog" onsubmit={(e) => e.preventDefault()}>
     <h2>{title}</h2>
     <div class="body">{@render children()}</div>
@@ -29,6 +35,9 @@
     border-radius: 8px;
     box-shadow: 0 12px 48px rgb(0 0 0 / 0.35);
     user-select: none;
+  }
+  dialog.wide {
+    width: min(760px, calc(100vw - 32px));
   }
   dialog::backdrop {
     background: rgb(0 0 0 / 0.35);

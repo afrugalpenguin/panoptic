@@ -56,10 +56,16 @@
           { value: "entra", label: "Microsoft Entra ID" },
           { value: "key", label: "Account key" },
         ]
-      : [
-          { value: "entra", label: "Microsoft Entra ID" },
-          { value: "sql", label: "SQL login" },
-        ],
+      : kind === "sql"
+        ? [
+            { value: "entra", label: "Microsoft Entra ID" },
+            { value: "sql", label: "SQL login" },
+            { value: "windows", label: "Windows" },
+          ]
+        : [
+            { value: "entra", label: "Microsoft Entra ID" },
+            { value: "sql", label: "SQL login" },
+          ],
   );
   const needsSecret = $derived(auth === "sql" || auth === "key");
   const placeholder = $derived(KINDS.find((k) => k.value === kind)!.placeholder);
