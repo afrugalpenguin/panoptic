@@ -104,12 +104,17 @@ export function createApi(rpc: RpcClient) {
       rpc.request<TestConnectionResult>("connection.test", { connection, secret: secret ?? null }, 180_000),
     scanImports: () => rpc.request<ImportSource[]>("import.scan", undefined, 30_000),
     // A query can legitimately run for a long time; the user cancels it, so no RPC timeout applies.
-    executeQuery: (request: { queryId: string; nodeId: string; text: string }) =>
+    executeQuery: (request: { queryId: string; nodeId: string; text: string; database?: string }) =>
       rpc.request<import("../query/types").QuerySummary>("query.execute", request, 2_147_483_647),
     cancelQuery: (queryId: string) => rpc.request<boolean>("query.cancel", { queryId }),
     queryTemplate: (nodeId: string, action: "selectTop" | "newQuery") =>
       rpc.request<{ text?: string | null; language: "sql" | "cosmos" }>("query.template", { nodeId, action }),
     children: (nodeId: string) => rpc.request<TreeNode[]>("tree.children", { nodeId }, 180_000),
+    /** Answers at once from memory or disk; a fresher catalog arrives as a catalog.updated notification. */
+    catalogGet: (nodeId: string, database?: string) =>
+      rpc.request<import("../query/catalog.svelte").CatalogNotice>("catalog.get", { nodeId, database: database ?? null }),
+    catalogRefresh: (nodeId: string, database?: string) =>
+      rpc.request<import("../query/catalog.svelte").CatalogNotice>("catalog.refresh", { nodeId, database: database ?? null }),
   };
 }
 

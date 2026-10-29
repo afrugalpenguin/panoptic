@@ -2,7 +2,7 @@ import type { ChangelogSection } from "../whats-new";
 import type { CellValue, MessageNotification, QuerySummary, QueryTarget, ResultColumn, RowsNotification } from "./types";
 
 export interface QueryApi {
-  executeQuery: (request: { queryId: string; nodeId: string; text: string }) => Promise<QuerySummary>;
+  executeQuery: (request: { queryId: string; nodeId: string; text: string; database?: string }) => Promise<QuerySummary>;
   cancelQuery: (queryId: string) => Promise<boolean>;
 }
 
