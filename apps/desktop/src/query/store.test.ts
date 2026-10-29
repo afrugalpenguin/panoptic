@@ -82,4 +82,51 @@ describe("QueryWorkspace", () => {
     expect(tab.running).toBe(false);
     expect(tab.error).toBe("sidecar stopped");
   });
+
+  describe("What's new tab", () => {
+    const sections = [
+      { version: "0.2.13", date: "2026-10-29", body: "- Added: x" },
+      { version: "0.2.12", date: "2026-10-28", body: "No user-facing changes." },
+    ];
+
+    it("is appended and made active without touching open query tabs", () => {
+      const { ws } = setup();
+      const query = ws.open(target, "SELECT 1");
+      const tab = ws.openWhatsNew(sections);
+      expect(ws.tabs.map((t) => t.kind)).toEqual(["query", "whats-new"]);
+      expect(ws.active).toBe(tab);
+      expect(tab.title).toBe("What's new in v0.2.13");
+      expect(query.text).toBe("SELECT 1");
+    });
+
+    it("is a singleton: opening again focuses it and updates its sections", () => {
+      const { ws } = setup();
+      ws.openWhatsNew(sections.slice(0, 1));
+      ws.open(target, "");
+      const again = ws.openWhatsNew(sections);
+      expect(ws.tabs.filter((t) => t.kind === "whats-new")).toHaveLength(1);
+      expect(ws.active).toBe(again);
+      expect(again.sections).toHaveLength(2);
+    });
+
+    it("closes like any tab", () => {
+      const { ws } = setup();
+      const tab = ws.openWhatsNew(sections);
+      ws.close(tab.id);
+      expect(ws.tabs).toHaveLength(0);
+    });
+
+    it("is never touched by query routing", async () => {
+      const { ws, api, finish } = setup();
+      const query = ws.open(target, "SELECT 1");
+      ws.openWhatsNew(sections);
+      const done = ws.run(query);
+      const queryId = api.executeQuery.mock.calls[0][0].queryId;
+      ws.handle("query.rows", { queryId, index: 0, columns: [{ name: "a", type: "int" }], rows: [[1]] });
+      finish();
+      await done;
+      expect(query.results[0].count).toBe(1);
+      expect(ws.tabs.find((t) => t.kind === "whats-new")).not.toHaveProperty("results");
+    });
+  });
 });

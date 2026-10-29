@@ -1,10 +1,12 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { invoke } from "@tauri-apps/api/core";
   import type { RpcClient } from "../rpc";
   import { connectSidecar, type PingResult, type SidecarStatus } from "../sidecar";
   import { finishBenchmark, firstPaintEpochMs, nowEpochMs, type StartupInfo } from "../startup";
   import { scheduleUpdateChecks } from "../update-schedule";
   import { createUpdateChecker, currentVersion, type UpdateState } from "../updates";
+  import { parseChangelog, sectionsSince, type ChangelogSection } from "../whats-new";
   import { createApi, type Api, type AppConfig, type AppSettings, type ConnectionConfig, type DeviceCodePrompt, type EnvironmentConfig } from "./api";
   import ConnectionDialog from "./ConnectionDialog.svelte";
   import ContextMenu, { type MenuItem } from "./ContextMenu.svelte";
@@ -42,6 +44,8 @@
     | { kind: "import" }
     | { kind: "settings" }
   >();
+  /** The bundled changelog, parsed once at start-up; empty when the build has none. */
+  let changelog = $state.raw<ChangelogSection[]>([]);
   let settings = $state<AppSettings>({ updateCheck: "startup", explorer: { showKindBadge: true, rowFont: "mono", envOrder: [] } });
   const checkForUpdates = createUpdateChecker((s) => (update = s));
   let stopUpdateSchedule = () => {};
@@ -150,8 +154,27 @@
     if (info.benchMode) return;
     settings = await api!.settings();
     model.setEnvOrder(settings.explorer.envOrder);
-    update = { kind: "idle", current: await currentVersion() };
+    const current = await currentVersion();
+    update = { kind: "idle", current };
+    // After the tree has loaded, so release notes never delay first paint (ADR 0013).
+    changelog = parseChangelog(await invoke<string>("changelog_markdown").catch(() => ""));
+    await recordVersionSeen(current);
     stopUpdateSchedule = scheduleUpdateChecks(settings.updateCheck, checkForUpdates, { atLaunch: true });
+  }
+
+  /**
+   * First launch after a version change: open What's new with the sections since the last version the
+   * user saw (none on a first install, when nothing has been seen), then record this version either way.
+   */
+  async function recordVersionSeen(current: string) {
+    if (settings.lastSeenVersion === current) return;
+    const unseen = sectionsSince(changelog, settings.lastSeenVersion);
+    if (unseen.length > 0) workspace.openWhatsNew(unseen);
+    try {
+      settings = await api!.saveSettings({ ...settings, lastSeenVersion: current });
+    } catch {
+      // Not recorded: the tab shows again next launch, which is better than failing start-up.
+    }
   }
 
   async function saveSettings(next: AppSettings) {
@@ -381,7 +404,13 @@
     onClose={() => (dialog = undefined)}
   />
 {:else if dialog?.kind === "settings"}
-  <SettingsDialog {settings} {update} environments={config.environments} onSave={saveSettings} onCheckNow={() => checkForUpdates()} onClose={() => (dialog = undefined)} />
+  <SettingsDialog {settings} {update} environments={config.environments} onSave={saveSettings} onCheckNow={() => checkForUpdates()}
+    hasChangelog={changelog.length > 0}
+    onWhatsNew={() => {
+      workspace.openWhatsNew(changelog);
+      dialog = undefined;
+    }}
+    onClose={() => (dialog = undefined)} />
 {:else if dialog?.kind === "import" && api}
   <ImportDialog
     {api}

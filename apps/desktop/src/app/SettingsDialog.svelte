@@ -10,6 +10,8 @@
     environments,
     onSave,
     onCheckNow,
+    hasChangelog,
+    onWhatsNew,
     onClose,
   }: {
     settings: AppSettings;
@@ -17,6 +19,10 @@
     environments: EnvironmentConfig[];
     onSave: (settings: AppSettings) => Promise<void>;
     onCheckNow: () => void;
+    /** False when this build carries no release notes; the What's new button is then disabled. */
+    hasChangelog: boolean;
+    /** Opens the What's new tab with the full history. */
+    onWhatsNew: () => void;
     onClose: () => void;
   } = $props();
 
@@ -97,6 +103,12 @@
   <span></span>
   <div class="check-now">
     <button type="button" disabled={update?.kind === "checking" || update?.kind === "downloading"} onclick={onCheckNow}>Check now</button>
+    <button
+      type="button"
+      disabled={!hasChangelog}
+      title={hasChangelog ? "Release notes for every version" : "This build has no release notes"}
+      onclick={onWhatsNew}>What's new</button
+    >
     <span class="muted">{status}</span>
   </div>
 

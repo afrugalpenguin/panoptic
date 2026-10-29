@@ -51,6 +51,8 @@ export interface ExplorerSettings {
 export interface AppSettings {
   updateCheck: import("../update-schedule").UpdateCheckMode;
   explorer: ExplorerSettings;
+  /** The version whose changes the user has been shown (ADR 0013); absent means never recorded. */
+  lastSeenVersion?: string | null;
 }
 
 export interface TestConnectionResult {

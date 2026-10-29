@@ -207,6 +207,8 @@ pub fn run() {
         // Export: a save dialog, then writing the one file the user picked (the dialog adds it to the fs scope).
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        // What's new: https links in release notes open in the browser.
+        .plugin(tauri_plugin_opener::init())
         .manage(Sidecar::default())
         .setup(|app| {
             let handle = app.handle().clone();

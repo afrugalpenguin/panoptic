@@ -1,5 +1,6 @@
 <script lang="ts">
   import QueryView from "./QueryView.svelte";
+  import WhatsNewView from "./WhatsNewView.svelte";
   import type { QueryWorkspace } from "./store.svelte";
 
   let { workspace }: { workspace: QueryWorkspace } = $props();
@@ -14,13 +15,13 @@
         role="tab"
         tabindex="0"
         aria-selected={tab.id === workspace.activeId}
-        style:--band={tab.target.envColor ?? "transparent"}
+        style:--band={tab.kind === "query" ? (tab.target.envColor ?? "transparent") : "transparent"}
         onclick={() => (workspace.activeId = tab.id)}
         onkeydown={(e) => e.key === "Enter" && (workspace.activeId = tab.id)}
         onauxclick={(e) => e.button === 1 && workspace.close(tab.id)}
-        title="{tab.target.connection} / {tab.target.label}"
+        title={tab.kind === "query" ? `${tab.target.connection} / ${tab.target.label}` : tab.title}
       >
-        {#if tab.running}<span class="spinner"></span>{/if}
+        {#if tab.kind === "query" && tab.running}<span class="spinner"></span>{/if}
         <span class="title">{tab.title}</span>
         <button class="close" aria-label="Close {tab.title}" onclick={(e) => (e.stopPropagation(), workspace.close(tab.id))}>x</button>
       </div>
@@ -29,7 +30,11 @@
   {#each workspace.tabs as tab (tab.id)}
     <!-- Every tab stays mounted so its editor keeps its undo history and cursor; only the active one shows. -->
     <div class="body" hidden={tab.id !== workspace.activeId}>
-      <QueryView {tab} {workspace} />
+      {#if tab.kind === "query"}
+        <QueryView {tab} {workspace} />
+      {:else}
+        <WhatsNewView {tab} />
+      {/if}
     </div>
   {/each}
 </div>

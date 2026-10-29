@@ -1,3 +1,4 @@
+import type { ChangelogSection } from "../whats-new";
 import type { CellValue, MessageNotification, QuerySummary, QueryTarget, ResultColumn, RowsNotification } from "./types";
 
 export interface QueryApi {
@@ -17,6 +18,7 @@ export class ResultSet {
 
 export class QueryTab {
   readonly id = crypto.randomUUID();
+  readonly kind = "query" as const;
   readonly target: QueryTarget;
   title = $state("");
   text = $state("");
@@ -37,16 +39,38 @@ export class QueryTab {
   }
 }
 
-/** Open query tabs, the one in front, and routing of streamed results to whichever tab asked for them. */
+/** The release notes tab (ADR 0013). A singleton: there is only ever one, with this id. */
+export class WhatsNewTab {
+  readonly kind = "whats-new" as const;
+  readonly id = "whats-new";
+  title = $state("");
+  sections = $state.raw<ChangelogSection[]>([]);
+
+  constructor(sections: ChangelogSection[]) {
+    this.show(sections);
+  }
+
+  show(sections: ChangelogSection[]): void {
+    this.sections = sections;
+    this.title = sections.length ? `What's new in v${sections[0].version}` : "What's new";
+  }
+}
+
+export type WorkspaceTab = QueryTab | WhatsNewTab;
+
+/**
+ * Open workspace tabs, the one in front, and routing of streamed results to whichever query tab asked
+ * for them. Query logic only ever touches query tabs.
+ */
 export class QueryWorkspace {
-  tabs = $state<QueryTab[]>([]);
+  tabs = $state<WorkspaceTab[]>([]);
   activeId = $state<string>();
   private readonly byQuery = new Map<string, QueryTab>();
   private untitled = 0;
 
   constructor(private readonly api: QueryApi) {}
 
-  get active(): QueryTab | undefined {
+  get active(): WorkspaceTab | undefined {
     return this.tabs.find((t) => t.id === this.activeId);
   }
 
@@ -54,14 +78,26 @@ export class QueryWorkspace {
     const tab = new QueryTab(target, text, `${target.label} (${++this.untitled})`);
     this.tabs.push(tab);
     this.activeId = tab.id;
-    return this.tabs[this.tabs.length - 1];
+    return this.tabs[this.tabs.length - 1] as QueryTab;
+  }
+
+  /** Opens the What's new tab, or focuses and refreshes it if it is already open. */
+  openWhatsNew(sections: ChangelogSection[]): WhatsNewTab {
+    let tab = this.tabs.find((t): t is WhatsNewTab => t.kind === "whats-new");
+    if (tab) tab.show(sections);
+    else {
+      this.tabs.push(new WhatsNewTab(sections));
+      tab = this.tabs[this.tabs.length - 1] as WhatsNewTab;
+    }
+    this.activeId = tab.id;
+    return tab;
   }
 
   close(id: string): void {
     const index = this.tabs.findIndex((t) => t.id === id);
     if (index < 0) return;
     const [tab] = this.tabs.splice(index, 1);
-    if (tab.running) void this.cancel(tab);
+    if (tab.kind === "query" && tab.running) void this.cancel(tab);
     if (this.activeId === id) this.activeId = this.tabs[Math.min(index, this.tabs.length - 1)]?.id;
   }
 
