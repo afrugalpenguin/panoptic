@@ -1,0 +1,11 @@
+{
+  "name": "panoptic",
+  "private": true,
+  "license": "MIT",
+  "packageManager": "pnpm@12.15.0",
+  "scripts": {
+    "dev": "pnpm --filter @panoptic/desktop tauri dev",
+    "build": "pnpm --filter @panoptic/desktop tauri build",
+    "test": "pnpm --filter @panoptic/desktop test && dotnet test apps/sidecar"
+  }
+}

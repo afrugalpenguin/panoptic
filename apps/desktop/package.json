@@ -1,0 +1,23 @@
+{
+  "name": "@panoptic/desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "test": "vitest run",
+    "sidecar": "powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/build-sidecar.ps1 -Mode aot",
+    "sidecar:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/build-sidecar.ps1 -Mode fdd",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "typescript": "~6.0.3",
+    "vite": "^8.0.16",
+    "vitest": "^4"
+  }
+}

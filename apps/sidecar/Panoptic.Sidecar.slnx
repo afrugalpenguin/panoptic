@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Panoptic.Sidecar.Tests/Panoptic.Sidecar.Tests.csproj" />
+  <Project Path="Panoptic.Sidecar/Panoptic.Sidecar.csproj" />
+</Solution>
