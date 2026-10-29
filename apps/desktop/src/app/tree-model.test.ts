@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { TreeNode } from "./api";
-import { ENV_GAP, ROW_HEIGHT, TreeModel } from "./tree-model";
+import { ENV_GAP, moveEnvironment, ROW_HEIGHT, TreeModel } from "./tree-model";
 
 const node = (id: string, hasChildren = true, meta?: Record<string, string>): TreeNode => ({
   id,
@@ -322,5 +322,24 @@ describe("TreeModel", () => {
 
     expect(model.rows().map((r) => r.key)).toEqual(["env:c", "env:a", "env:b"]);
     expect(onChange).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("moveEnvironment", () => {
+  const known = ["a", "b", "c"];
+
+  it("moves within the display order: saved order first, then the rest in order added", () => {
+    expect(moveEnvironment([], known, "b", -1)).toEqual(["b", "a", "c"]);
+    expect(moveEnvironment(["c"], known, "c", 1)).toEqual(["a", "c", "b"]);
+  });
+
+  it("drops ids of environments that no longer exist", () => {
+    expect(moveEnvironment(["gone", "c", "a"], known, "a", -1)).toEqual(["a", "c", "b"]);
+  });
+
+  it("leaves the order alone at either end or for an unknown id", () => {
+    expect(moveEnvironment([], known, "a", -1)).toEqual(["a", "b", "c"]);
+    expect(moveEnvironment([], known, "c", 1)).toEqual(["a", "b", "c"]);
+    expect(moveEnvironment([], known, "zz", 1)).toEqual(["a", "b", "c"]);
   });
 });
