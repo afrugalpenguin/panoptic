@@ -1,5 +1,7 @@
 name: CI
 
+# Three parallel jobs, each as fast as it can be. This is the only test gate: merges to main release
+# straight away (release.yml), so everything a release needs to be correct is checked here.
 on:
   pull_request:
   push:
@@ -10,33 +12,56 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    runs-on: windows-latest
-    timeout-minutes: 30
+  ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
-
-      - uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: 10.0.x
-
       - uses: pnpm/action-setup@v4
-
       - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Type-check (TS + Svelte)
+        run: pnpm --filter @panoptic/desktop check
+      - name: Unit tests
+        run: pnpm --filter @panoptic/desktop test
+      - name: Build frontend
+        run: pnpm --filter @panoptic/desktop build
 
+  sidecar:
+    # Windows: the store uses DPAPI.
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('apps/sidecar/**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+      - run: dotnet test apps/sidecar
+
+  shell:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
-
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/desktop/src-tauri
-
-      - run: pnpm install --frozen-lockfile
-
-      - name: Test (UI + sidecar)
-        run: pnpm test
-
-      - name: Build app (AOT sidecar, no installer)
-        run: pnpm --filter @panoptic/desktop tauri build --no-bundle
+          shared-key: ci
+      - name: Placeholders for the frontend and sidecar (built by the other jobs)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force apps/desktop/dist, apps/desktop/src-tauri/binaries | Out-Null
+          Set-Content apps/desktop/dist/index.html '<!doctype html>'
+          Set-Content apps/desktop/src-tauri/binaries/panoptic-sidecar-x86_64-pc-windows-msvc.exe ''
+      - name: Check Rust shell
+        working-directory: apps/desktop/src-tauri
+        run: cargo check --locked
