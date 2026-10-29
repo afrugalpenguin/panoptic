@@ -20,7 +20,7 @@ Tree below, virtualised, env groups separated by a 4px gap.
 
 ## Environment group header (26px)
 
-- Background: env colour at 14% alpha. Left bar: 4px solid env colour.
+- Background: env colour at 14% alpha (22% on hover, 30% selected). Left bar: 4px solid env colour.
 - Label: env name, 13px, weight 700, white.
 - Read-only envs show an uppercase `READ ONLY` pill after the name (10px, env-coloured text, 1px border).
 - Right side: connection count, 11px, muted.
@@ -34,7 +34,7 @@ Tree below, virtualised, env groups separated by a 4px gap.
 - Kind badge: 14px square, 3px radius, letter(s) in 9px bold. Colours: SQL `#2d5aa0` "S", Cosmos `#1f7a74` "C", Synapse `#7b4fb5` "Sy", Postgres `#5f7a2e` "PG". New kinds register a badge with the backend.
 - Badge visibility is a setting (`explorer.showKindBadge`, default true). Hidden badges leave no gap.
 - Label is the real endpoint in Consolas / Cascadia Mono 12.5px, split into three segments: dim prefix, bright core, dim suffix. Dim is `#6a6a6a`, bright is white weight 700. No alias field.
-- Selected row: background `#2b3650`, dim segments lift to `#9aa3b5`.
+- Selected row: background env colour at 22% alpha over the base (11% on hover), dim segments lift to `#9aa3b5`. Folder and leaf rows follow the same rule.
 
 ### Prefix and suffix detection
 

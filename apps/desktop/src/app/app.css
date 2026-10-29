@@ -20,7 +20,6 @@
   --tree-bright: #111418;
   --tree-dim: #6a6a6a;
   --tree-dim-selected: #4a5568;
-  --tree-selected: #d6e2f5;
   --tree-folder: #303438;
   --row-font: var(--font-mono);
 }
@@ -43,7 +42,6 @@
     --tree-bright: #ffffff;
     --tree-dim: #6a6a6a;
     --tree-dim-selected: #9aa3b5;
-    --tree-selected: #2b3650;
     --tree-folder: #d0d0d0;
   }
 }

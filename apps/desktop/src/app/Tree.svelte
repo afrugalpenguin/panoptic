@@ -251,19 +251,26 @@
     /* Every row continues the group's bar: solid env colour on headers, darkened elsewhere. */
     box-shadow: inset 4px 0 0 var(--env-dark);
     --env-dark: hsl(from var(--env) h s 25%);
-  }
-  .tree-row:hover {
-    background: var(--bg-hover);
+    /* Every fill is the env colour over the base; states only change its alpha. */
+    --wash: 0%;
+    --wash-hover: 11%;
+    --wash-selected: 22%;
+    background: color-mix(in srgb, var(--env) var(--wash), transparent);
   }
   .tree-row.header {
-    background: color-mix(in srgb, var(--env) 14%, transparent);
+    --wash: 14%;
+    --wash-hover: 22%;
+    --wash-selected: 30%;
     box-shadow: inset 4px 0 0 var(--env);
   }
+  .tree-row:hover {
+    --wash: var(--wash-hover);
+  }
   .tree-row.selected {
-    background: var(--tree-selected);
+    --wash: var(--wash-selected);
   }
   .tree:not(.focused) .tree-row.selected {
-    background: var(--bg-selected-blur);
+    --wash: var(--wash-hover);
   }
   .tree-row :global(.chevron) {
     flex: none;
