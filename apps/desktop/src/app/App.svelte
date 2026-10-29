@@ -21,7 +21,7 @@
   import SettingsDialog from "./SettingsDialog.svelte";
   import StatusBar from "./StatusBar.svelte";
   import Tree from "./Tree.svelte";
-  import { TreeModel, type KindSummary, type LoadReport, type Row } from "./tree-model";
+  import { environmentOrder, moveEnvironment, TreeModel, type KindSummary, type LoadReport, type Row } from "./tree-model";
 
   let { info }: { info: StartupInfo } = $props();
 
@@ -195,6 +195,11 @@
     }
   }
 
+  async function moveEnv(id: string, by: -1 | 1) {
+    const envOrder = moveEnvironment(settings.explorer.envOrder, config.environments.map((e) => e.id), id, by);
+    await saveSettings({ ...settings, explorer: { ...settings.explorer, envOrder } });
+  }
+
   async function saveSettings(next: AppSettings) {
     settings = await api!.saveSettings(next);
     // Explorer settings re-render the tree once; nothing is reloaded.
@@ -248,6 +253,10 @@
         const env = envOf(n.meta!.environmentId);
         items.push({ label: "New connection...", run: () => addConnection(env?.id) });
         items.push({ label: "Edit environment...", run: () => env && (dialog = { kind: "environment", initial: env }) });
+        const order = environmentOrder(settings.explorer.envOrder, config.environments.map((e) => e.id));
+        const position = env ? order.indexOf(env.id) : -1;
+        items.push({ label: "Move up", disabled: position <= 0, run: () => env && moveEnv(env.id, -1) });
+        items.push({ label: "Move down", disabled: position < 0 || position >= order.length - 1, run: () => env && moveEnv(env.id, 1) });
         items.push({ label: "Refresh", run: () => model.refresh(n.id) });
         items.push("separator");
         items.push({
@@ -423,7 +432,7 @@
     onClose={() => (dialog = undefined)}
   />
 {:else if dialog?.kind === "settings"}
-  <SettingsDialog {settings} {update} environments={config.environments} onSave={saveSettings} onCheckNow={() => checkForUpdates()}
+  <SettingsDialog {settings} {update} onSave={saveSettings} onCheckNow={() => checkForUpdates()}
     hasChangelog={changelog.length > 0}
     onWhatsNew={() => {
       workspace.openWhatsNew(changelog);

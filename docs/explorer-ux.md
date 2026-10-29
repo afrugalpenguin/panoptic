@@ -64,6 +64,8 @@ explorer.rowFont         enum   mono | ui   default mono (connection and leaf ro
 explorer.envOrder        string[] manual order of env ids, default order added
 ```
 
+`explorer.envOrder` is set in the tree, with Move up and Move down on an environment's context menu, not in the Settings dialog. Drag and drop is issue #31.
+
 No layout mode setting. L2 (kind tabs) and L3 (stacked sections) are rejected.
 
 ## Out of scope for this change

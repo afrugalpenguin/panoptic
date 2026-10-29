@@ -74,6 +74,21 @@ export const DEFAULT_STALE_MS = 5 * 60_000;
  * Tree state, independent of rendering: node cache, expansion, lazy loading. Children are fetched
  * on first expand and cached; after `staleMs` they are marked stale rather than refetched.
  */
+/** The order the tree shows environments in: the saved order first, then the rest in order added. */
+export function environmentOrder(saved: string[], known: string[]): string[] {
+  return [...saved.filter((e) => known.includes(e)), ...known.filter((e) => !saved.includes(e))];
+}
+
+/** explorer.envOrder after moving one environment up (-1) or down (1). Ids of deleted environments are dropped. */
+export function moveEnvironment(saved: string[], known: string[], id: string, by: -1 | 1): string[] {
+  const order = environmentOrder(saved, known);
+  const i = order.indexOf(id);
+  const j = i + by;
+  if (i < 0 || j < 0 || j >= order.length) return order;
+  [order[i], order[j]] = [order[j], order[i]];
+  return order;
+}
+
 export class TreeModel {
   private readonly nodes = new Map<string, TreeNode>();
   private readonly parents = new Map<string, string>();
