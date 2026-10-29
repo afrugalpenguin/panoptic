@@ -13,7 +13,7 @@ Panoptic is a platform-agnostic SSMS replacement: the tree, query pane and grid 
 - Any SQL Server admin surface: Agent, security, backup/restore, maintenance plans. Deep link to SSMS for those.
 - A general-purpose code editor. Monaco is embedded for the query pane only.
 - Write-heavy data editing. Read, query and export; inline edits can come later behind a safe-mode gate.
-- Cenata-specific connectors (Freshdesk, ADO, tenant logic). The core stays generic; those arrive as plugins in a separate repo.
+- Employer-specific connectors (ticketing, ADO, tenant logic). The core stays generic; those arrive as plugins in a separate repo.
 - Mac and Linux builds. The stack supports them for free, but Windows is the only tested target until v1 ships.
 - Cross-environment diff (pick the same object in two environments and compare them). A good idea, but not core: a possible plugin once SSMS is no longer needed, and nothing before v1 depends on it.
 
@@ -27,11 +27,11 @@ Panoptic: seeing everything from one position. The Ctrl+P palette inside it is c
 | --- | --- | --- |
 | Stack | Tauri 2 shell, TypeScript UI with Monaco, .NET 10 sidecar for data access | Microsoft.Data.SqlClient and the Cosmos .NET SDK are the only mature drivers with Entra auth. The TS UI reuses Angular-era skills. Tauri gives Mac later with no rework. |
 | v1 scope | SQL Server, Cosmos and Synapse under one tree; other engines later | The multi-backend tree is the only part no vendor sells. Proving the node model on two very different backends early stops it becoming SQL-shaped. Synapse SQL pools speak TDS, so they reuse the SQL Server backend with their own catalog differences (external tables, no keys on serverless). |
-| Repo | Personal GitHub (afrugalpenguin), open source, MIT | Generic tool, portfolio piece. Cenata-specific connectors live in a separate private repo as plugins. |
+| Repo | Personal GitHub (afrugalpenguin), open source, MIT | Generic tool, portfolio piece. Employer-specific connectors live in a separate private repo as plugins. |
 | UI framework | Svelte 5 with a hand-written virtualised tree and grid | Decided in M0 (ADR 0004): plain TS and Svelte tied at 60 fps on the benchmark, so Svelte wins on productivity for the rest of the UI. |
 | Sidecar protocol | JSON-RPC 2.0 over stdio, Tauri sidecar lifecycle | No ports, no CORS, no firewall prompts on the work laptop. Streaming result sets as batched notifications. |
 | Query editor | Monaco | Already does T-SQL highlighting; Cosmos SQL grammar added as a custom language. |
-| Auth | Entra (MSAL.NET) first, SQL auth second, key-based Cosmos third | Matches how Cenata Azure SQL and Cosmos are actually reached. Tokens cached per connection by the sidecar, never written to disk unencrypted. |
+| Auth | Entra (MSAL.NET) first, SQL auth second, key-based Cosmos third | Matches how the target Azure SQL and Cosmos are actually reached. Tokens cached per connection by the sidecar, never written to disk unencrypted. |
 | Connection store | Encrypted local file, OS keychain for secrets | Export and import as a single file so the dotfiles repo can carry it. |
 | Telemetry | None | Fail-closed on anything that phones home. |
 | Distribution | Per-user NSIS installer on GitHub Releases, Tauri updater plugin checks on launch | The work laptop is the real test bed; it must pick up every build without manual installs. The update check is the one outbound call and goes only to GitHub Releases. |
