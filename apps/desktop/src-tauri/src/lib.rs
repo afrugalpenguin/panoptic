@@ -1,11 +1,43 @@
 //! The shell is a pipe: it owns the sidecar process and moves newline-delimited JSON-RPC
 //! between it and the UI. It never parses or holds connection data.
 
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
+
+static MAIN_START_EPOCH_MS: OnceLock<f64> = OnceLock::new();
+
+fn epoch_ms() -> f64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs_f64() * 1000.0).unwrap_or(0.0)
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StartupInfo {
+    main_start_epoch_ms: f64,
+    /// Set by scripts/bench.ps1: "startup" or "ui".
+    bench_mode: Option<String>,
+}
+
+#[tauri::command]
+fn startup_info() -> StartupInfo {
+    StartupInfo {
+        main_start_epoch_ms: *MAIN_START_EPOCH_MS.get().unwrap_or(&0.0),
+        bench_mode: std::env::var("PANOPTIC_BENCH").ok().filter(|m| m == "startup" || m == "ui"),
+    }
+}
+
+/// Bench mode only: writes results to the path the launcher chose, then exits.
+#[tauri::command]
+fn bench_finish(app: AppHandle, results: String) -> Result<(), String> {
+    let path = std::env::var("PANOPTIC_BENCH_OUT").map_err(|_| "not in bench mode")?;
+    std::fs::write(path, results).map_err(|e| e.to_string())?;
+    app.exit(0);
+    Ok(())
+}
 
 #[derive(Default)]
 struct Sidecar(Mutex<Option<CommandChild>>);
@@ -55,6 +87,7 @@ fn spawn_sidecar(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    MAIN_START_EPOCH_MS.get_or_init(epoch_ms);
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -64,7 +97,7 @@ pub fn run() {
             spawn_sidecar(app.handle())?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![sidecar_send, sidecar_stop])
+        .invoke_handler(tauri::generate_handler![sidecar_send, sidecar_stop, startup_info, bench_finish])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {

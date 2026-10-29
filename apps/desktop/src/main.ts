@@ -1,4 +1,5 @@
 import { connectSidecar, type PingResult } from "./sidecar";
+import { finishBenchmark, firstPaintEpochMs, getStartupInfo, nowEpochMs, type StartupInfo } from "./startup";
 import { checkForUpdates, type UpdateState } from "./updates";
 
 const status = document.querySelector<HTMLElement>("#status")!;
@@ -12,7 +13,7 @@ function show(state: "connected" | "disconnected" | "connecting", text: string) 
   status.textContent = text;
 }
 
-async function start() {
+async function start(info: StartupInfo) {
   show("connecting", "Connecting to sidecar...");
   const rpc = await connectSidecar((code) => {
     show("disconnected", `Sidecar disconnected (exit ${code ?? "unknown"})`);
@@ -33,7 +34,28 @@ async function start() {
   };
 
   pingButton.addEventListener("click", () => ping().catch((e) => show("disconnected", String(e))));
+  const first = await rpc.request<PingResult>("ping").catch((e) => (show("disconnected", String(e)), null));
+  const sidecarReadyEpochMs = nowEpochMs();
   await ping().catch((e) => show("disconnected", String(e)));
+
+  const fcpEpochMs = await firstPaintEpochMs();
+  const startup = {
+    kind: "startup",
+    mainStartEpochMs: info.mainStartEpochMs,
+    firstPaintEpochMs: fcpEpochMs,
+    sidecarReadyEpochMs,
+    mainToFirstPaintMs: Math.round(fcpEpochMs - info.mainStartEpochMs),
+    mainToSidecarReadyMs: Math.round(sidecarReadyEpochMs - info.mainStartEpochMs),
+    sidecarStartupMs: first?.startupMs ?? null,
+    sidecarMode: first?.mode ?? null,
+  };
+  details.textContent =
+    `main to first paint    ${startup.mainToFirstPaintMs} ms
+` +
+    `main to sidecar ready  ${startup.mainToSidecarReadyMs} ms
+` +
+    details.textContent;
+  if (info.benchMode === "startup") await finishBenchmark(startup);
 }
 
 function showUpdate(s: UpdateState) {
@@ -54,5 +76,10 @@ function showUpdate(s: UpdateState) {
   }
 }
 
-start();
-checkForUpdates(showUpdate);
+const info = await getStartupInfo();
+if (info.benchMode === "ui") {
+  location.replace("/bench.html?auto=1");
+} else {
+  start(info);
+  if (!info.benchMode) checkForUpdates(showUpdate);
+}
