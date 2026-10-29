@@ -11,6 +11,7 @@
   import DetailPane from "./DetailPane.svelte";
   import EnvironmentDialog from "./EnvironmentDialog.svelte";
   import ImportDialog from "./ImportDialog.svelte";
+  import IconButton from "./IconButton.svelte";
   import KindChips from "./KindChips.svelte";
   import Workspace from "../query/Workspace.svelte";
   import { QueryWorkspace } from "../query/store.svelte";
@@ -323,10 +324,10 @@
     <div class="toolbar">
       <span class="title">Explorer</span>
       <span style:flex="1"></span>
-      <button title="Import from SSMS, Azure Data Studio or VS Code" disabled={sidecar !== "connected"} onclick={() => (dialog = { kind: "import" })}>Import</button>
-      <button title="New environment" onclick={() => (dialog = { kind: "environment" })}>+ Env</button>
-      <button title="New connection" disabled={sidecar !== "connected"} onclick={() => addConnection()}>+ Connection</button>
-      <button title="Settings" aria-label="Settings" disabled={sidecar !== "connected"} onclick={() => (dialog = { kind: "settings" })}>Settings</button>
+      <IconButton icon="import" label="Import from SSMS, Azure Data Studio or VS Code" disabled={sidecar !== "connected"} onclick={() => (dialog = { kind: "import" })} />
+      <IconButton icon="environment" label="New environment" onclick={() => (dialog = { kind: "environment" })} />
+      <IconButton icon="connection" label="New connection" disabled={sidecar !== "connected"} onclick={() => addConnection()} />
+      <IconButton icon="settings" label="Settings" disabled={sidecar !== "connected"} onclick={() => (dialog = { kind: "settings" })} />
     </div>
     {#if kinds.length > 1}
       <KindChips
@@ -436,14 +437,10 @@
   .toolbar {
     display: flex;
     align-items: center;
-    gap: 6px;
-    height: 34px;
-    padding: 0 8px 0 12px;
+    gap: 2px;
+    height: 40px;
+    padding: 0 6px 0 12px;
     border-bottom: 1px solid var(--border);
-  }
-  .toolbar button {
-    padding: 1px 8px;
-    font-size: 12px;
   }
   .title {
     font-size: 11px;
