@@ -16,6 +16,8 @@
   let target = $state<Record<string, string>>({});
   let names = $state<Record<string, string>>({});
   let importing = $state(false);
+  let byPattern = $state(false);
+  const hasOwnGroups = $derived(sources.some((s) => s.source !== "ssms-recent" && s.groups.some((g) => g.connections.length > 0)));
   let error = $state("");
 
   const keyOf = (g: PlanGroup, i: number) => `${g.key}#${i}`;
@@ -35,19 +37,24 @@
   onMount(async () => {
     try {
       sources = await api.scanImports();
-      plan = planGroups(sources);
-      for (const g of plan) {
-        const match = config.environments.find((e) => e.name.toLowerCase() === g.name.toLowerCase());
-        target[g.key] = match?.id ?? "new";
-        names[g.key] = g.name;
-        g.candidates.forEach((c, i) => (selected[keyOf(g, i)] = !c.alreadyAdded));
-      }
+      replan();
     } catch (e) {
       error = String(e instanceof Error ? e.message : e);
     } finally {
       scanning = false;
     }
   });
+
+  /** Builds the proposed groups and resets choices for them. */
+  function replan() {
+    plan = planGroups(sources, { byPattern });
+    for (const g of plan) {
+      const match = config.environments.find((e) => e.name.toLowerCase() === g.name.toLowerCase());
+      target[g.key] = match?.id ?? "new";
+      names[g.key] = g.name;
+      g.candidates.forEach((c, i) => (selected[keyOf(g, i)] = !c.alreadyAdded));
+    }
+  }
 
   function toggleGroup(g: PlanGroup, on: boolean) {
     g.candidates.forEach((c, i) => {
@@ -127,8 +134,14 @@
     {:else}
       <p class="muted intro">
         Found {total} connection{total === 1 ? "" : "s"}. Passwords are never imported: SQL logins ask once when you first connect.
-        Environments marked <em>suggested</em> were guessed from server names; change them as you like.
+        Environments marked <em>suggested</em> come from your server naming pattern; rename or retarget them as you like.
       </p>
+      {#if hasOwnGroups}
+        <label class="pattern">
+          <input type="checkbox" bind:checked={byPattern} onchange={replan} />
+          Group by server naming pattern instead of the groups saved in SSMS
+        </label>
+      {/if}
       {#each plan as g (g.key)}
         {@const s = groupState(g)}
         <section class="group">
@@ -210,6 +223,13 @@
   }
   .intro {
     margin-top: 0;
+  }
+  .pattern {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: -4px 0 12px;
+    color: var(--text) !important;
   }
   .group {
     margin-bottom: 14px;

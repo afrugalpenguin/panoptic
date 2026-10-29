@@ -120,10 +120,27 @@ anything Azure or ActiveDirectory to Entra.
 
 ### Environments suggested from server names
 
-Connection history has no groups, so the import dialog proposes environments from the server,
-database and display name, using whole-word matches so that `devonshire` and `product` do not
-match: `prod`/`prd`/`production`/`live` go to Prod (red, read-only by default), `uat`/`preprod`/
-`staging`/`stg` to UAT, `test`/`tst`/`qa` to Test, and `dev`/`development` to Dev. Anything else
-goes to "Other connections". The user can rename or retarget any group before importing.
-Connections already in Panoptic (same server, user and database) are shown as already added and
-skipped.
+Connection history has no groups, so the import dialog proposes environments from the user's own
+naming convention (`apps/desktop/src/app/import-plan.ts`):
+
+1. Each server is reduced to the part people vary: the first DNS label, lower-cased, without the
+   port, the instance name or Synapse's `-ondemand` suffix.
+2. For each server, the importer finds its **family prefix**: the longest prefix shared by at
+   least three servers, and by at least half of the servers that share its first four characters.
+   In `acmedwhuat`, `acmedwhsupport`, `acmedwhsandbox` and `acmedwhdev`, that is `acmedwh`. The
+   half rule stops a sub-family (`acmedwhs`, shared by support, sandbox and stage) from winning.
+3. Whatever follows the prefix is the environment: `uat` becomes UAT, `support` becomes Support,
+   and `stage-us` becomes Stage US. Trailing digits are dropped (`uat2` is UAT). Common tokens get
+   canonical names (prd/production/live are Prod, qa/tst are Test, development is Dev, uk/us/eu
+   are upper case), and anything else is title-cased as written. So names on no list, such as
+   Support or Sandbox, still group together.
+4. The bare family name itself (`acmedwh`) is left unassigned rather than guessed to be prod.
+5. Servers with no family fall back to keywords, matched as whole words or glued onto the end of
+   the name (`orders-prod`, `billingprod`). Words that merely contain a keyword (`product`,
+   `devonshire`) don't match. `localhost`, `127.0.0.1`, `.` and `(local)` are Local.
+
+Suggested groups are merged across sources and ordered Dev, Test, UAT, Prod, then the rest
+alphabetically, with unrecognised servers last under "Other connections". Prod starts red and
+read-only. Groups saved in SSMS are kept by default; a checkbox regroups everything by naming
+pattern instead. The user can rename or retarget any group before importing. Connections already
+in Panoptic (same server, user and database) are shown as already added and skipped.
