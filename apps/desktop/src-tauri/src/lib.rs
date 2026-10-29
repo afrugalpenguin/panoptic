@@ -1,11 +1,13 @@
 //! The shell is a pipe: it owns the sidecar process and moves newline-delimited JSON-RPC
 //! between it and the UI. It never parses or holds connection data.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
 use tauri_plugin_shell::ShellExt;
+use tauri::async_runtime::Receiver;
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 
 static MAIN_START_EPOCH_MS: OnceLock<f64> = OnceLock::new();
@@ -49,56 +51,138 @@ fn bench_finish(app: AppHandle, results: String) -> Result<(), String> {
     Ok(())
 }
 
+/// The sidecar process and its supervisor state. Status is kept here as well as emitted, so a UI
+/// that subscribes late can still ask for it.
 #[derive(Default)]
-struct Sidecar(Mutex<Option<CommandChild>>);
+struct Sidecar {
+    child: Mutex<Option<CommandChild>>,
+    status: Mutex<Option<SidecarStatus>>,
+    /// Set when we kill the sidecar on purpose (update or exit), so the supervisor doesn't restart it.
+    stopping: AtomicBool,
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(tag = "state", rename_all = "camelCase", rename_all_fields = "camelCase")]
+enum SidecarStatus {
+    Starting { attempt: u32 },
+    Running { pid: u32 },
+    Exited { code: Option<i32> },
+    Failed { error: String },
+}
+
+const MAX_CONSECUTIVE_FAILURES: u32 = 5;
+/// A sidecar that ran at least this long counts as healthy, resetting the failure count.
+const HEALTHY_AFTER: Duration = Duration::from_secs(30);
 
 /// Writes one JSON-RPC message line to the sidecar's stdin.
 #[tauri::command]
 fn sidecar_send(line: String, sidecar: State<Sidecar>) -> Result<(), String> {
-    let mut guard = sidecar.0.lock().map_err(|e| e.to_string())?;
+    let mut guard = sidecar.child.lock().map_err(|e| e.to_string())?;
     let child = guard.as_mut().ok_or("sidecar is not running")?;
-    child.write(format!("{line}\n").as_bytes()).map_err(|e| e.to_string())
+    child.write(format!("{line}
+").as_bytes()).map_err(|e| e.to_string())
 }
 
-/// Stops the sidecar so the installer can replace its exe during an update.
+#[tauri::command]
+fn sidecar_status(sidecar: State<Sidecar>) -> Option<SidecarStatus> {
+    sidecar.status.lock().ok().and_then(|s| s.clone())
+}
+
+/// Stops the sidecar for good so the installer can replace its exe during an update.
 #[tauri::command]
 fn sidecar_stop(sidecar: State<Sidecar>) -> Result<(), String> {
-    match sidecar.0.lock().map_err(|e| e.to_string())?.take() {
-        Some(child) => child.kill().map_err(|e| e.to_string()),
-        None => Ok(()),
+    stop_sidecar(&sidecar);
+    Ok(())
+}
+
+fn stop_sidecar(sidecar: &Sidecar) {
+    sidecar.stopping.store(true, Ordering::SeqCst);
+    if let Some(child) = sidecar.child.lock().ok().and_then(|mut c| c.take()) {
+        let _ = child.kill();
     }
 }
 
-fn spawn_sidecar(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+fn set_status(app: &AppHandle, status: SidecarStatus) {
+    if let Ok(mut s) = app.state::<Sidecar>().status.lock() {
+        *s = Some(status.clone());
+    }
+    let _ = app.emit("sidecar://status", status);
+}
+
+/// Runs on its own thread for the life of the app. Spawning can block for seconds on a first run
+/// (Defender scanning the new exe, the .NET bundle extracting native libraries), so it must never
+/// happen on the UI thread. Restarts the sidecar if it exits, with back-off, and gives up after
+/// repeated quick failures rather than looping forever.
+fn supervise(app: AppHandle) {
+    let sidecar = app.state::<Sidecar>();
+    let mut failures = 0u32;
+    loop {
+        if sidecar.stopping.load(Ordering::SeqCst) {
+            return;
+        }
+        set_status(&app, SidecarStatus::Starting { attempt: failures + 1 });
+        let started = Instant::now();
+
+        match spawn_sidecar(&app) {
+            Ok((rx, pid)) => {
+                set_status(&app, SidecarStatus::Running { pid });
+                let code = pump(&app, rx);
+                if let Ok(mut c) = sidecar.child.lock() {
+                    c.take();
+                }
+                if sidecar.stopping.load(Ordering::SeqCst) {
+                    return;
+                }
+                failures = if started.elapsed() >= HEALTHY_AFTER { 1 } else { failures + 1 };
+                set_status(&app, SidecarStatus::Exited { code });
+                if failures >= MAX_CONSECUTIVE_FAILURES {
+                    set_status(&app, SidecarStatus::Failed { error: format!("sidecar exited {failures} times in a row (last code {code:?})") });
+                    return;
+                }
+            }
+            Err(e) => {
+                failures += 1;
+                eprintln!("[shell] sidecar spawn failed (attempt {failures}): {e}");
+                if failures >= MAX_CONSECUTIVE_FAILURES {
+                    set_status(&app, SidecarStatus::Failed { error: e.to_string() });
+                    return;
+                }
+            }
+        }
+        // 0.5 s, 1 s, 2 s, 4 s...
+        std::thread::sleep(Duration::from_millis(500 * 2u64.pow(failures.saturating_sub(1).min(4))));
+    }
+}
+
+fn spawn_sidecar(app: &AppHandle) -> Result<(Receiver<CommandEvent>, u32), Box<dyn std::error::Error>> {
     let mut command = app.shell().sidecar("panoptic-sidecar")?;
     // WAM (Entra sign-in) dialogs need a parent window, which only the shell can provide.
     #[cfg(windows)]
     if let Some(hwnd) = app.get_webview_window("main").and_then(|w| w.hwnd().ok()) {
         command = command.env("PANOPTIC_PARENT_HWND", (hwnd.0 as isize).to_string());
     }
-    let (mut rx, child) = command.spawn()?;
-    *app.state::<Sidecar>().0.lock().unwrap() = Some(child);
+    let (rx, child) = command.spawn()?;
+    let pid = child.pid();
+    *app.state::<Sidecar>().child.lock().map_err(|e| e.to_string())? = Some(child);
+    Ok((rx, pid))
+}
 
-    let app = app.clone();
-    tauri::async_runtime::spawn(async move {
-        while let Some(event) = rx.recv().await {
-            match event {
-                CommandEvent::Stdout(bytes) => {
-                    let line = String::from_utf8_lossy(&bytes).trim_end().to_string();
-                    let _ = app.emit("sidecar://message", line);
-                }
-                CommandEvent::Stderr(bytes) => {
-                    eprintln!("[sidecar] {}", String::from_utf8_lossy(&bytes).trim_end());
-                }
-                CommandEvent::Terminated(payload) => {
-                    app.state::<Sidecar>().0.lock().unwrap().take();
-                    let _ = app.emit("sidecar://exit", payload.code);
-                }
-                _ => {}
+/// Forwards sidecar output to the UI until the process ends. Returns its exit code.
+fn pump(app: &AppHandle, mut rx: Receiver<CommandEvent>) -> Option<i32> {
+    while let Some(event) = tauri::async_runtime::block_on(rx.recv()) {
+        match event {
+            CommandEvent::Stdout(bytes) => {
+                let line = String::from_utf8_lossy(&bytes).trim_end().to_string();
+                let _ = app.emit("sidecar://message", line);
             }
+            CommandEvent::Stderr(bytes) => {
+                eprintln!("[sidecar] {}", String::from_utf8_lossy(&bytes).trim_end());
+            }
+            CommandEvent::Terminated(payload) => return payload.code,
+            _ => {}
         }
-    });
-    Ok(())
+    }
+    None
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -110,17 +194,16 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .manage(Sidecar::default())
         .setup(|app| {
-            spawn_sidecar(app.handle())?;
+            let handle = app.handle().clone();
+            std::thread::Builder::new().name("sidecar-supervisor".into()).spawn(move || supervise(handle))?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![sidecar_send, sidecar_stop, startup_info, bench_finish, is_installed])
+        .invoke_handler(tauri::generate_handler![sidecar_send, sidecar_stop, sidecar_status, startup_info, bench_finish, is_installed])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
             if let RunEvent::Exit = event {
-                if let Some(child) = app.state::<Sidecar>().0.lock().unwrap().take() {
-                    let _ = child.kill();
-                }
+                stop_sidecar(&app.state::<Sidecar>());
             }
         });
 }

@@ -5,12 +5,14 @@
 
   let {
     sidecar,
+    sidecarText,
     inFlight,
     lastLoad,
     startup,
     update,
   }: {
     sidecar: "connecting" | "connected" | "disconnected";
+    sidecarText: string;
     inFlight: { label: string; startedAt: number } | undefined;
     lastLoad: LoadReport | undefined;
     startup: string;
@@ -23,11 +25,10 @@
     return () => clearInterval(t);
   });
 
-  const SIDECAR_TEXT = { connecting: "Starting...", connected: "Ready", disconnected: "Sidecar stopped" };
 </script>
 
 <footer class="status">
-  <span class="item" title={startup}><span class="dot {sidecar}"></span>{SIDECAR_TEXT[sidecar]}</span>
+  <span class="item" title={startup}><span class="dot {sidecar}"></span>{sidecarText}</span>
 
   <span class="item grow">
     {#if inFlight}
