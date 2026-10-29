@@ -4,9 +4,9 @@
   "version": "../package.json",
   "identifier": "dev.panoptic.app",
   "build": {
-    "beforeDevCommand": "pnpm sidecar:dev && pnpm dev",
+    "beforeDevCommand": "pnpm sidecar:dev && pnpm changelog && pnpm dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm sidecar && pnpm build",
+    "beforeBuildCommand": "pnpm sidecar && pnpm changelog && pnpm build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -44,7 +44,10 @@
       "nsis": {
         "installMode": "currentUser"
       }
-    }
+    },
+    "resources": [
+      "CHANGELOG.md"
+    ]
   },
   "plugins": {
     "updater": {
