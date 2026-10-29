@@ -31,4 +31,4 @@ foreach ($f in $files) {
     Write-Host "$($f.Path) -> $Version"
 }
 
-Write-Host "Run 'cargo update -p panoptic' in apps\desktop\src-tauri to refresh Cargo.lock, then commit and tag v$Version after merge."
+Write-Host "Run 'cargo update -p panoptic' in apps\desktop\src-tauri to refresh Cargo.lock, then commit on a branch and open a PR. Merging it to main starts the $($Version.Substring(0, $Version.LastIndexOf('.'))).x series; the release workflow sets the patch."

@@ -29,6 +29,9 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+        with:
+          # The changelog is generated from tags and the fragments added between them (ADR 0013).
+          fetch-depth: 0
 
       - name: Set version
         shell: pwsh
@@ -37,6 +40,18 @@ jobs:
           $version = "$($base[0]).$($base[1]).${{ github.run_number }}"
           ./scripts/set-version.ps1 -Version $version
           "VERSION=$version" >> $env:GITHUB_ENV
+
+      # One generator run feeds the bundled CHANGELOG.md, the release page and latest.json's notes, so they
+      # always agree. The tag for this version does not exist yet; -Head covers fragments since the last one.
+      - name: Generate changelog
+        id: changelog
+        shell: pwsh
+        run: |
+          ./scripts/changelog.ps1 -Head $env:VERSION -Out apps/desktop/src-tauri/CHANGELOG.md
+          ./scripts/changelog.ps1 -Head $env:VERSION -Latest -Out release-notes.md
+          $notes = (Get-Content release-notes.md -Raw).TrimEnd()
+          $delimiter = "NOTES_$([guid]::NewGuid().ToString('N'))"
+          "notes<<$delimiter`n$notes`n$delimiter" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - uses: actions/setup-dotnet@v5
         with:
@@ -75,7 +90,10 @@ jobs:
           tagName: v${{ env.VERSION }}
           releaseName: Panoptic v${{ env.VERSION }}
           releaseCommitish: ${{ github.sha }}
-          releaseBody: Two ways to run it. The setup.exe installer is per-user (no elevation) and updates itself on launch. The portable zip needs no install, so unzip it anywhere and run panoptic.exe; it tells you when a new version exists. Builds are unsigned, so SmartScreen may warn.
+          releaseBody: |
+            ${{ steps.changelog.outputs.notes }}
+
+            Two ways to run it. The setup.exe installer is per-user (no elevation) and updates itself on launch. The portable zip needs no install, so unzip it anywhere and run panoptic.exe; it tells you when a new version exists. Builds are unsigned, so SmartScreen may warn.
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
@@ -87,7 +105,7 @@ jobs:
         run: |
           $dir = "portable/Panoptic"
           New-Item -ItemType Directory -Force $dir | Out-Null
-          Copy-Item apps/desktop/src-tauri/target/release/panoptic.exe, apps/desktop/src-tauri/target/release/panoptic-sidecar.exe $dir
+          Copy-Item apps/desktop/src-tauri/target/release/panoptic.exe, apps/desktop/src-tauri/target/release/panoptic-sidecar.exe, apps/desktop/src-tauri/CHANGELOG.md $dir
           $zip = "Panoptic_${env:VERSION}_x64-portable.zip"
           Compress-Archive -Path $dir -DestinationPath $zip
           gh release upload "v${env:VERSION}" $zip --clobber

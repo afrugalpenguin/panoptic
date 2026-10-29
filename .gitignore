@@ -29,5 +29,8 @@ Thumbs.db
 apps/sidecar/artifacts/
 apps/desktop/src-tauri/binaries/
 
+# Generated at build time by scripts/changelog.ps1 (ADR 0013)
+apps/desktop/src-tauri/CHANGELOG.md
+
 # Local dev database secrets
 docker/.env

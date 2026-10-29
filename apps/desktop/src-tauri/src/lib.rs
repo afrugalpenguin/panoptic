@@ -42,6 +42,18 @@ fn is_installed() -> bool {
         .unwrap_or(false)
 }
 
+/// The bundled changelog (ADR 0013), read here so the UI needs no filesystem permission. A missing
+/// file is not an error: the app must never fail over its changelog, so it returns an empty string.
+#[tauri::command]
+fn changelog_markdown(app: AppHandle) -> Result<String, String> {
+    let path = app.path().resource_dir().map_err(|e| e.to_string())?.join("CHANGELOG.md");
+    match std::fs::read_to_string(&path) {
+        Ok(text) => Ok(text),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
 /// Bench mode only: writes results to the path the launcher chose, then exits.
 #[tauri::command]
 fn bench_finish(app: AppHandle, results: String) -> Result<(), String> {
@@ -195,13 +207,15 @@ pub fn run() {
         // Export: a save dialog, then writing the one file the user picked (the dialog adds it to the fs scope).
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        // What's new: https links in release notes open in the browser.
+        .plugin(tauri_plugin_opener::init())
         .manage(Sidecar::default())
         .setup(|app| {
             let handle = app.handle().clone();
             std::thread::Builder::new().name("sidecar-supervisor".into()).spawn(move || supervise(handle))?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![sidecar_send, sidecar_stop, sidecar_status, startup_info, bench_finish, is_installed])
+        .invoke_handler(tauri::generate_handler![sidecar_send, sidecar_stop, sidecar_status, startup_info, bench_finish, is_installed, changelog_markdown])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {

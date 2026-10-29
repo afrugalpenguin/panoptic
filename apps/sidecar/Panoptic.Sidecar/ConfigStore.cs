@@ -40,6 +40,8 @@ public sealed class ConfigStore
             throw new RpcException(RpcException.InvalidParams, $"Unknown update check mode: {settings.UpdateCheck}");
         if (settings.Explorer.RowFont is not (RowFonts.Mono or RowFonts.Ui))
             throw new RpcException(RpcException.InvalidParams, $"Unknown row font: {settings.Explorer.RowFont}");
+        if (settings.LastSeenVersion is not null && !System.Text.RegularExpressions.Regex.IsMatch(settings.LastSeenVersion, @"^\d+\.\d+\.\d+$"))
+            throw new RpcException(RpcException.InvalidParams, $"Invalid last seen version: {settings.LastSeenVersion}");
         lock (_lock) Commit(_file with { Settings = settings });
     }
 
