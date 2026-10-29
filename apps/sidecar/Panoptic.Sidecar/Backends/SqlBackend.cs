@@ -268,6 +268,10 @@ public sealed class SqlBackend(Credentials credentials) : IBackend
                 builder.Password = secret ?? "";
                 conn = new SqlConnection(builder.ConnectionString);
                 break;
+            case AuthKinds.Windows when c.Kind == ConnectionKinds.Sql:
+                builder.IntegratedSecurity = true;
+                conn = new SqlConnection(builder.ConnectionString);
+                break;
             case AuthKinds.Entra:
                 var credential = credentials.For(c.TenantId);
                 conn = new SqlConnection(builder.ConnectionString)

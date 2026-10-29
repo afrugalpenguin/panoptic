@@ -30,6 +30,8 @@ public static class AuthKinds
     public const string Entra = "entra";
     public const string Sql = "sql";
     public const string Key = "key";
+    /// <summary>Windows integrated authentication (SQL Server only).</summary>
+    public const string Windows = "windows";
 }
 
 /// <param name="Endpoint">SQL Server host[,port] or Cosmos account URI.</param>
@@ -76,6 +78,7 @@ public sealed record StoreFile(AppConfig Config, Dictionary<string, string> Secr
 [JsonSerializable(typeof(TreeChildrenParams))]
 [JsonSerializable(typeof(TestConnectionResult))]
 [JsonSerializable(typeof(DeviceCodePrompt))]
+[JsonSerializable(typeof(Import.ImportSource[]))]
 public sealed partial class SidecarJson : JsonSerializerContext;
 
 public static class Rpc

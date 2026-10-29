@@ -81,6 +81,28 @@ public static class Methods
             return Rpc.Result(result, SidecarJson.Default.TestConnectionResult);
         };
 
+        // Reads other tools' saved connections on this machine. Flags ones that are already in Panoptic.
+        methods["import.scan"] = (_, _) =>
+        {
+            var existing = store.Config.Environments.SelectMany(e => e.Connections)
+                .Select(c => Import.ImportKey.Of(c.Endpoint, c.User, c.Database))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var sources = Import.ConnectionImporter.Scan(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData))
+                .Select(s => s with
+                {
+                    Groups = s.Groups.Select(g => g with
+                    {
+                        Connections = g.Connections
+                            .Select(c => c with { AlreadyAdded = existing.Contains(Import.ImportKey.Of(c.Endpoint, c.User, c.Database)) })
+                            .ToList(),
+                    }).ToList(),
+                })
+                .ToArray();
+            return Task.FromResult(Rpc.Result(sources, SidecarJson.Default.ImportSourceArray));
+        };
+
         methods["tree.children"] = async (p, ct) =>
         {
             var args = Rpc.Params(p, SidecarJson.Default.TreeChildrenParams);

@@ -69,6 +69,7 @@ TBD.
 | --- | --- | --- |
 | 2026-10-29 | Home | Unsigned NSIS install of v0.1.0: Defender quarantined `panoptic.exe` as `Trojan:Win32/Bearfoos.A!ml` as the installer wrote it. Static scans of the exe, sidecar and installer were clean, and the same exe copied or run from the repo was not flagged, so the trigger is the install behaviour. A folder exclusion for `%LOCALAPPDATA%\Panoptic` fixed it; the GitHub v0.1.0 release then installed and ran. |
 | 2026-10-29 | Work laptop (managed) | v0.2.0 NSIS install: no SmartScreen prompt, installed and ran without an exclusion. First launch showed "Not Responding" briefly (sidecar spawned on the UI thread; fixed in #15). Some time later Defender quarantined `panoptic.exe` as `Trojan:Win32/Bearfoos.A!ml`, the same false positive as at home but delayed, consistent with a cloud verdict on an unknown unsigned file. Conclusion: unsigned builds cannot be used on managed machines; every release is a new unknown hash. |
+| 2026-10-29 | Work laptop (managed) | With a local Defender folder exclusion for `%LOCALAPPDATA%\Panoptic`, the installed copy survived and **auto-updated in place** to the next automatic release ("Restart to update"). The update pipeline works end to end. |
 
 ## Sidecar publish mode (M1)
 

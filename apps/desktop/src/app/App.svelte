@@ -8,6 +8,7 @@
   import ContextMenu, { type MenuItem } from "./ContextMenu.svelte";
   import DetailPane from "./DetailPane.svelte";
   import EnvironmentDialog from "./EnvironmentDialog.svelte";
+  import ImportDialog from "./ImportDialog.svelte";
   import StatusBar from "./StatusBar.svelte";
   import Tree from "./Tree.svelte";
   import { TreeModel, type LoadReport, type Row } from "./tree-model";
@@ -28,6 +29,7 @@
   let dialog = $state<
     | { kind: "environment"; initial?: EnvironmentConfig }
     | { kind: "connection"; environmentId: string; initial?: ConnectionConfig }
+    | { kind: "import" }
   >();
   let treeWidth = $state(readWidth());
 
@@ -205,6 +207,7 @@
     <div class="toolbar">
       <span class="title">Explorer</span>
       <span style:flex="1"></span>
+      <button title="Import from SSMS, Azure Data Studio or VS Code" disabled={sidecar !== "connected"} onclick={() => (dialog = { kind: "import" })}>Import</button>
       <button title="New environment" onclick={() => (dialog = { kind: "environment" })}>+ Env</button>
       <button title="New connection" disabled={sidecar !== "connected"} onclick={() => addConnection()}>+ Connection</button>
     </div>
@@ -219,7 +222,7 @@
   <div class="splitter" role="separator" aria-orientation="vertical" onpointerdown={startResize}></div>
 
   <main class="content">
-    <DetailPane row={selectedRow} onAddEnvironment={() => (dialog = { kind: "environment" })} />
+    <DetailPane row={selectedRow} onAddEnvironment={() => (dialog = { kind: "environment" })} onImport={() => (dialog = { kind: "import" })} />
   </main>
 
   <div class="status-host">
@@ -235,6 +238,16 @@
   <EnvironmentDialog
     initial={dialog.initial}
     onSave={async (env) => configChanged(await api!.saveEnvironment(env))}
+    onClose={() => (dialog = undefined)}
+  />
+{:else if dialog?.kind === "import" && api}
+  <ImportDialog
+    {api}
+    {config}
+    onImported={(n) => {
+      if (n > 0) configChanged();
+      lastLoad = { id: "", label: "Import", count: n, ms: 0 };
+    }}
     onClose={() => (dialog = undefined)}
   />
 {:else if dialog?.kind === "connection" && api}
