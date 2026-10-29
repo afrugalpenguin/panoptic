@@ -15,7 +15,8 @@ Download `Panoptic_<version>_x64-setup.exe` from the
 [latest release](https://github.com/afrugalpenguin/panoptic/releases/latest) and run it.
 It installs per-user into `%LOCALAPPDATA%\Panoptic` with no elevation. Builds are not
 code-signed yet, so SmartScreen warns on first install (More info, Run anyway).
-Installed copies check GitHub Releases on launch and offer "Restart to update".
+Installed copies check GitHub Releases on launch and offer "Restart to update". Settings can switch
+that to hourly or turn automatic checks off completely.
 
 ## Develop
 

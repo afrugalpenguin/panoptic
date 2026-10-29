@@ -40,6 +40,10 @@ export interface AppConfig {
   environments: EnvironmentConfig[];
 }
 
+export interface AppSettings {
+  updateCheck: import("../update-schedule").UpdateCheckMode;
+}
+
 export interface TestConnectionResult {
   ok: boolean;
   elapsedMs: number;
@@ -76,6 +80,8 @@ export interface ImportSource {
 export function createApi(rpc: RpcClient) {
   return {
     config: () => rpc.request<AppConfig>("config.get"),
+    settings: () => rpc.request<AppSettings>("settings.get"),
+    saveSettings: (settings: AppSettings) => rpc.request<AppSettings>("settings.save", settings),
     saveEnvironment: (env: EnvironmentConfig) => rpc.request<AppConfig>("config.saveEnvironment", env),
     deleteEnvironment: (id: string) => rpc.request<AppConfig>("config.deleteEnvironment", { id }),
     /** secret: undefined keeps the stored one, "" clears it. */

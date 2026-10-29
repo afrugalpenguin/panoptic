@@ -62,14 +62,31 @@ public sealed record TreeChildrenParams(string NodeId);
 public sealed record TestConnectionResult(bool Ok, double ElapsedMs, string? Error);
 public sealed record DeviceCodePrompt(string Message, string UserCode, string VerificationUri);
 
-/// <summary>Everything persisted, encrypted as one blob by <see cref="ConfigStore"/>.</summary>
-public sealed record StoreFile(AppConfig Config, Dictionary<string, string> Secrets);
+public static class UpdateCheckModes
+{
+    /// <summary>Default: check GitHub Releases once when Panoptic starts.</summary>
+    public const string Startup = "startup";
+    public const string Hourly = "hourly";
+    /// <summary>No automatic update checks at all.</summary>
+    public const string Never = "never";
+
+    public static readonly string[] All = [Startup, Hourly, Never];
+}
+
+public sealed record AppSettings(string UpdateCheck = UpdateCheckModes.Startup)
+{
+    public static AppSettings Default => new();
+}
+
+/// <summary>Everything persisted, encrypted as one blob by <see cref="ConfigStore"/>. Settings is null in older stores.</summary>
+public sealed record StoreFile(AppConfig Config, Dictionary<string, string> Secrets, AppSettings? Settings = null);
 
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(TreeNode[]))]
 [JsonSerializable(typeof(AppConfig))]
+[JsonSerializable(typeof(AppSettings))]
 [JsonSerializable(typeof(EnvironmentConfig))]
 [JsonSerializable(typeof(StoreFile))]
 [JsonSerializable(typeof(SaveConnectionParams))]

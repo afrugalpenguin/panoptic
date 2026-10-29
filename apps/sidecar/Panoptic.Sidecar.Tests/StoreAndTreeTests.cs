@@ -96,6 +96,53 @@ public sealed class ConfigStoreTests : IDisposable
     }
 
     [Fact]
+    public void Settings_default_to_checking_for_updates_on_startup_and_persist()
+    {
+        var store = new ConfigStore(_path);
+        Assert.Equal(UpdateCheckModes.Startup, store.Settings.UpdateCheck);
+
+        store.SaveSettings(new AppSettings(UpdateCheckModes.Never));
+
+        Assert.Equal(UpdateCheckModes.Never, new ConfigStore(_path).Settings.UpdateCheck);
+    }
+
+    [Fact]
+    public void Unknown_update_check_mode_is_rejected()
+    {
+        var store = new ConfigStore(_path);
+
+        Assert.Throws<RpcException>(() => store.SaveSettings(new AppSettings("every-five-seconds")));
+        Assert.Equal(UpdateCheckModes.Startup, store.Settings.UpdateCheck);
+    }
+
+    [Fact]
+    public void Editing_connections_and_environments_keeps_settings()
+    {
+        var store = new ConfigStore(_path);
+        store.SaveSettings(new AppSettings(UpdateCheckModes.Never));
+        store.SaveEnvironment(new EnvironmentConfig("dev", "Dev", "#000", false, []));
+        store.SaveConnection("dev", Sql("c1"), "pw");
+        store.DeleteConnection("c1");
+        store.DeleteEnvironment("dev");
+
+        Assert.Equal(UpdateCheckModes.Never, new ConfigStore(_path).Settings.UpdateCheck);
+    }
+
+    [Fact]
+    public void Saving_settings_keeps_connections_and_secrets()
+    {
+        var store = new ConfigStore(_path);
+        store.SaveEnvironment(new EnvironmentConfig("dev", "Dev", "#000", false, []));
+        store.SaveConnection("dev", Sql("c1"), "pw");
+
+        store.SaveSettings(new AppSettings(UpdateCheckModes.Hourly));
+
+        var reloaded = new ConfigStore(_path);
+        Assert.Single(reloaded.Config.Environments.Single().Connections);
+        Assert.Equal("pw", reloaded.GetSecret("c1"));
+    }
+
+    [Fact]
     public void Saving_an_environment_keeps_its_connections_and_deleting_removes_secrets()
     {
         var store = new ConfigStore(_path);
