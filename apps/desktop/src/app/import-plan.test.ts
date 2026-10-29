@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ImportCandidate, ImportSource } from "./api";
-import { envStyleFor, hostLabel, planGroups, suggestEnvironments } from "./import-plan";
+import { envFromText, envStyleFor, planGroups, suggestEnvironments } from "./import-plan";
 
 const c = (endpoint: string, extra: Partial<ImportCandidate> = {}): ImportCandidate => ({
   name: endpoint,
@@ -12,60 +12,71 @@ const c = (endpoint: string, extra: Partial<ImportCandidate> = {}): ImportCandid
   ...extra,
 });
 
-// Invented names in a common convention: a shared prefix with the environment glued on the end.
-const family = [
-  "acmedwhuat.database.windows.net",
-  "acmedwhsupport.database.windows.net",
-  "acmedwhuk.database.windows.net",
-  "acmedwhsandbox.database.windows.net",
-  "acmedwhdev.database.windows.net",
-  "acmedwhstage-us.database.windows.net",
-  "acmesandbox-ondemand.sql.azuresynapse.net",
-];
-
 const suggest = (endpoints: string[]) => suggestEnvironments(endpoints.map((e) => c(e)));
 
-describe("hostLabel", () => {
+describe("envFromText: the rule table", () => {
   it.each([
-    ["tcp:Orders-Dev.database.windows.net,1433", "orders-dev"],
-    [String.raw`BOX\SQL2019`, "box"],
-    ["myws-ondemand.sql.azuresynapse.net", "myws"],
-    ["10.0.0.5,1433", "10.0.0.5"],
-  ])("%s -> %s", (endpoint, label) => expect(hostLabel(endpoint)).toBe(label));
+    // Separate word, any position
+    ["orders-uat", "UAT"],
+    ["uat-orders", "UAT"],
+    ["sql-orders-prd-01", "Prod"],
+    ["orders.uat.corp", "UAT"],
+    // Glued onto the end
+    ["ordersuat", "UAT"],
+    ["reportsprod", "Prod"],
+    ["acmepreprod", "Pre-prod"],
+    // Spellings normalised, distinct environments kept distinct
+    ["a-production", "Prod"],
+    ["a-pre-prod", "Pre-prod"],
+    ["a-non-prod", "Non-prod"],
+    ["a-stg", "Staging"],
+    ["a-qa", "QA"],
+    ["a-tst", "Test"],
+    ["a-sit", "SIT"],
+    ["a-sbx", "Sandbox"],
+    ["a-uat2", "UAT"],
+    // Folder names use the same rules
+    ["Lower environments", "Lower"],
+    ["Production", "Prod"],
+    // Words that merely contain or start with a keyword
+    ["product-catalog", undefined],
+    ["devonshire-sql", undefined],
+    ["testament", undefined],
+    ["livechat", undefined],
+    ["Acme Ltd", undefined],
+  ])("%s -> %s", (text, env) => expect(envFromText(text)).toBe(env));
 });
 
 describe("suggestEnvironments", () => {
-  it("groups by whatever follows the shared prefix, including names not on any keyword list", () => {
-    expect(suggest(family)).toEqual(["UAT", "Support", "UK", "Sandbox", "Dev", "Stage US", "Sandbox"]);
+  it("handles suffix, prefix, middle, subdomain and glued conventions", () => {
+    expect(
+      suggest(["orders-dev.x.com", "uat-orders.x.com", "sql-billing-prd-01.x.com", "orders.sit.corp.x.com", "billinguat.database.windows.net"]),
+    ).toEqual(["Dev", "UAT", "Prod", "SIT", "UAT"]);
   });
 
-  it("does not split on a prefix only two servers share", () => {
-    // acmedwhuat and acmedwhuk share "acmedwhu", but the family prefix is "acmedwh".
+  it("adds a region", () => {
+    expect(suggest(["orders-prod-uk.x.com", "orders-prod-us.x.com", "orders-uat-uksouth.x.com"])).toEqual(["Prod UK", "Prod US", "UAT UK South"]);
+  });
+
+  it("finds house words glued onto a shared family prefix", () => {
+    const family = ["acmedwhuat", "acmedwhsupport", "acmedwhuk", "acmedwhsandbox", "acmedwhdev", "acmedwhstage-us"].map((n) => `${n}.database.windows.net`);
+    expect(suggest([...family, "acmesandbox-ondemand.sql.azuresynapse.net"])).toEqual(["UAT", "Support", "UK", "Sandbox", "Dev", "Staging US", "Sandbox"]);
+  });
+
+  it("does not split a family on a prefix only a sub-family shares", () => {
     expect(suggest(["acmedwhuat.x", "acmedwhuk.x", "acmedwhdev.x"])).toEqual(["UAT", "UK", "Dev"]);
-  });
-
-  it("is case-insensitive", () => {
-    expect(suggest(["AcmeDwhUAT.x", "acmedwhSupport.x", "ACMEDWHDEV.x"])).toEqual(["UAT", "Support", "Dev"]);
-  });
-
-  it("falls back to keywords for servers without a family, including glued suffixes", () => {
-    expect(suggest(["orders-prod.x", "billingprod.x", "reporting.x", "qa-sql01.x"])).toEqual(["Prod", "Prod", undefined, "Test"]);
-  });
-
-  it("does not mistake words that merely contain a keyword", () => {
-    expect(suggest(["product-catalog.x", "devonshire-sql.x"])).toEqual([undefined, undefined]);
   });
 
   it("names local servers Local", () => {
     expect(suggest(["localhost", "127.0.0.1,14333", ".", "(local)"])).toEqual(["Local", "Local", "Local", "Local"]);
   });
 
-  it("looks at the database name when the server says nothing", () => {
-    expect(suggestEnvironments([c("shared-sql.x", { database: "Orders_UAT" })])).toEqual(["UAT"]);
+  it("uses the database or display name when the server says nothing", () => {
+    expect(suggestEnvironments([c("shared-sql.x.com", { database: "Orders_UAT" }), c("10.1.2.3", { name: "Billing PROD" })])).toEqual(["UAT", "Prod"]);
   });
 
-  it("leaves the bare family name unassigned rather than guessing it is prod", () => {
-    expect(suggest(["acmedwh.x", "acmedwhuat.x", "acmedwhdev.x", "acmedwhtest.x"])[0]).toBeUndefined();
+  it("leaves unrecognisable servers unassigned", () => {
+    expect(suggest(["reporting.x.com", "product-catalog.x.com"])).toEqual([undefined, undefined]);
   });
 });
 
@@ -73,52 +84,50 @@ describe("planGroups", () => {
   const history: ImportSource = {
     source: "ssms-recent",
     label: "SSMS connection history (20.0)",
-    path: "x",
-    groups: [{ name: "Connection history", connections: [...family.map((e) => c(e)), c("reporting.x")] }],
+    path: "h",
+    groups: [{ name: "Connection history", connections: ["orders-dev.x.com", "orders-uat.x.com", "billing-uat.x.com", "reporting.x.com"].map((e) => c(e)) }],
   };
-  const registered: ImportSource = {
+  const folders: ImportSource = {
     source: "ssms-registered",
     label: "SSMS saved connections (RegSrvr17.xml)",
-    path: "y",
-    groups: [{ name: "Team", connections: [c("acmedwhqa.database.windows.net"), c("acmedwhuat2.database.windows.net")] }],
+    path: "r",
+    groups: [
+      { name: "Production", connections: [c("orders-main.x.com")] },
+      { name: "Acme Ltd", connections: [c("acme-orders-qa.x.com"), c("acme-crm.x.com")] },
+    ],
   };
 
-  it("splits ungrouped connections into suggested environments, leftovers last", () => {
-    const groups = planGroups([history]);
-    expect(groups.map((g) => [g.name, g.candidates.length, g.suggested])).toEqual([
+  it("splits ungrouped connections into suggested environments in lifecycle order, leftovers last", () => {
+    expect(planGroups([history]).map((g) => [g.name, g.candidates.length, g.suggested])).toEqual([
       ["Dev", 1, true],
-      ["UAT", 1, true],
-      ["Sandbox", 2, true],
-      ["Stage US", 1, true],
-      ["Support", 1, true],
-      ["UK", 1, true],
+      ["UAT", 2, true],
       ["Other connections", 1, false],
     ]);
   });
 
-  it("keeps the source tool's own groups by default", () => {
-    expect(planGroups([registered]).map((g) => g.name)).toEqual(["Team"]);
+  it("keeps the source tool's folders by default", () => {
+    expect(planGroups([folders]).map((g) => g.name)).toEqual(["Production", "Acme Ltd"]);
   });
 
-  it("regroups everything by naming pattern when asked, merging across sources", () => {
-    const groups = planGroups([history, registered], { byPattern: true });
-    expect(groups.find((g) => g.name === "UAT")!.candidates.map((x) => x.endpoint)).toEqual([
-      "acmedwhuat.database.windows.net",
-      "acmedwhuat2.database.windows.net",
-    ]);
-    expect(groups.find((g) => g.name === "Test")!.candidates).toHaveLength(1);
-    expect(groups.find((g) => g.name === "Team")).toBeUndefined();
+  it("by pattern: environment-named folders still decide, other folders fall back to name rules", () => {
+    const groups = planGroups([history, folders], { byPattern: true });
+    const byName = Object.fromEntries(groups.map((g) => [g.name, g.candidates.map((x) => x.endpoint)]));
+    expect(byName["Prod"]).toEqual(["orders-main.x.com"]);
+    expect(byName["QA"]).toEqual(["acme-orders-qa.x.com"]);
+    expect(byName["UAT"]).toEqual(["orders-uat.x.com", "billing-uat.x.com"]);
+    expect(byName["Other connections"]).toEqual(["reporting.x.com", "acme-crm.x.com"]);
   });
 
   it("drops a connection already seen in an earlier source", () => {
-    const dup: ImportSource = { ...registered, groups: [{ name: "Team", connections: [c("acmedwhuat.database.windows.net")] }] };
-    expect(planGroups([history, dup]).find((g) => g.name === "Team")).toBeUndefined();
+    const dup: ImportSource = { ...folders, groups: [{ name: "Acme Ltd", connections: [c("orders-uat.x.com")] }] };
+    expect(planGroups([history, dup]).find((g) => g.name === "Acme Ltd")).toBeUndefined();
   });
 });
 
 describe("envStyleFor", () => {
   it("makes Prod red and read-only, others writable", () => {
     expect(envStyleFor("Prod")).toEqual({ color: "#e03131", readOnly: true });
+    expect(envStyleFor("Prod UK").readOnly).toBe(true);
     expect(envStyleFor("Dev").readOnly).toBe(false);
   });
 });
