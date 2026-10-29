@@ -24,6 +24,14 @@ public static class Methods
 
         if (store is null || tree is null) return methods;
 
+        methods["settings.get"] = (_, _) => Task.FromResult(Rpc.Result(store.Settings, SidecarJson.Default.AppSettings));
+
+        methods["settings.save"] = (p, _) =>
+        {
+            store.SaveSettings(Rpc.Params(p, SidecarJson.Default.AppSettings));
+            return Task.FromResult(Rpc.Result(store.Settings, SidecarJson.Default.AppSettings));
+        };
+
         methods["config.get"] = (_, _) => Task.FromResult(Rpc.Result(store.Config, SidecarJson.Default.AppConfig));
 
         methods["config.saveEnvironment"] = (p, _) =>

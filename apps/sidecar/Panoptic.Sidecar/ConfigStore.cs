@@ -29,6 +29,18 @@ public sealed class ConfigStore
         get { lock (_lock) return _file.Config; }
     }
 
+    public AppSettings Settings
+    {
+        get { lock (_lock) return _file.Settings ?? AppSettings.Default; }
+    }
+
+    public void SaveSettings(AppSettings settings)
+    {
+        if (!UpdateCheckModes.All.Contains(settings.UpdateCheck))
+            throw new RpcException(RpcException.InvalidParams, $"Unknown update check mode: {settings.UpdateCheck}");
+        lock (_lock) Commit(_file with { Settings = settings });
+    }
+
     public (EnvironmentConfig Environment, ConnectionConfig Connection)? FindConnection(string connectionId)
     {
         lock (_lock)
@@ -71,7 +83,7 @@ public sealed class ConfigStore
             if (env is null) return;
             var secrets = new Dictionary<string, string>(_file.Secrets);
             foreach (var c in env.Connections) secrets.Remove(c.Id);
-            Commit(new StoreFile(new AppConfig(_file.Config.Environments.Where(e => e.Id != environmentId).ToList()), secrets));
+            Commit(_file with { Config = new AppConfig(_file.Config.Environments.Where(e => e.Id != environmentId).ToList()), Secrets = secrets });
         }
     }
 
@@ -97,7 +109,7 @@ public sealed class ConfigStore
                 if (secret.Length == 0) secrets.Remove(connection.Id);
                 else secrets[connection.Id] = secret;
             }
-            Commit(new StoreFile(new AppConfig(envs), secrets));
+            Commit(_file with { Config = new AppConfig(envs), Secrets = secrets });
         }
     }
 
@@ -110,7 +122,7 @@ public sealed class ConfigStore
                 .ToList();
             var secrets = new Dictionary<string, string>(_file.Secrets);
             secrets.Remove(connectionId);
-            Commit(new StoreFile(new AppConfig(envs), secrets));
+            Commit(_file with { Config = new AppConfig(envs), Secrets = secrets });
         }
     }
 

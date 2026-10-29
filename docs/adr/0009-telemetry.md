@@ -9,7 +9,7 @@ The tool runs against production data on a corporate laptop.
 
 ## Decision
 
-Panoptic sends no telemetry. The only outbound call outside configured connections is the update check against GitHub Releases (0010).
+Panoptic sends no telemetry. The only outbound call outside configured connections is the update check against GitHub Releases (0010), and Settings can turn it off completely.
 
 ## Consequences
 

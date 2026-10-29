@@ -3,13 +3,15 @@
   import type { RpcClient } from "../rpc";
   import { connectSidecar, type PingResult, type SidecarStatus } from "../sidecar";
   import { finishBenchmark, firstPaintEpochMs, nowEpochMs, type StartupInfo } from "../startup";
-  import { checkForUpdates, type UpdateState } from "../updates";
-  import { createApi, type Api, type AppConfig, type ConnectionConfig, type DeviceCodePrompt, type EnvironmentConfig } from "./api";
+  import { scheduleUpdateChecks } from "../update-schedule";
+  import { createUpdateChecker, currentVersion, type UpdateState } from "../updates";
+  import { createApi, type Api, type AppConfig, type AppSettings, type ConnectionConfig, type DeviceCodePrompt, type EnvironmentConfig } from "./api";
   import ConnectionDialog from "./ConnectionDialog.svelte";
   import ContextMenu, { type MenuItem } from "./ContextMenu.svelte";
   import DetailPane from "./DetailPane.svelte";
   import EnvironmentDialog from "./EnvironmentDialog.svelte";
   import ImportDialog from "./ImportDialog.svelte";
+  import SettingsDialog from "./SettingsDialog.svelte";
   import StatusBar from "./StatusBar.svelte";
   import Tree from "./Tree.svelte";
   import { TreeModel, type LoadReport, type Row } from "./tree-model";
@@ -32,7 +34,11 @@
     | { kind: "environment"; initial?: EnvironmentConfig }
     | { kind: "connection"; environmentId: string; initial?: ConnectionConfig }
     | { kind: "import" }
+    | { kind: "settings" }
   >();
+  let settings = $state<AppSettings>({ updateCheck: "startup" });
+  const checkForUpdates = createUpdateChecker((s) => (update = s));
+  let stopUpdateSchedule = () => {};
   let treeWidth = $state(readWidth());
 
   const model = new TreeModel(
@@ -126,7 +132,16 @@
     };
     startup = `First paint ${timings.mainToFirstPaintMs} ms, sidecar ready ${timings.mainToSidecarReadyMs} ms (sidecar ${ping.startupMs} ms, ${ping.mode}, v${ping.version})`;
     if (info.benchMode === "startup") await finishBenchmark(timings);
-    if (!info.benchMode) checkForUpdates((s) => (update = s));
+    if (info.benchMode) return;
+    settings = await api!.settings();
+    update = { kind: "idle", current: await currentVersion() };
+    stopUpdateSchedule = scheduleUpdateChecks(settings.updateCheck, checkForUpdates, { atLaunch: true });
+  }
+
+  async function saveSettings(next: AppSettings) {
+    settings = await api!.saveSettings(next);
+    stopUpdateSchedule();
+    stopUpdateSchedule = scheduleUpdateChecks(settings.updateCheck, checkForUpdates, { atLaunch: false });
   }
 
   /** Re-reads environments and connections after a config change without losing expanded subtrees. */
@@ -245,6 +260,7 @@
       <button title="Import from SSMS, Azure Data Studio or VS Code" disabled={sidecar !== "connected"} onclick={() => (dialog = { kind: "import" })}>Import</button>
       <button title="New environment" onclick={() => (dialog = { kind: "environment" })}>+ Env</button>
       <button title="New connection" disabled={sidecar !== "connected"} onclick={() => addConnection()}>+ Connection</button>
+      <button title="Settings" aria-label="Settings" disabled={sidecar !== "connected"} onclick={() => (dialog = { kind: "settings" })}>Settings</button>
     </div>
     <div class="tree-host">
       {#if sidecar === "connected" && config.environments.length === 0}
@@ -275,6 +291,8 @@
     onSave={async (env) => configChanged(await api!.saveEnvironment(env))}
     onClose={() => (dialog = undefined)}
   />
+{:else if dialog?.kind === "settings"}
+  <SettingsDialog {settings} {update} onSave={saveSettings} onCheckNow={() => checkForUpdates()} onClose={() => (dialog = undefined)} />
 {:else if dialog?.kind === "import" && api}
   <ImportDialog
     {api}
