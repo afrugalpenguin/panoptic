@@ -5,7 +5,7 @@
 
 ## Context
 
-The work laptop is the real test bed for Entra, Intune and real data. Copying MSIs by hand after every build would stop it being used daily. This was planned for M5 and moved to M0.
+The work laptop is the real test bed for Entra, Intune and real data. Copying installers by hand after every build would stop it being used daily. This was planned for M5 and moved to M0.
 
 ## Decision
 

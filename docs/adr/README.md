@@ -14,4 +14,4 @@ One ADR per decision in the plan's decisions table. Write the ADR before the cod
 | [0008](0008-connection-store.md) | Encrypted local connection store, secrets in the OS keychain | Accepted |
 | [0009](0009-telemetry.md) | No telemetry | Accepted |
 | [0010](0010-distribution.md) | Per-user installer with auto-update from GitHub Releases | Accepted |
-| [0011](0011-code-signing.md) | Unsigned MSI for M0 | Accepted |
+| [0011](0011-code-signing.md) | Unsigned installer for M0 | Accepted |
