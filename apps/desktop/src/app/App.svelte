@@ -328,6 +328,16 @@
     if (row.type === "node" && row.node.hasChildren) model.toggle(row.node.id);
   }
 
+  /** Expand or collapse all from the toolbar; a selection that gets hidden moves up to its nearest shown ancestor. */
+  async function expandOrCollapseAll(change: () => void | Promise<void>) {
+    const before = selectedRow;
+    await change();
+    if (!before || rows.some((r) => r.key === before.key)) return;
+    let id = before.type === "node" ? model.parentOf(before.node.id) : before.parentId;
+    while (id && !rows.some((r) => r.key === id)) id = model.parentOf(id);
+    selectedKey = id || undefined;
+  }
+
   function readWidth(): number {
     try {
       return Number(localStorage.getItem("panoptic.treeWidth")) || 360;
@@ -366,6 +376,8 @@
     <div class="toolbar">
       <span class="title">Explorer</span>
       <span style:flex="1"></span>
+      <IconButton icon="expand-all" label="Expand all" disabled={rows.length === 0} onclick={() => expandOrCollapseAll(() => model.expandEnvironments())} />
+      <IconButton icon="collapse-all" label="Collapse all" disabled={rows.length === 0} onclick={() => expandOrCollapseAll(() => model.collapseAll())} />
       <IconButton icon="import" label="Import from SSMS, Azure Data Studio or VS Code" disabled={sidecar !== "connected"} onclick={() => (dialog = { kind: "import" })} />
       <IconButton icon="environment" label="New environment" onclick={() => (dialog = { kind: "environment" })} />
       <IconButton icon="connection" label="New connection" disabled={sidecar !== "connected"} onclick={() => addConnection()} />

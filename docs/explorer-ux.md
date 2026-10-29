@@ -12,7 +12,7 @@ Decided 29 Oct 2026. Mockups: Panoptic explorer mockups canvas (artboards B and 
 
 ## Layout
 
-Toolbar (40px): `EXPLORER` label left, icon buttons right (Import, New environment, New connection, Settings). Icons replace the current text buttons.
+Toolbar (40px): `EXPLORER` label left, icon buttons right (Expand all, Collapse all, Import, New environment, New connection, Settings). Icons replace the current text buttons. Expand all opens every environment as far as its connections and closes anything deeper, so it never calls a server; Collapse all closes every node. A selection hidden by either moves up to its nearest shown ancestor.
 
 Kind filter row (32px, below toolbar): one chip per kind present in the tree plus `All`. Chip shows kind badge, kind name and connection count. Clicking a chip filters the tree to that kind; `All` clears. The row is not rendered when only one kind exists. Chips are derived from the loaded connections, never a hard-coded list.
 

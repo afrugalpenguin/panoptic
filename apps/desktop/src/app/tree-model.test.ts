@@ -323,4 +323,48 @@ describe("TreeModel", () => {
     expect(model.rows().map((r) => r.key)).toEqual(["env:c", "env:a", "env:b"]);
     expect(onChange).toHaveBeenCalledTimes(1);
   });
+
+  describe("expand and collapse all", () => {
+    const conn = (id: string): TreeNode => ({ ...node(id), kind: "connection", meta: { endpoint: `${id}.x.com`, connectionKind: "sql" } });
+    const env = (id: string): TreeNode => ({ ...node(id), kind: "environment", meta: { environmentId: id } });
+
+    async function loaded() {
+      const { model, load } = fixture({
+        "": [env("dev"), env("prod"), { ...env("empty"), hasChildren: false }],
+        dev: [conn("dev/a"), conn("dev/b")],
+        prod: [conn("prod/a")],
+        "dev/a": [node("dev/a/db", false)],
+      });
+      await model.loadRoot();
+      return { model, load };
+    }
+
+    it("expand all opens every environment as far as its connections, without calling a server", async () => {
+      const { model, load } = await loaded();
+      await model.toggle("dev");
+      await model.toggle("dev/a");
+
+      await model.expandEnvironments();
+
+      expect(labels(model)).toEqual(["dev", "  a", "  b", "prod", "  a", "empty"]);
+      expect(load.mock.calls.map(([id]) => id)).toEqual(["", "dev", "dev/a", "prod"]);
+    });
+
+    it("collapse all closes every node with one change notification", async () => {
+      const onChange = vi.fn();
+      const kids: Record<string, TreeNode[]> = { "": [env("dev")], dev: [conn("dev/a")], "dev/a": [node("dev/a/db", false)] };
+      const model = new TreeModel(async (id) => kids[id], onChange);
+      await model.loadRoot();
+      await model.toggle("dev");
+      await model.toggle("dev/a");
+      onChange.mockClear();
+
+      model.collapseAll();
+
+      expect(labels(model)).toEqual(["dev"]);
+      expect(onChange).toHaveBeenCalledTimes(1);
+      await model.toggle("dev");
+      expect(labels(model)).toEqual(["dev", "  a"]);
+    });
+  });
 });
