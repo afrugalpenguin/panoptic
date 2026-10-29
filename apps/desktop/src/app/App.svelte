@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { connectSidecar, type PingResult } from "../sidecar";
+  import type { RpcClient } from "../rpc";
+  import { connectSidecar, type PingResult, type SidecarStatus } from "../sidecar";
   import { finishBenchmark, firstPaintEpochMs, nowEpochMs, type StartupInfo } from "../startup";
   import { checkForUpdates, type UpdateState } from "../updates";
   import { createApi, type Api, type AppConfig, type ConnectionConfig, type DeviceCodePrompt, type EnvironmentConfig } from "./api";
@@ -16,6 +17,7 @@
 
   let api = $state.raw<Api>();
   let sidecar = $state<"connecting" | "connected" | "disconnected">("connecting");
+  let sidecarText = $state("Starting...");
   let config = $state<AppConfig>({ environments: [] });
   let rows = $state.raw<Row[]>([]);
   let selectedKey = $state<string>();
@@ -51,29 +53,62 @@
     start();
   });
 
-  async function start() {
-    const rpc = await connectSidecar(
-      (code) => {
-        sidecar = "disconnected";
-        lastLoad = { id: "", label: "Sidecar", count: 0, ms: 0, error: `exited (code ${code ?? "unknown"}). Restart Panoptic.` };
-      },
-      (method, params) => {
-        if (method === "auth.deviceCode") deviceCode = params as DeviceCodePrompt;
-      },
-    );
-    api = createApi(rpc);
+  let rpc: RpcClient | undefined;
+  let runningBeforeConnected = false;
+  let initialised = false;
 
+  async function start() {
+    rpc = await connectSidecar(onSidecarStatus, (method, params) => {
+      if (method === "auth.deviceCode") deviceCode = params as DeviceCodePrompt;
+    });
+    api = createApi(rpc);
+    if (runningBeforeConnected) await onRunning();
+  }
+
+  /** The shell supervises the sidecar: it may take a while to start the first time, and restarts it if it exits. */
+  function onSidecarStatus(status: SidecarStatus) {
+    switch (status.state) {
+      case "starting":
+        sidecar = "connecting";
+        sidecarText = status.attempt > 1 ? `Restarting sidecar (attempt ${status.attempt})...` : "Starting...";
+        break;
+      case "running":
+        if (rpc) void onRunning();
+        else runningBeforeConnected = true;
+        break;
+      case "exited":
+        sidecar = "connecting";
+        sidecarText = `Sidecar exited (code ${status.code ?? "unknown"}), restarting...`;
+        break;
+      case "failed":
+        sidecar = "disconnected";
+        sidecarText = "Sidecar stopped";
+        lastLoad = { id: "", label: "Sidecar", count: 0, ms: 0, error: `${status.error}. Restart Panoptic.` };
+        break;
+    }
+  }
+
+  async function onRunning() {
     let ping: PingResult;
     try {
-      ping = await rpc.request<PingResult>("ping");
+      // Generous: the first run after install or update can be slow (antivirus scan, .NET unpacking).
+      ping = await rpc!.request<PingResult>("ping", undefined, 120_000);
     } catch {
-      sidecar = "disconnected";
+      return; // An exited/failed status follows and says what happened.
+    }
+    sidecar = "connected";
+    sidecarText = "Ready";
+    if (initialised) {
+      await configChanged(); // Restarted: refresh environments and connections, keep loaded subtrees.
       return;
     }
-    const sidecarReadyEpochMs = nowEpochMs();
-    sidecar = "connected";
+    initialised = true;
+    await firstLoad(ping);
+  }
 
-    config = await api.config();
+  async function firstLoad(ping: PingResult) {
+    const sidecarReadyEpochMs = nowEpochMs();
+    config = await api!.config();
     await model.loadRoot();
 
     const fcp = await firstPaintEpochMs();
@@ -223,7 +258,7 @@
   </main>
 
   <div class="status-host">
-    <StatusBar {sidecar} {inFlight} {lastLoad} {startup} {update} />
+    <StatusBar {sidecar} {sidecarText} {inFlight} {lastLoad} {startup} {update} />
   </div>
 </div>
 
