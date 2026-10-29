@@ -98,9 +98,13 @@ public sealed class SqlBackend(Credentials credentials) : IBackend
         if (!string.IsNullOrWhiteSpace(c.Database))
             return [DatabaseNode(path, c.Database, system: false)];
 
+        // Every online database, as SSMS lists them. No HAS_DBACCESS filter: on Azure SQL, Entra users
+        // are usually contained users inside each database rather than logins in master, so from master
+        // HAS_DBACCESS says no to every client database even though connecting to one directly works.
+        // A database the user really can't open reports that when it is expanded.
         const string sql = """
             SELECT name FROM sys.databases
-            WHERE state = 0 AND HAS_DBACCESS(name) = 1
+            WHERE state = 0
             ORDER BY name
             """;
         var names = await Query(c, secret, null, sql, null, r => r.GetString(0), ct);
@@ -247,6 +251,8 @@ public sealed class SqlBackend(Credentials credentials) : IBackend
         while (await reader.ReadAsync(ct)) results.Add(map(reader));
         return results;
     }
+
+    public Task<SqlConnection> OpenAsync(ConnectionConfig c, string? secret, string? database, CancellationToken ct) => Open(c, secret, database, ct);
 
     private async Task<SqlConnection> Open(ConnectionConfig c, string? secret, string? database, CancellationToken ct)
     {
