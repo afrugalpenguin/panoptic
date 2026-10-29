@@ -4,6 +4,8 @@ name: CI
 # straight away (release.yml), so everything a release needs to be correct is checked here.
 on:
   pull_request:
+    # edited: re-run the fragment check when a PR is retitled (feat/fix need a fragment, others don't).
+    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
 
@@ -12,11 +14,41 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # feat and fix PRs must add a user-facing change fragment (docs/changelog.md, ADR 0013).
+  fragment:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Require a change fragment on feat and fix PRs
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if ! printf '%s' "$TITLE" | grep -qE '^(feat|fix)(\([^)]*\))?!?:'; then
+            echo "PR title is not feat or fix; no change fragment needed."
+            exit 0
+          fi
+          added=$(git diff --name-only --diff-filter=A "$BASE"...HEAD -- 'changes/*.md' | grep -vx 'changes/README.md' || true)
+          if [ -z "$added" ]; then
+            echo "::error title=Change fragment missing::This feat or fix PR needs a change fragment. Add changes/<short-kebab-name>.md containing one user-facing line that starts with Added:, Changed:, Fixed: or Removed: (see changes/README.md)."
+            exit 1
+          fi
+          echo "Change fragment(s):"
+          echo "$added"
+
   ui:
+    if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
+        with:
+          # Full history and tags, so the changelog smoke run exercises the real tag walk.
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
@@ -29,8 +61,13 @@ jobs:
         run: pnpm --filter @panoptic/desktop test
       - name: Build frontend
         run: pnpm --filter @panoptic/desktop build
+      # A broken generator should fail here, not in a release.
+      - name: Changelog generator smoke run
+        shell: pwsh
+        run: ./scripts/changelog.ps1 -Head 0.0.0
 
   sidecar:
+    if: github.event.action != 'edited'
     # Windows: the store uses DPAPI.
     runs-on: windows-latest
     timeout-minutes: 15
@@ -47,6 +84,7 @@ jobs:
       - run: dotnet test apps/sidecar
 
   shell:
+    if: github.event.action != 'edited'
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
