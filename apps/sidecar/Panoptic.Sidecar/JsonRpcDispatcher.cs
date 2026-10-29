@@ -3,12 +3,25 @@ using System.Text.Json;
 
 namespace Panoptic.Sidecar;
 
-/// <summary>Writes a method's result value. Params is null when the request had none.</summary>
-public delegate void RpcHandler(JsonElement? parameters, Utf8JsonWriter result);
+/// <summary>
+/// Handles one request. Params is null when the request had none, and is safe to keep past the
+/// first await. Returns a writer for the result value.
+/// </summary>
+public delegate Task<Action<Utf8JsonWriter>> RpcHandler(JsonElement? parameters, CancellationToken cancellationToken);
+
+/// <summary>Thrown by handlers to return a specific JSON-RPC error code.</summary>
+public sealed class RpcException(int code, string message) : Exception(message)
+{
+    public const int InvalidParams = -32602;
+    /// <summary>Application error: the operation ran and failed (login failed, timeout, not found).</summary>
+    public const int OperationFailed = -32000;
+
+    public int Code { get; } = code;
+}
 
 /// <summary>
 /// JSON-RPC 2.0 over newline-delimited JSON. One request line in, at most one response line out.
-/// Hand-rolled with Utf8JsonWriter so it stays reflection-free for trimming and Native AOT.
+/// Hand-rolled with Utf8JsonWriter so it stays reflection-free.
 /// </summary>
 public sealed class JsonRpcDispatcher(IReadOnlyDictionary<string, RpcHandler> handlers)
 {
@@ -18,59 +31,62 @@ public sealed class JsonRpcDispatcher(IReadOnlyDictionary<string, RpcHandler> ha
     private const int InternalError = -32603;
 
     /// <summary>Returns the response line, or null for a notification.</summary>
-    public string? Handle(string line)
+    public async Task<string?> HandleAsync(string line, CancellationToken cancellationToken = default)
     {
-        JsonDocument doc;
+        JsonElement root;
         try
         {
-            doc = JsonDocument.Parse(line);
+            using var doc = JsonDocument.Parse(line);
+            root = doc.RootElement.Clone();
         }
         catch (JsonException)
         {
             return Error(null, ParseError, "Parse error");
         }
 
-        using (doc)
+        if (root.ValueKind != JsonValueKind.Object)
+            return Error(null, InvalidRequest, "Invalid request");
+
+        JsonElement? id = root.TryGetProperty("id", out var idEl) ? idEl : null;
+
+        if (!root.TryGetProperty("jsonrpc", out var version) || version.ValueKind != JsonValueKind.String || version.GetString() != "2.0"
+            || !root.TryGetProperty("method", out var methodEl) || methodEl.ValueKind != JsonValueKind.String)
+            return Error(id, InvalidRequest, "Invalid request");
+
+        var method = methodEl.GetString()!;
+        JsonElement? parameters = root.TryGetProperty("params", out var p) ? p : null;
+
+        if (!handlers.TryGetValue(method, out var handler))
+            return id is null ? null : Error(id, MethodNotFound, $"Method not found: {method}");
+
+        try
         {
-            var root = doc.RootElement;
-            if (root.ValueKind != JsonValueKind.Object)
-                return Error(null, InvalidRequest, "Invalid request");
-
-            JsonElement? id = root.TryGetProperty("id", out var idEl) ? idEl : null;
-
-            if (!root.TryGetProperty("jsonrpc", out var version) || version.ValueKind != JsonValueKind.String || version.GetString() != "2.0"
-                || !root.TryGetProperty("method", out var methodEl) || methodEl.ValueKind != JsonValueKind.String)
-                return Error(id, InvalidRequest, "Invalid request");
-
-            var method = methodEl.GetString()!;
-            JsonElement? parameters = root.TryGetProperty("params", out var p) ? p : null;
-
-            if (!handlers.TryGetValue(method, out var handler))
-                return id is null ? null : Error(id, MethodNotFound, $"Method not found: {method}");
-
-            try
+            var result = await handler(parameters, cancellationToken);
+            if (id is null) return null;
+            return Write(w =>
             {
-                if (id is null)
-                {
-                    handler(parameters, NullWriter);
-                    return null;
-                }
-
-                return Write(w =>
-                {
-                    Header(w, id);
-                    w.WritePropertyName("result");
-                    handler(parameters, w);
-                });
-            }
-            catch (Exception ex)
-            {
-                return id is null ? null : Error(id, InternalError, ex.Message);
-            }
+                Header(w, id);
+                w.WritePropertyName("result");
+                result(w);
+            });
+        }
+        catch (RpcException ex)
+        {
+            return id is null ? null : Error(id, ex.Code, ex.Message);
+        }
+        catch (Exception ex)
+        {
+            return id is null ? null : Error(id, InternalError, ex.Message);
         }
     }
 
-    private static readonly Utf8JsonWriter NullWriter = new(Stream.Null);
+    public static string Notification(string method, Action<Utf8JsonWriter> parameters) => Write(w =>
+    {
+        w.WriteString("jsonrpc", "2.0");
+        w.WriteString("method", method);
+        w.WritePropertyName("params");
+        parameters(w);
+    });
 
     private static string Error(JsonElement? id, int code, string message) => Write(w =>
     {

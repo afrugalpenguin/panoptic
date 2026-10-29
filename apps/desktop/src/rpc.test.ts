@@ -64,4 +64,11 @@ describe("RpcClient", () => {
     expect(() => client.receive("garbage")).not.toThrow();
     expect(() => client.receive(JSON.stringify({ jsonrpc: "2.0", id: 999, result: 1 }))).not.toThrow();
   });
+
+  it("passes server notifications to the notification handler", () => {
+    const seen: [string, unknown][] = [];
+    const client = new RpcClient(async () => {}, (method, params) => seen.push([method, params]));
+    client.receive(JSON.stringify({ jsonrpc: "2.0", method: "auth.deviceCode", params: { userCode: "ABC" } }));
+    expect(seen).toEqual([["auth.deviceCode", { userCode: "ABC" }]]);
+  });
 });

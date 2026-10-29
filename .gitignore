@@ -28,3 +28,6 @@ Thumbs.db
 # Sidecar publish output
 apps/sidecar/artifacts/
 apps/desktop/src-tauri/binaries/
+
+# Local dev database secrets
+docker/.env

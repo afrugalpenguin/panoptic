@@ -1,0 +1,23 @@
+# Local databases for developing Panoptic. Start with .\scripts\dev-db.ps1, which also seeds them.
+name: panoptic-dev
+
+services:
+  sql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${PANOPTIC_DEV_SA_PASSWORD:?run scripts/dev-db.ps1}
+    ports:
+      - "127.0.0.1:14333:1433"
+    volumes:
+      - sql-data:/var/opt/mssql
+
+  cosmos:
+    image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview
+    command: ["--protocol", "https"]
+    ports:
+      - "127.0.0.1:8081:8081"
+      - "127.0.0.1:1234:1234"
+
+volumes:
+  sql-data:
