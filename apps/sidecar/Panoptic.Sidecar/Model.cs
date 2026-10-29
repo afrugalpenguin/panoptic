@@ -94,7 +94,9 @@ public sealed record ExplorerSettings(bool ShowKindBadge = true, string RowFont 
     public string[] EnvOrder { get; init; } = EnvOrder ?? [];
 }
 
-public sealed record AppSettings(string UpdateCheck = UpdateCheckModes.Startup, ExplorerSettings? Explorer = null)
+/// <param name="LastSeenVersion">The app version whose changes the user has been shown (ADR 0013). Null means never
+/// recorded: a fresh install, or a store written before this setting existed.</param>
+public sealed record AppSettings(string UpdateCheck = UpdateCheckModes.Startup, ExplorerSettings? Explorer = null, string? LastSeenVersion = null)
 {
     public ExplorerSettings Explorer { get; init; } = Explorer ?? new ExplorerSettings();
 

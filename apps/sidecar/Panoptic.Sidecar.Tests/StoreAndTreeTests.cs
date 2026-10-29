@@ -123,6 +123,31 @@ public sealed class ConfigStoreTests : IDisposable
     }
 
     [Fact]
+    public void Last_seen_version_is_null_until_recorded_and_round_trips()
+    {
+        var store = new ConfigStore(_path);
+        Assert.Null(store.Settings.LastSeenVersion);
+
+        store.SaveSettings(store.Settings with { LastSeenVersion = "0.2.13" });
+
+        var reloaded = new ConfigStore(_path).Settings;
+        Assert.Equal("0.2.13", reloaded.LastSeenVersion);
+        Assert.Equal(UpdateCheckModes.Startup, reloaded.UpdateCheck);
+    }
+
+    [Theory]
+    [InlineData("0.2")]
+    [InlineData("v0.2.13")]
+    [InlineData("0.2.13-beta")]
+    [InlineData("")]
+    public void Malformed_last_seen_version_is_rejected(string version)
+    {
+        var store = new ConfigStore(_path);
+        Assert.Throws<RpcException>(() => store.SaveSettings(store.Settings with { LastSeenVersion = version }));
+        Assert.Null(store.Settings.LastSeenVersion);
+    }
+
+    [Fact]
     public void Unknown_row_font_is_rejected()
     {
         var store = new ConfigStore(_path);
