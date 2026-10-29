@@ -9,7 +9,7 @@ The multi-backend, environment-first tree is the part no vendor sells. A tree bu
 
 ## Decision
 
-v1 is a working SSMS replacement: SQL Server, Cosmos DB for NoSQL and Azure Synapse SQL pools, all behind the same node contract. Synapse speaks TDS and reuses the SQL Server backend with its catalog differences. Other engines come later through the same contract. Admin surfaces, a general editor, write-heavy editing, cross-environment diff and employer-specific connectors are out of scope for v1.
+v1 is a working SSMS replacement: SQL Server, Cosmos DB for NoSQL and Azure Synapse SQL pools, all behind the same node contract. Synapse speaks TDS and reuses the SQL Server backend with its catalog differences. Other engines come later through the same contract. Admin surfaces, a general editor, write-heavy editing and cross-environment diff are out of scope for v1.
 
 ## Consequences
 
