@@ -4,8 +4,15 @@ A native, instant-start object explorer that holds every environment at once:
 dev, UAT, prod and client sandboxes, SQL Server and Cosmos DB side by side,
 with the same node shape all the way down.
 
-Status: M0 (measurement). Nothing usable yet. See [docs/plan.md](docs/plan.md)
-for the build plan and [docs/adr/](docs/adr/) for decisions.
+Status: M1 (the tree) is done and in daily use; M2 (query editor and results grid) is in
+progress. Today Panoptic is an environment-first object explorer for SQL Server, Azure SQL,
+Azure Synapse and Cosmos DB, with Microsoft Entra, SQL login, Windows and account-key
+authentication, import of saved connections from SSMS, Azure Data Studio and VS Code, and a
+per-user installer that updates itself. Measurements are in
+[docs/benchmarks.md](docs/benchmarks.md); why the sidecar ships as a self-contained JIT build
+rather than Native AOT is in [ADR 0001](docs/adr/0001-stack.md). See
+[docs/plan.md](docs/plan.md) for the build plan, [docs/adr/](docs/adr/) for decisions and
+[docs/connectors/](docs/connectors/) for each connector.
 
 Windows only until v1.
 
