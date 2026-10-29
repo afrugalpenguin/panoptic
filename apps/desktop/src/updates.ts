@@ -8,6 +8,7 @@ const CHECK_TIMEOUT_MS = 15_000;
 
 export type UpdateState =
   | { kind: "idle"; current: string }
+  | { kind: "available"; current: string; next: string }
   | { kind: "downloading"; current: string; next: string }
   | { kind: "ready"; current: string; next: string; install: () => Promise<void> }
   | { kind: "error"; current: string; message: string };
@@ -19,6 +20,12 @@ export async function checkForUpdates(onState: (s: UpdateState) => void): Promis
   try {
     const update = await check({ timeout: CHECK_TIMEOUT_MS });
     if (!update) return;
+
+    // A portable copy can't be updated in place; just say a new version exists.
+    if (!(await invoke<boolean>("is_installed"))) {
+      onState({ kind: "available", current, next: update.version });
+      return;
+    }
 
     onState({ kind: "downloading", current, next: update.version });
     await update.download();

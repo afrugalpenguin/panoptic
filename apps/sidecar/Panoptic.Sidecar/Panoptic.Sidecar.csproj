@@ -7,7 +7,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>panoptic-sidecar</AssemblyName>
     <RootNamespace>Panoptic.Sidecar</RootNamespace>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <!-- Set by scripts/build-sidecar.ps1: aot, r2r or fdd. Reported by ping. -->
     <PanopticMode Condition="'$(PanopticMode)' == ''">dev</PanopticMode>
   </PropertyGroup>

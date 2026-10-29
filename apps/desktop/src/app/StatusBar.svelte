@@ -40,7 +40,9 @@
     {/if}
   </span>
 
-  {#if update?.kind === "downloading"}
+  {#if update?.kind === "available"}
+    <span class="item" title="Download the new portable zip from GitHub Releases">v{update.next} available on GitHub</span>
+  {:else if update?.kind === "downloading"}
     <span class="item">Downloading v{update.next}...</span>
   {:else if update?.kind === "ready"}
     <button class="update" onclick={() => update.kind === "ready" && update.install()}>Restart to update to v{update.next}</button>
