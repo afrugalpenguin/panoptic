@@ -1,7 +1,8 @@
 name: CI
 
 # Three parallel jobs, each as fast as it can be. This is the only test gate: merges to main release
-# straight away (release.yml), so everything a release needs to be correct is checked here.
+# straight away (release.yml), so everything a release needs to be correct is checked here, including
+# a vulnerability audit of each ecosystem's dependencies.
 on:
   pull_request:
     # edited: re-run the fragment check when a PR is retitled (feat/fix need a fragment, others don't).
@@ -65,6 +66,10 @@ jobs:
       - name: Changelog generator smoke run
         shell: pwsh
         run: ./scripts/changelog.ps1 -Head 0.0.0
+      # Fails on high or critical advisories. Low and moderate ones in build tooling often have no fix
+      # yet and would only block merges; Dependabot alerts still report them.
+      - name: Audit npm dependencies
+        run: pnpm audit --audit-level=high
 
   sidecar:
     if: github.event.action != 'edited'
@@ -82,6 +87,12 @@ jobs:
           key: nuget-${{ runner.os }}-${{ hashFiles('apps/sidecar/**/*.csproj') }}
           restore-keys: nuget-${{ runner.os }}-
       - run: dotnet test apps/sidecar
+      - name: Audit NuGet dependencies (including transitive)
+        shell: pwsh
+        run: |
+          $report = dotnet list apps/sidecar package --vulnerable --include-transitive 2>&1 | Out-String
+          Write-Output $report
+          if ($report -match 'has the following vulnerable packages') { throw 'Vulnerable NuGet packages: see the report above.' }
 
   shell:
     if: github.event.action != 'edited'
@@ -104,3 +115,10 @@ jobs:
       - name: Check Rust shell
         working-directory: apps/desktop/src-tauri
         run: cargo check --locked
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      # Fails on vulnerabilities; "unmaintained" and "unsound" notices are reported as warnings only.
+      - name: Audit Rust dependencies
+        working-directory: apps/desktop/src-tauri
+        run: cargo audit
