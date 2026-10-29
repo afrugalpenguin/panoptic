@@ -1,18 +1,24 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type * as Monaco from "monaco-editor/editor/editor.api";
+  import { models, type ModelInfo } from "./intellisense/providers";
   import type { QueryLanguage } from "./types";
 
   let {
     text = $bindable(),
     language,
+    intellisense,
     onRun,
   }: {
     text: string;
     language: QueryLanguage;
+    /** What completions and hover read; called on every request, so it always sees current settings. */
+    intellisense?: () => ModelInfo | undefined;
     /** Called with the selected text, or undefined to run everything. */
     onRun: (selection?: string) => void;
   } = $props();
+
+  const MONACO_LANGUAGE: Record<QueryLanguage, string> = { sql: "tsql", cosmos: "cosmos-sql" };
 
   let host: HTMLDivElement;
   let editor: Monaco.editor.IStandaloneCodeEditor | undefined;
@@ -28,7 +34,7 @@
       monaco = m.monaco;
       editor = monaco.editor.create(host, {
         value: text,
-        language,
+        language: MONACO_LANGUAGE[language],
         theme: dark.matches ? "vs-dark" : "vs",
         automaticLayout: true,
         minimap: { enabled: false },
@@ -39,6 +45,8 @@
         tabSize: 4,
         wordWrap: "off",
       });
+      const model = editor.getModel();
+      if (model && intellisense) models.set(model, intellisense);
       editor.onDidChangeModelContent(() => (text = editor!.getValue()));
       const run = () => {
         const selection = editor!.getSelection();

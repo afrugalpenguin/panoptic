@@ -1,0 +1,1 @@
+Added: The query editor completes table, view, column, procedure, parameter, variable and type names as you type, and shows details on hover. For Cosmos DB it completes property paths sampled from each container. Each SQL query tab also has a database picker, and the editor settings can change keyword case or turn IntelliSense off.

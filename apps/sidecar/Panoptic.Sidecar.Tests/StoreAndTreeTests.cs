@@ -135,6 +135,32 @@ public sealed class ConfigStoreTests : IDisposable
         Assert.Equal(UpdateCheckModes.Startup, reloaded.UpdateCheck);
     }
 
+    [Fact]
+    public void Editor_settings_default_and_round_trip()
+    {
+        var store = new ConfigStore(_path);
+        Assert.Equal(new EditorSettings(), store.Settings.Editor);
+        Assert.True(store.Settings.Editor.Intellisense);
+        Assert.Null(store.Settings.Editor.KeywordCase);
+        Assert.Equal(50, store.Settings.Editor.CatalogSampleDocs);
+        Assert.True(store.Settings.Editor.AutoRefreshOnDdl);
+
+        store.SaveSettings(store.Settings with { Editor = new EditorSettings(false, KeywordCases.Upper, 200, false) });
+
+        Assert.Equal(new EditorSettings(false, KeywordCases.Upper, 200, false), new ConfigStore(_path).Settings.Editor);
+    }
+
+    [Theory]
+    [InlineData("title", 50)]
+    [InlineData(null, 9)]
+    [InlineData(null, 501)]
+    public void Invalid_editor_settings_are_rejected(string? keywordCase, int sampleDocs)
+    {
+        var store = new ConfigStore(_path);
+        var ex = Assert.Throws<RpcException>(() => store.SaveSettings(store.Settings with { Editor = new EditorSettings(KeywordCase: keywordCase, CatalogSampleDocs: sampleDocs) }));
+        Assert.Equal(RpcException.InvalidParams, ex.Code);
+    }
+
     [Theory]
     [InlineData("0.2")]
     [InlineData("v0.2.13")]
@@ -265,6 +291,35 @@ public sealed class TreeServiceTests : IDisposable
 
         var ex = await Assert.ThrowsAsync<RpcException>(() => tree.ChildrenAsync("env:dev/conn:gone", default));
         Assert.Equal(RpcException.OperationFailed, ex.Code);
+    }
+
+    private TreeService TreeWithOneConnection()
+    {
+        var store = new ConfigStore(_path);
+        store.SaveEnvironment(new EnvironmentConfig("dev", "Dev", "#000", false, []));
+        store.SaveConnection("dev", new ConnectionConfig("c1", "Orders", ConnectionKinds.Sql, "srv", AuthKinds.Sql, Database: "Home"), "pw");
+        return new TreeService(store, new Dictionary<string, IBackend>());
+    }
+
+    [Fact]
+    public void ResolveTarget_uses_the_node_then_the_connection_default_then_an_override()
+    {
+        var tree = TreeWithOneConnection();
+        Assert.Equal("Home", tree.ResolveTarget("env:dev/conn:c1").Database);
+        Assert.Equal("Sales", tree.ResolveTarget("env:dev/conn:c1/db:Sales").Database);
+        Assert.Equal("Other", tree.ResolveTarget("env:dev/conn:c1/db:Sales", "Other").Database);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("bad\nname")]
+    [InlineData("x129")]
+    public void ResolveTarget_rejects_a_bad_database_override(string database)
+    {
+        var tree = TreeWithOneConnection();
+        var value = database == "x129" ? new string('x', 129) : database;
+        var ex = Assert.Throws<RpcException>(() => tree.ResolveTarget("env:dev/conn:c1", value));
+        Assert.Equal(RpcException.InvalidParams, ex.Code);
     }
 }
 

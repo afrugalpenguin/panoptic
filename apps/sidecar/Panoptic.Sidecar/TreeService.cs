@@ -29,8 +29,12 @@ public sealed class TreeService(ConfigStore store, IReadOnlyDictionary<string, I
     }
 
     /// <summary>The environment, connection and database (and Cosmos container) a node belongs to.</summary>
-    public QueryTarget ResolveTarget(string nodeId)
+    /// <param name="database">Overrides the node's database (a query tab's database picker). It only ever reaches
+    /// SqlConnectionStringBuilder.InitialCatalog or the Cosmos SDK, never SQL text, but is still bounded here.</param>
+    public QueryTarget ResolveTarget(string nodeId, string? database = null)
     {
+        if (database is not null && (database.Length is 0 or > 128 || database.Any(char.IsControl)))
+            throw new RpcException(RpcException.InvalidParams, "Invalid database name");
         var path = NodePath.Parse(nodeId);
         if (path.Count < 2 || path[0].Type != "env" || path[1].Type != "conn")
             throw new RpcException(RpcException.InvalidParams, "Select a connection, database or object to query.");
@@ -38,7 +42,10 @@ public sealed class TreeService(ConfigStore store, IReadOnlyDictionary<string, I
         var connection = env.Connections.FirstOrDefault(c => c.Id == path[1].Value)
             ?? throw new RpcException(RpcException.OperationFailed, "Connection no longer exists");
         var segment = (string type) => path.Segments.Skip(2).FirstOrDefault(s => s.Type == type).Value;
-        return new QueryTarget(env, connection, segment("db") ?? connection.Database, segment("c"));
+        var nodeDatabase = segment("db") ?? connection.Database;
+        // A container belongs to the node's database; switching database leaves none selected.
+        var container = database is null || database == nodeDatabase ? segment("c") : null;
+        return new QueryTarget(env, connection, database ?? nodeDatabase, container);
     }
 
     public IBackend BackendFor(ConnectionConfig connection) =>

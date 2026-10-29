@@ -48,9 +48,20 @@ export interface ExplorerSettings {
   envOrder: string[];
 }
 
+/** Mirrors EditorSettings in the sidecar's Model.cs (docs/query-editor.md, "Settings"). */
+export interface EditorSettings {
+  intellisense: boolean;
+  /** Absent: the language default (lower for T-SQL, upper for Cosmos). */
+  keywordCase?: "lower" | "upper" | "preserve" | null;
+  /** Documents sampled per Cosmos container for property paths, 10 to 500. */
+  catalogSampleDocs: number;
+  autoRefreshOnDdl: boolean;
+}
+
 export interface AppSettings {
   updateCheck: import("../update-schedule").UpdateCheckMode;
   explorer: ExplorerSettings;
+  editor: EditorSettings;
   /** The version whose changes the user has been shown (ADR 0013); absent means never recorded. */
   lastSeenVersion?: string | null;
 }
@@ -104,12 +115,17 @@ export function createApi(rpc: RpcClient) {
       rpc.request<TestConnectionResult>("connection.test", { connection, secret: secret ?? null }, 180_000),
     scanImports: () => rpc.request<ImportSource[]>("import.scan", undefined, 30_000),
     // A query can legitimately run for a long time; the user cancels it, so no RPC timeout applies.
-    executeQuery: (request: { queryId: string; nodeId: string; text: string }) =>
+    executeQuery: (request: { queryId: string; nodeId: string; text: string; database?: string }) =>
       rpc.request<import("../query/types").QuerySummary>("query.execute", request, 2_147_483_647),
     cancelQuery: (queryId: string) => rpc.request<boolean>("query.cancel", { queryId }),
     queryTemplate: (nodeId: string, action: "selectTop" | "newQuery") =>
       rpc.request<{ text?: string | null; language: "sql" | "cosmos" }>("query.template", { nodeId, action }),
     children: (nodeId: string) => rpc.request<TreeNode[]>("tree.children", { nodeId }, 180_000),
+    /** Answers at once from memory or disk; a fresher catalog arrives as a catalog.updated notification. */
+    catalogGet: (nodeId: string, database?: string) =>
+      rpc.request<import("../query/catalog.svelte").CatalogNotice>("catalog.get", { nodeId, database: database ?? null }),
+    catalogRefresh: (nodeId: string, database?: string) =>
+      rpc.request<import("../query/catalog.svelte").CatalogNotice>("catalog.refresh", { nodeId, database: database ?? null }),
   };
 }
 

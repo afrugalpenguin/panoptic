@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { UpdateCheckMode } from "../update-schedule";
   import type { UpdateState } from "../updates";
-  import type { AppSettings, EnvironmentConfig } from "./api";
+  import type { AppSettings, EditorSettings, EnvironmentConfig } from "./api";
   import Dialog from "./Dialog.svelte";
 
   let {
@@ -41,6 +41,11 @@
   /** Environment ids in display order: the saved manual order first, then any not in it, in order added. */
   // svelte-ignore state_referenced_locally
   let envOrder = $state(orderedIds(settings.explorer.envOrder));
+  // svelte-ignore state_referenced_locally
+  let editor = $state<Omit<EditorSettings, "keywordCase"> & { keywordCase: NonNullable<EditorSettings["keywordCase"]> | "default" }>({
+    ...settings.editor,
+    keywordCase: settings.editor.keywordCase ?? "default",
+  });
   let saving = $state(false);
 
   function orderedIds(saved: string[]): string[] {
@@ -81,7 +86,8 @@
     saving = true;
     error = "";
     try {
-      await onSave({ ...settings, updateCheck, explorer: { showKindBadge, rowFont, envOrder } });
+      const keywordCase = editor.keywordCase === "default" ? null : editor.keywordCase;
+      await onSave({ ...settings, updateCheck, explorer: { showKindBadge, rowFont, envOrder }, editor: { ...editor, keywordCase } });
       onClose();
     } catch (e) {
       error = String(e instanceof Error ? e.message : e);
@@ -135,6 +141,30 @@
       {/each}
     </ol>
   {/if}
+
+  <h3 class="full">Query editor</h3>
+
+  <span></span>
+  <label class="check"><input type="checkbox" bind:checked={editor.intellisense} /> IntelliSense: complete names and show details on hover</label>
+
+  <label for="s-case">Keyword case</label>
+  <select id="s-case" bind:value={editor.keywordCase} disabled={!editor.intellisense}>
+    <option value="default">Default (lower for SQL, upper for Cosmos)</option>
+    <option value="lower">lower</option>
+    <option value="upper">UPPER</option>
+    <option value="preserve">As listed</option>
+  </select>
+
+  <span></span>
+  <label class="check"
+    ><input type="checkbox" bind:checked={editor.autoRefreshOnDdl} disabled={!editor.intellisense} /> Refresh IntelliSense after running CREATE, ALTER or DROP</label
+  >
+
+  <label for="s-sample">Cosmos sample size</label>
+  <input id="s-sample" type="number" min="10" max="500" step="10" bind:value={editor.catalogSampleDocs} disabled={!editor.intellisense} />
+
+  <span></span>
+  <p class="help muted">Documents read from each Cosmos container to learn its property paths.</p>
 
   {#if error}<p class="full error">{error}</p>{/if}
 

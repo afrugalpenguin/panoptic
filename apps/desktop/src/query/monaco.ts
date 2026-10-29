@@ -1,29 +1,34 @@
-// Loaded on demand when the first query tab opens (ADR 0006), so Monaco never costs start-up time.
-// Only the core editor and the SQL grammar are bundled; no TypeScript or JSON language services.
+// Loaded on demand (ADR 0006): fetched when a connection is first selected, created when the first query tab opens,
+// so Monaco never costs start-up time. Only the core editor, the contributions listed in docs/query-editor.md and
+// the two query languages are bundled; no other language services.
 import * as monaco from "monaco-editor/editor/editor.api";
-import "monaco-editor/languages/definitions/sql/register";
+import { conf as sqlConf, language as sqlLanguage } from "monaco-editor/languages/definitions/sql/sql";
 import "monaco-editor/editor/contrib/find/browser/findController";
+import "monaco-editor/editor/contrib/suggest/browser/suggestController";
+import "monaco-editor/editor/contrib/hover/browser/hoverContribution";
+import "monaco-editor/editor/contrib/bracketMatching/browser/bracketMatching";
+import "monaco-editor/editor/contrib/folding/browser/folding";
+import "monaco-editor/editor/contrib/comment/browser/comment";
+import "monaco-editor/editor/contrib/multicursor/browser/multicursor";
 import EditorWorker from "monaco-editor/editor/editor.worker?worker";
+import IntelliSenseWorker from "./intellisense/worker-entry?worker";
+import { IntelliSenseClient } from "./intellisense/client";
+import { COSMOS_FUNCTIONS, COSMOS_KEYWORDS } from "./intellisense/cosmos-words";
+import { registerIntelliSense } from "./intellisense/providers";
+import { TSQL_KEYWORDS } from "./intellisense/tsql-words";
 
 Object.assign(self, { MonacoEnvironment: { getWorker: () => new EditorWorker() } });
 
-const COSMOS_KEYWORDS = [
-  "SELECT", "VALUE", "TOP", "DISTINCT", "FROM", "WHERE", "AND", "OR", "NOT", "IN", "BETWEEN", "LIKE", "ESCAPE",
-  "EXISTS", "AS", "JOIN", "ORDER", "BY", "ASC", "DESC", "GROUP", "OFFSET", "LIMIT", "ARRAY", "UNDEFINED",
-  "NULL", "TRUE", "FALSE",
-];
+// T-SQL: Monaco's sql grammar with the T-SQL keywords it lacks. Colouring never uses a parser.
+monaco.languages.register({ id: "tsql", aliases: ["T-SQL"] });
+monaco.languages.setMonarchTokensProvider("tsql", {
+  ...sqlLanguage,
+  keywords: [...new Set([...sqlLanguage.keywords, ...TSQL_KEYWORDS])],
+});
+monaco.languages.setLanguageConfiguration("tsql", sqlConf);
 
-const COSMOS_FUNCTIONS = [
-  "COUNT", "SUM", "AVG", "MIN", "MAX", "ABS", "CEILING", "FLOOR", "ROUND", "POWER", "SQRT", "ARRAY_CONCAT",
-  "ARRAY_CONTAINS", "ARRAY_LENGTH", "ARRAY_SLICE", "IS_ARRAY", "IS_BOOL", "IS_DEFINED", "IS_NULL", "IS_NUMBER",
-  "IS_OBJECT", "IS_PRIMITIVE", "IS_STRING", "CONCAT", "CONTAINS", "ENDSWITH", "STARTSWITH", "INDEX_OF", "LEFT",
-  "RIGHT", "LENGTH", "LOWER", "UPPER", "LTRIM", "RTRIM", "TRIM", "REPLACE", "REPLICATE", "REVERSE", "SUBSTRING",
-  "TOSTRING", "STRINGTOARRAY", "STRINGTONUMBER", "STRINGTOOBJECT", "GETCURRENTDATETIME", "GETCURRENTTIMESTAMP",
-  "DATETIMEADD", "DATETIMEDIFF", "DATETIMEPART", "ST_DISTANCE", "ST_WITHIN", "ST_INTERSECTS", "RegexMatch",
-];
-
-monaco.languages.register({ id: "cosmos", aliases: ["Cosmos SQL"] });
-monaco.languages.setMonarchTokensProvider("cosmos", {
+monaco.languages.register({ id: "cosmos-sql", aliases: ["Cosmos SQL"] });
+monaco.languages.setMonarchTokensProvider("cosmos-sql", {
   ignoreCase: true,
   keywords: COSMOS_KEYWORDS,
   builtins: COSMOS_FUNCTIONS,
@@ -41,10 +46,12 @@ monaco.languages.setMonarchTokensProvider("cosmos", {
     ],
   },
 });
-monaco.languages.setLanguageConfiguration("cosmos", {
+monaco.languages.setLanguageConfiguration("cosmos-sql", {
   comments: { lineComment: "--" },
   brackets: [["{", "}"], ["[", "]"], ["(", ")"]],
   autoClosingPairs: [{ open: "(", close: ")" }, { open: "[", close: "]" }, { open: "{", close: "}" }, { open: "'", close: "'" }, { open: '"', close: '"' }],
 });
+
+registerIntelliSense(monaco, new IntelliSenseClient(() => new IntelliSenseWorker()));
 
 export { monaco };
