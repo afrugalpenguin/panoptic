@@ -39,3 +39,15 @@ pre {
   font-family: "Cascadia Mono", Consolas, monospace;
   font-size: 13px;
 }
+
+#version {
+  font-size: 13px;
+  font-weight: 400;
+  opacity: 0.6;
+}
+
+#update {
+  padding: 8px 12px;
+  border-radius: 4px;
+  background: color-mix(in srgb, CanvasText 8%, Canvas);
+}
