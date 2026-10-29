@@ -13,4 +13,4 @@ Tauri 2 hosts a TypeScript UI in WebView2 with Monaco for the query pane. All da
 
 ## Consequences
 
-Three toolchains (Rust, Node, .NET) in one repo and in CI. Mac and Linux remain possible without rework. Sidecar cold start is a measured M0 risk (see 0005 and docs/benchmarks.md). The sidecar ships self-contained with ReadyToRun (about 60 ms start-up, about 134 MB uncompressed): Native AOT starts in about 20 ms but SqlClient and the Cosmos SDK fail at runtime under it because they rely on reflection.
+Three toolchains (Rust, Node, .NET) in one repo and in CI. Mac and Linux remain possible without rework. Sidecar cold start is a measured M0 risk (see 0005 and docs/benchmarks.md). The sidecar ships self-contained and JIT-compiled (about 70 ms start-up, 98 MB uncompressed). ReadyToRun saves about 10 ms at start-up and about 90 ms on the first SQL query of a session, but adds over a minute to every release, so it is off while releases ship on every merge. Native AOT starts in about 20 ms but SqlClient and the Cosmos SDK fail at runtime under it because they rely on reflection.
