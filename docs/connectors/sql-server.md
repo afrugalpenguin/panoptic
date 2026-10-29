@@ -118,29 +118,48 @@ is a SQL login, and nothing is Windows.
 are allowed. `authenticationType` maps `SqlLogin` to SQL login, `Integrated` to Windows, and
 anything Azure or ActiveDirectory to Entra.
 
-### Environments suggested from server names
+### Environments suggested from names and folders
 
-Connection history has no groups, so the import dialog proposes environments from the user's own
-naming convention (`apps/desktop/src/app/import-plan.ts`):
+Import is usually a one-off, so the aim is to get about 90% of connections into the right
+environment automatically, with the rest one click away (`apps/desktop/src/app/import-plan.ts`).
 
-1. Each server is reduced to the part people vary: the first DNS label, lower-cased, without the
-   port, the instance name or Synapse's `-ondemand` suffix.
-2. For each server, the importer finds its **family prefix**: the longest prefix shared by at
-   least three servers, and by at least half of the servers that share its first four characters.
-   In `acmedwhuat`, `acmedwhsupport`, `acmedwhsandbox` and `acmedwhdev`, that is `acmedwh`. The
-   half rule stops a sub-family (`acmedwhs`, shared by support, sandbox and stage) from winning.
-3. Whatever follows the prefix is the environment: `uat` becomes UAT, `support` becomes Support,
-   and `stage-us` becomes Stage US. Trailing digits are dropped (`uat2` is UAT). Common tokens get
-   canonical names (prd/production/live are Prod, qa/tst are Test, development is Dev, uk/us/eu
-   are upper case), and anything else is title-cased as written. So names on no list, such as
-   Support or Sandbox, still group together.
-4. The bare family name itself (`acmedwh`) is left unassigned rather than guessed to be prod.
-5. Servers with no family fall back to keywords, matched as whole words or glued onto the end of
-   the name (`orders-prod`, `billingprod`). Words that merely contain a keyword (`product`,
-   `devonshire`) don't match. `localhost`, `127.0.0.1`, `.` and `(local)` are Local.
+1. **Local servers:** `localhost`, `127.0.0.1`, `.` and `(local)` are Local.
+2. **A rule table**, applied to the server name, then the database name, then the display name.
+   Each rule matches its words as a separate word in any position (`orders-uat`, `uat-orders`,
+   `sql-orders-prd-01`, `orders.uat.corp`), and most also match when glued onto the end of a
+   word (`ordersuat`). They never match mid-word, so `product`, `devonshire` and `testament` don't
+   count. Spellings are normalised, but distinct environments stay distinct:
 
-Suggested groups are merged across sources and ordered Dev, Test, UAT, Prod, then the rest
-alphabetically, with unrecognised servers last under "Other connections". Prod starts red and
-read-only. Groups saved in SSMS are kept by default; a checkbox regroups everything by naming
-pattern instead. The user can rename or retarget any group before importing. Connections already
-in Panoptic (same server, user and database) are shown as already added and skipped.
+   | Environment | Words |
+   | --- | --- |
+   | Pre-prod | pre-prod, preprod |
+   | Non-prod | non-prod, nonprod |
+   | Prod | prod, prd, production |
+   | Staging | staging, stage, stg |
+   | UAT | uat |
+   | SIT | sit |
+   | QA | qa |
+   | Test | test, tst |
+   | Dev | dev, develop, development |
+   | Sandbox | sandbox, sbx |
+   | DR, Demo, Perf, Training, Hotfix, Lower | the word itself (training also matches train) |
+
+3. **Regions** are appended: `-uk`, `-us`, `-eu`, `uksouth`, `eastus` and so on give "Prod UK" or
+   "UAT UK South".
+4. **Fallback for glued house words** not in the table: the longest prefix shared by at least three
+   servers, and by at least half of the servers that share its first four characters, is the family
+   name, and whatever follows it is the environment. So `<family>support` and `<family>sandbox`
+   group as Support and Sandbox. The half rule stops a sub-family (three names that happen to
+   continue with the same letter) from winning.
+5. Anything else goes to "Other connections".
+
+Folders saved in SSMS are kept as they are by default. The "Group by server naming pattern"
+checkbox regroups everything: folders whose names match the rule table ("Production", "Lower
+environments") still decide, and connections in other folders (client or app folders) are grouped
+by their names. Groups are ordered Local, Dev, Test, QA, SIT, UAT, Staging, Pre-prod, Prod, then the
+rest alphabetically, with "Other connections" last. Prod (including Prod UK and the like) starts red
+and read-only.
+
+In the preview, every connection has a **Move to** menu, and every group can be renamed or pointed
+at an existing environment. Connections already in Panoptic (same server, user and database) are
+shown as already added and skipped.
