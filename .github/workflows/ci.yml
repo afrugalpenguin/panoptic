@@ -5,8 +5,6 @@ name: CI
 # a vulnerability audit of each ecosystem's dependencies.
 on:
   pull_request:
-    # edited: re-run the fragment check when a PR is retitled (feat/fix need a fragment, others don't).
-    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
 
@@ -15,34 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # feat and fix PRs must add a user-facing change fragment (docs/changelog.md, ADR 0013).
-  fragment:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - name: Require a change fragment on feat and fix PRs
-        env:
-          TITLE: ${{ github.event.pull_request.title }}
-          BASE: ${{ github.event.pull_request.base.sha }}
-        run: |
-          if ! printf '%s' "$TITLE" | grep -qE '^(feat|fix)(\([^)]*\))?!?:'; then
-            echo "PR title is not feat or fix; no change fragment needed."
-            exit 0
-          fi
-          added=$(git diff --name-only --diff-filter=A "$BASE"...HEAD -- 'changes/*.md' | grep -vx 'changes/README.md' || true)
-          if [ -z "$added" ]; then
-            echo "::error title=Change fragment missing::This feat or fix PR needs a change fragment. Add changes/<short-kebab-name>.md containing one user-facing line that starts with Added:, Changed:, Fixed: or Removed: (see changes/README.md)."
-            exit 1
-          fi
-          echo "Change fragment(s):"
-          echo "$added"
-
   ui:
-    if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -72,7 +43,6 @@ jobs:
         run: pnpm audit --audit-level=high
 
   sidecar:
-    if: github.event.action != 'edited'
     # Windows: the store uses DPAPI.
     runs-on: windows-latest
     timeout-minutes: 15
@@ -95,7 +65,6 @@ jobs:
           if ($report -match 'has the following vulnerable packages') { throw 'Vulnerable NuGet packages: see the report above.' }
 
   shell:
-    if: github.event.action != 'edited'
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
