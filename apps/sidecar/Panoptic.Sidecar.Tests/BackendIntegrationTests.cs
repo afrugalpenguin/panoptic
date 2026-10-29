@@ -52,6 +52,26 @@ public class BackendIntegrationTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task Sql_catalog_has_objects_columns_params_and_a_stable_stamp()
+    {
+        var password = Environment.GetEnvironmentVariable("PANOPTIC_TEST_SQL_PASSWORD");
+        if (string.IsNullOrEmpty(password)) return;
+
+        await using var conn = await new SqlBackend(NoEntra).OpenAsync(DevSql, password, "Orders", CancellationToken.None);
+        var sw = Stopwatch.StartNew();
+        var catalog = await Catalog.SqlCatalog.BuildAsync(conn, CancellationToken.None);
+        output.WriteLine($"catalog: {catalog.Objects.Length} objects, {catalog.Objects.Sum(o => o.Columns?.Length ?? 0)} columns in {sw.ElapsedMilliseconds} ms");
+
+        Assert.Contains("sales", catalog.Schemas);
+        Assert.Contains("int", catalog.Types);
+        var order = catalog.Objects.Single(o => o.Schema == "sales" && o.Name == "Order");
+        Assert.Contains(order.Columns!, c => c.Name == "Total" && c.Type == "decimal(18, 2)" && !c.Nullable);
+        Assert.NotEmpty(catalog.Objects.Single(o => o.Name == "GetCustomerOrders").Params!);
+        Assert.Contains(catalog.Objects, o => o.Kind == Catalog.ObjectKinds.Synonym);
+        Assert.Equal(catalog.Stamp, await Catalog.SqlCatalog.StampAsync(conn, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task Sql_lists_databases_the_login_cannot_reach_through_master()
     {
         var password = Environment.GetEnvironmentVariable("PANOPTIC_TEST_SQL_PASSWORD");
