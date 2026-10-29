@@ -1,0 +1,26 @@
+# Node
+node_modules/
+dist/
+.pnpm-store/
+
+# Rust / Tauri
+target/
+apps/desktop/src-tauri/gen/
+
+# .NET
+bin/
+obj/
+*.user
+.vs/
+
+# Secrets - never commit updater keys or connection files
+*.key
+*.key.pub
+.env
+.env.*
+
+# OS / editor
+Thumbs.db
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
