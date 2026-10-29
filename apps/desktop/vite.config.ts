@@ -1,12 +1,29 @@
 import { svelte } from "@sveltejs/vite-plugin-svelte";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 // @ts-expect-error type error without @types/node package
 import process from "node:process";
 const host = process.env.TAURI_DEV_HOST;
 
+/**
+ * Monaco vendors its own copy of DOMPurify (esm/vs/base/browser/dompurify/dompurify.js) instead of
+ * importing the npm package, so a package override alone would not change what ships. This points
+ * that one import at the npm package, which pnpm-workspace.yaml pins to a patched version. Both
+ * export the same default DOMPurify instance. Remove with the override (issue #41).
+ */
+function patchedDompurify(): Plugin {
+  return {
+    name: "panoptic:patched-dompurify",
+    enforce: "pre",
+    async resolveId(source, importer) {
+      if (!importer?.includes("monaco-editor") || !source.endsWith("dompurify/dompurify.js")) return null;
+      return this.resolve("dompurify", importer, { skipSelf: true });
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig(() => ({
-  plugins: [svelte()],
+  plugins: [patchedDompurify(), svelte()],
 
   build: {
     // WebView2 is evergreen Chromium, so target it directly (top-level await, modern syntax).

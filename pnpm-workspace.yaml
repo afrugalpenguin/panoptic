@@ -1,2 +1,8 @@
 packages:
   - apps/desktop
+
+# Security pins for transitive dependencies; remove each once its parent ships a fixed version.
+overrides:
+  # monaco-editor 0.57.0 pins dompurify 3.4.15 (critical and high advisories, fixed in 3.4.17).
+  # Tracked in issue #41 alongside the sidecar's Pkcs pin.
+  dompurify: 3.4.17
