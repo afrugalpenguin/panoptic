@@ -24,7 +24,7 @@ Panoptic: seeing everything from one position. The Ctrl+P palette inside it is c
 
 | Decision | Choice | Why |
 | --- | --- | --- |
-| Stack | Tauri 2 shell, TypeScript UI with Monaco, .NET 9 sidecar for data access | Microsoft.Data.SqlClient and the Cosmos .NET SDK are the only mature drivers with Entra auth. The TS UI reuses Angular-era skills. Tauri gives Mac later with no rework. |
+| Stack | Tauri 2 shell, TypeScript UI with Monaco, .NET 10 sidecar for data access | Microsoft.Data.SqlClient and the Cosmos .NET SDK are the only mature drivers with Entra auth. The TS UI reuses Angular-era skills. Tauri gives Mac later with no rework. |
 | v1 scope | SQL Server + Cosmos under one tree | The multi-backend tree is the only part no vendor sells. Proving the node model on two very different backends early stops it becoming SQL-shaped. |
 | Repo | Personal GitHub (afrugalpenguin), open source, MIT | Generic tool, portfolio piece. Cenata-specific connectors live in a separate private repo as plugins. |
 | UI framework | Svelte 5 or plain TS with a virtualised tree and grid | React or Angular would be familiar but heavier; the tree and grid are the product and must be hand-tuned. Decide in M0 with a benchmark, not a preference. |
@@ -33,6 +33,8 @@ Panoptic: seeing everything from one position. The Ctrl+P palette inside it is c
 | Auth | Entra (MSAL.NET) first, SQL auth second, key-based Cosmos third | Matches how Cenata Azure SQL and Cosmos are actually reached. Tokens cached per connection by the sidecar, never written to disk unencrypted. |
 | Connection store | Encrypted local file, OS keychain for secrets | Export and import as a single file so the dotfiles repo can carry it. |
 | Telemetry | None | Fail-closed on anything that phones home. |
+| Distribution | Per-user MSI on GitHub Releases, Tauri updater plugin checks on launch | The work laptop is the real test bed; it must pick up every build without manual installs. The update check is the one outbound call and goes only to GitHub Releases. |
+| Code signing | Unsigned (Authenticode) in M0, updater payloads signed with a Tauri updater key | Prove SmartScreen and Intune behaviour first; buy a certificate or Azure Trusted Signing only if install is blocked or before v1. |
 
 ## Prior art
 
@@ -67,7 +69,7 @@ The tree is environment-first, and every backend presents the same node contract
 
 - Lazy load everything below Connection. A node fetches its children on first expand, caches them, and shows a stale marker after a configurable age rather than refetching on every expand.
 - One catalog query per expand, never one per child. SQL Server children come from `sys.objects` joined to `sys.schemas` with a single round trip; Cosmos from `ReadContainerAsync` and the SDK's feed iterators.
-- Virtualised rendering. The tree only draws visible rows; 50k nodes must not cost more than 500 draw.
+- Virtualised rendering. The tree only draws visible rows; 50k nodes must not cost more than drawing the roughly 500 rows on screen.
 - Filter as you type, scoped to the selected subtree, matching on name, schema and object type. Filters are saveable and apply per environment or globally, like the mssql extension's saved filters but across every connection at once.
 - Keyboard first. Arrow keys, type-to-jump, Enter to open the default action, and Seek (Ctrl+P), the palette that searches every loaded node across every environment.
 - Right-click actions come from the backend, not the UI: Select top 1000, Script as CREATE, Open definition, Copy name, Diff with..., Send to agent. The list grows without touching the tree component.
@@ -92,18 +94,18 @@ Result sets stream as notifications of 500-row batches so the grid paints the fi
 
 Each milestone has one definition of done, and the next one does not start until it is met on the work laptop, not just at home.
 
-- **M0 Measure.** Numbers in `docs/benchmarks.md` for cold start, tree and grid frame times, Entra sign-in, and a per-user MSI installed on the work laptop. ADRs written for the UI framework choice.
+- **M0 Measure.** Numbers in `docs/benchmarks.md` for cold start, tree and grid frame times, Entra sign-in, and a per-user MSI installed on the work laptop that auto-updates from GitHub Releases. ADRs written for the UI framework choice.
 - **M1 Tree.** Two SQL Server connections and one Cosmos account under one environment node, lazy-loaded through the node contract, every expand under 300 ms, nothing else on screen. If this is not enjoyable to click around, stop here.
 - **M2 Query and grid.** Monaco query pane bound to the selected connection, streamed results, cancel, CSV and JSON export, Cosmos SQL as a Monaco language. Select top 1000 on any table or container.
 - **M3 Filters, actions.** Type-to-filter scoped to a subtree, saved filters, the Ctrl+P palette across every loaded node, Script as CREATE, Open definition, Copy name, read-only environment flag that disables writes.
 - **M4 Diff.** Diff with... on any two nodes of the same kind: table DDL via dbml-diff, proc and view bodies, Cosmos indexing policies and documents, shown in a Monaco diff view.
-- **M5 Agent, packaging.** Send to agent (schema plus sample rows to Claude Code or Copilot CLI via a configurable command), connection export and import, signed MSI, README with screenshots, first public tag.
+- **M5 Agent, packaging.** Send to agent (schema plus sample rows to Claude Code or Copilot CLI via a configurable command), connection export and import, Authenticode-signed MSI, README with screenshots, v1 tag. (Auto-update moved to M0.)
 
 ## Risks and the cheap tests that retire them
 
 | Risk | Why it matters | Test (M0, before any real code) |
 | --- | --- | --- |
-| Sidecar start-up time blows the 500 ms budget | .NET cold start plus MSAL init could be 1 to 2 s on the work laptop | Measure a hello-world .NET 9 sidecar started by Tauri, with and without ReadyToRun and trimming. Show the window first and connect the sidecar in the background if needed. |
+| Sidecar start-up time blows the 500 ms budget | .NET cold start plus MSAL init could be 1 to 2 s on the work laptop | Measure a hello-world .NET 10 sidecar started by Tauri, with and without ReadyToRun and trimming. Show the window first and connect the sidecar in the background if needed. |
 | Tauri webview on Windows is slow or inconsistent | WebView2 is Chromium, so this is the Electron question again | Render a 50k-row virtualised tree and a 100k-row grid in a bare Tauri window and measure frame times with the devtools profiler. |
 | Entra auth from a sidecar on an Intune-managed laptop | Broker-based sign-in may need WAM, which may be blocked or need elevation | Run MSAL.NET with the WAM broker from a console app on the work laptop. If it fails, device-code flow is the fallback and is still fine for a dev tool. |
 | Cosmos object listing is slower than SQL | Each container needs separate calls for policy, procs, triggers | Time `GetContainerQueryIterator` plus per-container reads on a real account; cache aggressively and expand lazily. |
@@ -127,15 +129,15 @@ Each milestone has one definition of done, and the next one does not start until
 The first session is M0 and nothing else. It produces measurements, not features, and the plan above survives or changes based on what comes back.
 
 - [ ] Create afrugalpenguin/panoptic with the monorepo layout, licence, README stub, commit hook check, CI skeleton.
-- [ ] Scaffold Tauri 2 with a TypeScript front end and a .NET 9 console sidecar wired over stdio JSON-RPC. One round trip: UI sends `ping`, sidecar answers with its start-up time.
+- [ ] Scaffold Tauri 2 with a TypeScript front end and a .NET 10 console sidecar wired over stdio JSON-RPC. One round trip: UI sends `ping`, sidecar answers with its start-up time.
 - [ ] Measure cold start on the work laptop and the home machine: window visible, sidecar ready. Record both numbers in `docs/benchmarks.md`.
 - [ ] Render a synthetic 50k-node virtualised tree and a 100k-row grid from fixture data. Record frame times. Decide Svelte versus plain TS on these numbers and write the ADR.
 - [ ] Prove Entra sign-in from the sidecar on the work laptop (WAM broker, device-code fallback). Record which worked.
 - [ ] Connect to one real SQL Server and one real Cosmos account read-only, list databases through the node contract, and show them under one fake environment node.
-- [ ] Build and install the per-user MSI on the work laptop.
+- [ ] Tag-triggered release workflow: per-user MSI plus signed updater manifest on GitHub Releases. Install once on the work laptop, then confirm it updates itself to the next tag.
 
 Prompt to paste:
 
 ```markdown
-You are starting M0 of Panoptic, a native multi-environment object explorer for SQL Server and Cosmos DB. Read docs/plan.md first; it is the source of truth. M0 is a measurement milestone: scaffold Tauri 2 + TypeScript + a .NET 9 stdio JSON-RPC sidecar, then produce the benchmarks and ADRs listed under "First session" in the plan. Do not build features. Record every number in docs/benchmarks.md with the machine and date. Work on a branch, open a PR per task, conventional commits, no attribution trailers. Windows is the only target; all scripts are PowerShell. If any measurement breaks a budget in the plan, stop and say so rather than working around it.
+You are starting M0 of Panoptic, a native multi-environment object explorer for SQL Server and Cosmos DB. Read docs/plan.md first; it is the source of truth. M0 is a measurement milestone: scaffold Tauri 2 + TypeScript + a .NET 10 stdio JSON-RPC sidecar, then produce the benchmarks and ADRs listed under "First session" in the plan. Do not build features. Record every number in docs/benchmarks.md with the machine and date. Work on a branch, open a PR per task, conventional commits, no attribution trailers. Windows is the only target; all scripts are PowerShell. If any measurement breaks a budget in the plan, stop and say so rather than working around it.
 ```
