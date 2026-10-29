@@ -143,4 +143,47 @@ describe("TreeModel", () => {
     expect(labels(model)).toEqual(["a", "  x", "    1", "  y"]);
     expect(load).toHaveBeenCalledTimes(4);
   });
+
+  it("precomputes label segments for connections and leaves when they load", async () => {
+    const conn = (id: string, endpoint: string, kind = "sql"): TreeNode => ({
+      id,
+      kind: "connection",
+      label: "display name",
+      icon: kind,
+      hasChildren: true,
+      actions: [],
+      meta: { endpoint, connectionKind: kind, connectionId: id },
+    });
+    const { model } = fixture({
+      "": [{ ...node("env:dev"), kind: "environment", meta: { environmentId: "dev", color: "#000" } }],
+      "env:dev": [conn("env:dev/conn:a", "acmedwhuat.database.windows.net"), conn("env:dev/conn:b", "acmedwhdev.database.windows.net")],
+      "env:dev/conn:a": [{ ...node("env:dev/conn:a/o"), kind: "table", label: "dbo.Customer", meta: { schema: "dbo", name: "Customer" } }],
+    });
+    await model.loadRoot();
+    await model.toggle("env:dev");
+    await model.toggle("env:dev/conn:a");
+
+    const byKey = Object.fromEntries(model.rows().map((r) => [r.key, r.type === "node" ? r.label : undefined]));
+    expect(byKey["env:dev/conn:a"]).toEqual({ prefix: "acmedwh", core: "uat", suffix: ".database.windows.net" });
+    expect(byKey["env:dev/conn:a/o"]).toEqual({ prefix: "dbo.", core: "Customer", suffix: "" });
+    expect(byKey["env:dev"]).toEqual({ prefix: "", core: "env:dev", suffix: "" });
+  });
+
+  it("rebuilds labels without connections that were removed", async () => {
+    const conn = (id: string, endpoint: string): TreeNode => ({
+      id, kind: "connection", label: id, icon: "sql", hasChildren: true, actions: [], meta: { endpoint, connectionKind: "sql" },
+    });
+    const children: Record<string, TreeNode[]> = {
+      "": [{ ...node("env:dev"), kind: "environment", meta: { environmentId: "dev" } }],
+      "env:dev": [conn("a", "orders-uat.x.com"), conn("b", "orders-dev.x.com"), conn("c", "billing-dev.x.com")],
+    };
+    const { model } = fixture(children);
+    await model.loadRoot();
+    await model.toggle("env:dev");
+    children["env:dev"] = children["env:dev"].filter((n) => n.id !== "c");
+    await model.reload("env:dev");
+
+    const a = model.rows().find((r) => r.key === "a");
+    expect(a?.type === "node" && a.label).toEqual({ prefix: "orders-", core: "uat", suffix: ".x.com" });
+  });
 });

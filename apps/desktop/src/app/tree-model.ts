@@ -1,4 +1,5 @@
 import type { TreeNode } from "./api";
+import { computeLabels, leafLabel, type LabelSegments } from "./labels";
 
 type ChildState =
   | { status: "loading"; startedAt: number }
@@ -14,7 +15,7 @@ interface RowBase {
 }
 
 export type Row =
-  | (RowBase & { type: "node"; node: TreeNode; expanded: boolean; loading: boolean; stale: boolean })
+  | (RowBase & { type: "node"; node: TreeNode; label: LabelSegments; expanded: boolean; loading: boolean; stale: boolean })
   | (RowBase & { type: "loading"; parentId: string })
   | (RowBase & { type: "error"; parentId: string; message: string })
   | (RowBase & { type: "empty"; parentId: string });
@@ -38,6 +39,8 @@ export class TreeModel {
   private readonly parents = new Map<string, string>();
   private readonly children = new Map<string, ChildState>();
   private readonly expanded = new Set<string>();
+  /** Display segments per node, rebuilt when nodes load (docs/explorer-ux.md); rows only read them. */
+  private readonly labels = new Map<string, LabelSegments>();
 
   constructor(
     private readonly load: (id: string) => Promise<TreeNode[]>,
@@ -119,6 +122,7 @@ export class TreeModel {
           type: "node",
           key: id,
           node,
+          label: this.labels.get(id) ?? { prefix: "", core: node.label, suffix: "" },
           depth,
           expanded,
           loading: state?.status === "loading",
@@ -150,6 +154,7 @@ export class TreeModel {
         this.parents.set(item.id, id);
       }
       this.children.set(id, { status: "loaded", ids: items.map((i) => i.id), loadedAt: Date.now() });
+      this.buildLabels(items);
       this.onLoaded({ id, label, count: items.length, ms: Math.round(performance.now() - startedAt) });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
@@ -157,6 +162,32 @@ export class TreeModel {
       this.onLoaded({ id, label, count: 0, ms: Math.round(performance.now() - startedAt), error: message });
     }
     this.onChange();
+  }
+
+  /**
+   * The label build step. Endpoint segments depend on every connection of the same kind, so they are
+   * recomputed over the whole tree whenever connections load; other nodes get theirs as they arrive
+   * (schema-qualified objects dim the schema, everything else is the plain label).
+   */
+  private buildLabels(loaded: TreeNode[]): void {
+    for (const n of loaded) {
+      if (n.kind !== "connection") this.labels.set(n.id, n.meta?.schema ? leafLabel(n.label) : { prefix: "", core: n.label, suffix: "" });
+    }
+    if (!loaded.some((n) => n.kind === "connection")) return;
+    // Only connections currently listed under an environment: the node cache keeps removed ones.
+    const listed = [...this.children].flatMap(([parent, s]) =>
+      s.status === "loaded" && this.nodes.get(parent)?.kind === "environment" ? s.ids : [],
+    );
+    const connections = listed
+      .map((id) => this.nodes.get(id)!)
+      .filter((n) => n.kind === "connection")
+      .map((n) => ({
+        id: n.id,
+        kind: n.meta?.connectionKind ?? n.icon,
+        endpoint: n.meta?.endpoint ?? n.label,
+        envId: this.parents.get(n.id) ?? "",
+      }));
+    for (const [id, segments] of computeLabels(connections)) this.labels.set(id, segments);
   }
 
   private forgetBelow(id: string): void {
