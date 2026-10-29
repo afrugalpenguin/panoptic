@@ -31,7 +31,10 @@ public static class ConnectionImporter
     private const string NoGroup = "(No group)";
     private const string PasswordNote = "SQL login: enter the password after importing";
 
-    /// <summary>Looks in the standard locations under the given AppData roots.</summary>
+    /// <summary>
+    /// Looks in the standard locations under the given AppData roots. Every file found is reported,
+    /// including ones that yielded no connections, so the UI can show exactly what was checked.
+    /// </summary>
     public static List<ImportSource> Scan(string roamingAppData, string localAppData)
     {
         var sources = new List<ImportSource>();
@@ -41,7 +44,7 @@ public static class ConnectionImporter
             if (!File.Exists(path)) return;
             try
             {
-                if (parse(path) is { } s && s.Groups.Count > 0) sources.Add(s);
+                sources.Add(parse(path) ?? new ImportSource(source, label, path, []));
             }
             catch (Exception ex)
             {
@@ -59,7 +62,9 @@ public static class ConnectionImporter
 
         foreach (var root in ssmsRoots.Where(Directory.Exists))
         {
-            Try("ssms-registered", "SSMS Registered Servers", Path.Combine(root, "RegSrvr.xml"), ParseRegisteredServers);
+            // RegSrvr.xml, RegSrvr16.xml, RegSrvr17.xml...: SSMS 21+ keeps its saved connections here.
+            foreach (var regsrvr in TopLevelFiles(root, "RegSrvr*.xml").OrderByDescending(File.GetLastWriteTimeUtc))
+                Try("ssms-registered", $"SSMS saved connections ({Path.GetFileName(regsrvr)})", regsrvr, ParseRegisteredServers);
             // Newest version first, so its history wins when the same server appears in several.
             foreach (var settings in FindFiles(root, "UserSettings.xml").OrderByDescending(File.GetLastWriteTimeUtc))
                 Try("ssms-recent", $"SSMS connection history ({VersionFolder(root, settings)})", settings, ParseSsmsUserSettings);
@@ -82,18 +87,45 @@ public static class ConnectionImporter
         foreach (var server in doc.Descendants().Where(e => e.Name.LocalName == "RegisteredServer"))
         {
             if (Child(server, "ServerType") is { } type && type != "DatabaseEngine") continue;
-            var parentUri = server.Descendants().FirstOrDefault(e => e.Name.LocalName == "Uri")?.Value ?? "";
-            if (!parentUri.StartsWith(EngineGroupUri, StringComparison.OrdinalIgnoreCase)) continue;
-
             var serverName = Child(server, "ServerName");
             if (string.IsNullOrWhiteSpace(serverName)) continue;
-            var cs = FromConnectionString(Child(server, "ConnectionStringWithEncryptedPassword") ?? "");
 
-            var group = GroupFromUri(parentUri[EngineGroupUri.Length..]);
-            Add(groups, group, Candidate(Child(server, "Name") ?? serverName, serverName, cs));
+            // The group comes from the Parent reference, or failing that from the document's alias
+            // (".../ServerGroup/UAT/RegisteredServer/x"). Servers under another server type's tree are skipped.
+            var location = server.Descendants().FirstOrDefault(e => e.Name.LocalName == "Uri")?.Value ?? GroupPathFromAlias(server);
+            if (location is not null && location.StartsWith("/RegisteredServersStore/ServerGroup/", StringComparison.OrdinalIgnoreCase)
+                && !location.StartsWith(EngineGroupUri, StringComparison.OrdinalIgnoreCase)) continue;
+            var group = location is not null && location.StartsWith(EngineGroupUri, StringComparison.OrdinalIgnoreCase)
+                ? GroupFromUri(location[EngineGroupUri.Length..])
+                : "(Registered servers)";
+
+            var cs = FromConnectionString(Child(server, "ConnectionStringWithEncryptedPassword") ?? "");
+            // SSMS 21+ records the Connect dialog's choice explicitly; it beats guessing from the connection string.
+            if (Child(server, "AuthenticationType") is { } authType && int.TryParse(authType, out _))
+            {
+                var auth = SsmsAuth(authType);
+                var user = auth switch
+                {
+                    AuthKinds.Windows => null,
+                    AuthKinds.Entra => NullIfEmpty(Child(server, "ActiveDirectoryUserId")) ?? cs.User,
+                    _ => cs.User,
+                };
+                cs = cs with { Auth = auth, User = user };
+            }
+
+            Add(groups, group, Candidate(NullIfEmpty(Child(server, "Name")) ?? serverName, serverName, cs));
         }
 
-        return Source("ssms-registered", "SSMS Registered Servers", path, groups);
+        return Source("ssms-registered", "SSMS saved connections", path, groups);
+    }
+
+    /// <summary>".../ServerGroup/UAT/RegisteredServer/x" from the enclosing document's alias becomes ".../ServerGroup/UAT".</summary>
+    private static string? GroupPathFromAlias(XElement server)
+    {
+        var alias = server.Ancestors().FirstOrDefault(a => a.Name.LocalName == "document")?
+            .Descendants().FirstOrDefault(e => e.Name.LocalName == "alias")?.Value;
+        var cut = alias?.LastIndexOf("/RegisteredServer/", StringComparison.Ordinal) ?? -1;
+        return cut >= 0 ? alias![..cut] : null;
     }
 
     /// <summary>"/ServerGroup/Dev/ServerGroup/Legacy" becomes "Dev / Legacy".</summary>
@@ -125,7 +157,7 @@ public static class ConnectionImporter
                 var user = auth is AuthKinds.Windows ? null : NullIfEmpty(Child(entry, "UserName"));
                 var database = NullIfEmpty(Child(entry, "Database") ?? Child(entry, "DatabaseName"));
                 if (database is "<default>") database = null;
-                var trust = string.Equals(Child(entry, "TrustServerCertificate"), "true", StringComparison.OrdinalIgnoreCase);
+                var trust = string.Equals(Child(entry, "TrustServerCertificate") ?? AdvancedOption(entry, "TSC"), "true", StringComparison.OrdinalIgnoreCase);
 
                 if (!seen.Add($"{instance}|{auth}|{user}|{database}")) continue;
                 var name = database is null ? instance : $"{instance} / {database}";
@@ -136,6 +168,12 @@ public static class ConnectionImporter
         return Source("ssms-recent", "SSMS connection history", path,
             connections.Count == 0 ? [] : new Dictionary<string, List<ImportCandidate>> { ["Connection history"] = connections });
     }
+
+    /// <summary>Reads a value from the Advanced key/value list SSMS writes per connection, e.g. TSC (trust server certificate).</summary>
+    private static string? AdvancedOption(XElement settings, string key) =>
+        settings.Elements().FirstOrDefault(e => e.Name.LocalName == "Advanced")?
+            .Elements().FirstOrDefault(e => e.Element("Key")?.Value.Trim() == key)?
+            .Element("Value")?.Value.Trim();
 
     /// <summary>
     /// SSMS stores the Connect dialog's authentication choice as an index: 0 Windows, 1 SQL Server,
@@ -296,6 +334,18 @@ public static class ConnectionImporter
         e.ValueKind == JsonValueKind.Object && e.TryGetProperty(property, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
 
     private static string? NullIfEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+    private static IEnumerable<string> TopLevelFiles(string root, string pattern)
+    {
+        try
+        {
+            return Directory.EnumerateFiles(root, pattern);
+        }
+        catch (IOException)
+        {
+            return [];
+        }
+    }
 
     private static IEnumerable<string> FindFiles(string root, string name)
     {

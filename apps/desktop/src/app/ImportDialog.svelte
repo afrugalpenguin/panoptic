@@ -16,10 +16,19 @@
   let target = $state<Record<string, string>>({});
   let names = $state<Record<string, string>>({});
   let importing = $state(false);
+  let byPattern = $state(false);
+  const hasOwnGroups = $derived(sources.some((s) => s.source !== "ssms-recent" && s.groups.some((g) => g.connections.length > 0)));
   let error = $state("");
 
   const keyOf = (g: PlanGroup, i: number) => `${g.key}#${i}`;
-  const errors = $derived(sources.filter((s) => s.error));
+  const examined = $derived(
+    sources.map((s) => ({
+      label: s.label,
+      path: s.path,
+      count: s.groups.reduce((n, g) => n + g.connections.length, 0),
+      error: s.error,
+    })),
+  );
   const total = $derived(plan.reduce((n, g) => n + g.candidates.filter((c) => !c.alreadyAdded).length, 0));
   const count = $derived(
     plan.reduce((n, g) => n + g.candidates.filter((c, i) => !c.alreadyAdded && selected[keyOf(g, i)]).length, 0),
@@ -28,19 +37,24 @@
   onMount(async () => {
     try {
       sources = await api.scanImports();
-      plan = planGroups(sources);
-      for (const g of plan) {
-        const match = config.environments.find((e) => e.name.toLowerCase() === g.name.toLowerCase());
-        target[g.key] = match?.id ?? "new";
-        names[g.key] = g.name;
-        g.candidates.forEach((c, i) => (selected[keyOf(g, i)] = !c.alreadyAdded));
-      }
+      replan();
     } catch (e) {
       error = String(e instanceof Error ? e.message : e);
     } finally {
       scanning = false;
     }
   });
+
+  /** Builds the proposed groups and resets choices for them. */
+  function replan() {
+    plan = planGroups(sources, { byPattern });
+    for (const g of plan) {
+      const match = config.environments.find((e) => e.name.toLowerCase() === g.name.toLowerCase());
+      target[g.key] = match?.id ?? "new";
+      names[g.key] = g.name;
+      g.candidates.forEach((c, i) => (selected[keyOf(g, i)] = !c.alreadyAdded));
+    }
+  }
 
   function toggleGroup(g: PlanGroup, on: boolean) {
     g.candidates.forEach((c, i) => {
@@ -120,8 +134,14 @@
     {:else}
       <p class="muted intro">
         Found {total} connection{total === 1 ? "" : "s"}. Passwords are never imported: SQL logins ask once when you first connect.
-        Environments marked <em>suggested</em> were guessed from server names; change them as you like.
+        Environments marked <em>suggested</em> come from your server naming pattern; rename or retarget them as you like.
       </p>
+      {#if hasOwnGroups}
+        <label class="pattern">
+          <input type="checkbox" bind:checked={byPattern} onchange={replan} />
+          Group by server naming pattern instead of the groups saved in SSMS
+        </label>
+      {/if}
       {#each plan as g (g.key)}
         {@const s = groupState(g)}
         <section class="group">
@@ -162,9 +182,25 @@
       {/each}
     {/if}
 
-    {#each errors as s}
-      <p class="error">{s.label}: {s.error}</p>
-    {/each}
+    {#if !scanning}
+      <details class="examined" open={plan.length === 0}>
+        <summary>Looked in {examined.length} file{examined.length === 1 ? "" : "s"}</summary>
+        {#if examined.length === 0}
+          <p class="muted">No SSMS, Azure Data Studio or VS Code settings files were found in your profile.</p>
+        {:else}
+          <ul>
+            {#each examined as f}
+              <li>
+                <span class:error={f.error}>{f.error ? "error" : `${f.count} connection${f.count === 1 ? "" : "s"}`}</span>
+                <span class="muted">{f.label}</span>
+                <code title={f.path}>{f.path}</code>
+                {#if f.error}<div class="error">{f.error}</div>{/if}
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </details>
+    {/if}
     {#if error}<p class="error">{error}</p>{/if}
   </div>
 
@@ -187,6 +223,13 @@
   }
   .intro {
     margin-top: 0;
+  }
+  .pattern {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: -4px 0 12px;
+    color: var(--text) !important;
   }
   .group {
     margin-bottom: 14px;
@@ -259,5 +302,30 @@
   }
   .error {
     color: var(--bad);
+  }
+  .examined {
+    margin-top: 12px;
+    font-size: 12px;
+  }
+  .examined summary {
+    cursor: pointer;
+    color: var(--text-muted);
+  }
+  .examined ul {
+    padding: 4px 0 0 4px;
+  }
+  .examined li {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: baseline;
+    padding: 2px 0;
+  }
+  .examined code {
+    font-size: 11px;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
   }
 </style>
