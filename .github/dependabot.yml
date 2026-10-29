@@ -24,6 +24,11 @@ updates:
     groups:
       npm:
         patterns: ["*"]
+    # svelte-check does not run on TypeScript 7 alone (it needs 6 alongside and --tsgo). Drop this
+    # once svelte-check supports 7.
+    ignore:
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: build
       include: scope
