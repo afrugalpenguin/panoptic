@@ -79,3 +79,31 @@ public class SqlCatalogTests
         Assert.Null(catalog.Objects.Single(o => o.Name == "s").Columns);
     }
 }
+
+public class CosmosCatalogTests
+{
+    private static System.Text.Json.JsonElement Doc(string json) => System.Text.Json.JsonDocument.Parse(json).RootElement;
+
+    [Fact]
+    public void FlattenPaths_collapses_arrays_and_merges_types()
+    {
+        var paths = CosmosCatalog.FlattenPaths([Doc("""{"a":1,"b":{"c":"x"},"t":[{"s":1}]}"""), Doc("""{"a":"y","t":[]}""")]);
+        Assert.Equal(
+            ["a:number,string", "b:object", "b.c:string", "t:array", "t[]:object", "t[].s:number"],
+            paths.Select(p => $"{p.Path}:{string.Join(',', p.Types)}"));
+    }
+
+    [Fact]
+    public void FlattenPaths_skips_system_properties_but_keeps_id()
+    {
+        var paths = CosmosCatalog.FlattenPaths([Doc("""{"id":"1","_rid":"r","_self":"s","_etag":"e","_attachments":"a","_ts":1,"n":null}""")]);
+        Assert.Equal(["id:string", "n:null"], paths.Select(p => $"{p.Path}:{string.Join(',', p.Types)}"));
+    }
+
+    [Fact]
+    public void FlattenPaths_records_scalar_array_elements()
+    {
+        var paths = CosmosCatalog.FlattenPaths([Doc("""{"tags":["a","b",3]}""")]);
+        Assert.Equal(["tags:array", "tags[]:number,string"], paths.Select(p => $"{p.Path}:{string.Join(',', p.Types)}"));
+    }
+}

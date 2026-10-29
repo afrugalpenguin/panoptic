@@ -153,6 +153,22 @@ public class BackendIntegrationTests(ITestOutputHelper output)
         Assert.Equal(25, items.Length);
     }
 
+    [Fact]
+    public async Task Cosmos_catalog_samples_property_paths()
+    {
+        if (Environment.GetEnvironmentVariable("PANOPTIC_TEST_COSMOS") != "1") return;
+
+        var conn = new ConnectionConfig("cos1", "emulator", ConnectionKinds.Cosmos, "https://localhost:8081", AuthKinds.Key, TrustServerCertificate: true);
+        var client = new CosmosBackend(NoEntra).ClientFor(conn, CosmosEmulatorKey);
+        var catalog = await Catalog.CosmosCatalog.BuildAsync(client, "panoptic-dev", 50, default);
+
+        var orders = catalog.Containers!.Single(c => c.Name == "orders");
+        output.WriteLine(string.Join(", ", orders.Paths.Select(p => p.Path)));
+        Assert.Equal("/tenantId", orders.PartitionKey);
+        Assert.Contains(orders.Paths, p => p.Path == "tenantId");
+        Assert.DoesNotContain(orders.Paths, p => p.Path.StartsWith('_'));
+    }
+
     private async Task<TreeNode[]> Expand(IBackend backend, ConnectionConfig conn, string secret, NodePath path)
     {
         var sw = Stopwatch.StartNew();

@@ -166,7 +166,7 @@ public sealed class CosmosBackend(Credentials credentials) : IBackend
     }
 
     /// <summary>Drains a stream feed iterator, returning the elements of the named array in each page.</summary>
-    private static async Task<List<JsonElement>> ReadAll(FeedIterator iterator, string arrayName, CancellationToken ct, int limit = int.MaxValue)
+    internal static async Task<List<JsonElement>> ReadAll(FeedIterator iterator, string arrayName, CancellationToken ct, int limit = int.MaxValue)
     {
         var results = new List<JsonElement>();
         using (iterator)
@@ -184,7 +184,7 @@ public sealed class CosmosBackend(Credentials credentials) : IBackend
         return results.Count > limit ? results[..limit] : results;
     }
 
-    private static IEnumerable<string> PartitionKeyPaths(JsonElement container) =>
+    internal static IEnumerable<string> PartitionKeyPaths(JsonElement container) =>
         container.TryGetProperty("partitionKey", out var pk) && pk.TryGetProperty("paths", out var paths)
             ? paths.EnumerateArray().Select(p => p.GetString()!)
             : [];
