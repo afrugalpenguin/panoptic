@@ -73,6 +73,43 @@ public class SqlValueTests
     }
 }
 
+public class ReadOnlyGuardTests
+{
+    [Fact]
+    public async Task Stops_after_the_batch_that_drops_trancount_to_zero()
+    {
+        var ran = new List<string>();
+        var counts = new Queue<int>([1, 0, 1]);
+
+        var held = await QueryService.RunBatches(["a", "b", "c"], b => { ran.Add(b); return Task.CompletedTask; }, () => Task.FromResult(counts.Dequeue()));
+
+        Assert.False(held);
+        Assert.Equal(["a", "b"], ran);
+    }
+
+    [Fact]
+    public async Task Runs_every_batch_while_the_transaction_stays_open()
+    {
+        var ran = new List<string>();
+
+        var held = await QueryService.RunBatches(["a", "b"], b => { ran.Add(b); return Task.CompletedTask; }, () => Task.FromResult(2));
+
+        Assert.True(held);
+        Assert.Equal(["a", "b"], ran);
+    }
+
+    [Fact]
+    public async Task Does_not_check_without_a_guard()
+    {
+        var ran = new List<string>();
+
+        var held = await QueryService.RunBatches(["a", "b"], b => { ran.Add(b); return Task.CompletedTask; }, null);
+
+        Assert.True(held);
+        Assert.Equal(["a", "b"], ran);
+    }
+}
+
 public class QueryTemplateTests
 {
     [Fact]
@@ -185,6 +222,66 @@ public sealed class QueryIntegrationTests : IDisposable
 
         await service.ExecuteAsync(new QueryRequest("q5", "env:dev/conn:sql1/db:Orders", "SELECT Name FROM dbo.Customer WHERE CustomerId = 1"), default);
         Assert.NotEqual("changed", Notes("query.rows").Last().GetProperty("rows")[0][0].GetString());
+    }
+
+    /// <summary>Runs <paramref name="script"/> ({T} stands for a scratch table) in a read-only environment; returns the summary and the rows left in {T}.</summary>
+    private async Task<(QuerySummary Summary, int[] Rows)> RunReadOnly(string script)
+    {
+        var table = $"dbo.zz_ro_guard_{Guid.NewGuid():N}";
+        await Service().ExecuteAsync(new QueryRequest("setup", "env:dev/conn:sql1/db:Orders", $"CREATE TABLE {table} (x int)"), default);
+        try
+        {
+            var summary = await Service(readOnly: true).ExecuteAsync(new QueryRequest("ro", "env:dev/conn:sql1/db:Orders", script.Replace("{T}", table)), default);
+            await Service().ExecuteAsync(new QueryRequest("check", "env:dev/conn:sql1/db:Orders", $"SELECT x FROM {table} ORDER BY x"), default);
+            var rows = Notes("query.rows").Last(n => n.GetProperty("queryId").GetString() == "check").GetProperty("rows").EnumerateArray().Select(r => r[0].GetInt32()).ToArray();
+            return (summary, rows);
+        }
+        finally
+        {
+            await Service().ExecuteAsync(new QueryRequest("cleanup", "env:dev/conn:sql1/db:Orders", $"DROP TABLE {table}"), default);
+        }
+    }
+
+    [Fact]
+    public async Task Read_only_balanced_begin_commit_stays_inside_the_guard()
+    {
+        if (string.IsNullOrEmpty(SqlPassword)) return;
+
+        // The script's BEGIN TRAN nests (@@TRANCOUNT 2) and its COMMIT only takes it back to 1.
+        var (summary, rows) = await RunReadOnly("BEGIN TRAN; INSERT {T} VALUES (1); COMMIT; INSERT {T} VALUES (2)");
+
+        Assert.Null(summary.Error);
+        Assert.True(summary.RolledBack);
+        Assert.False(summary.Committed);
+        Assert.Empty(rows);
+    }
+
+    [Fact]
+    public async Task Read_only_commit_is_reported_and_stops_later_batches()
+    {
+        if (string.IsNullOrEmpty(SqlPassword)) return;
+
+        var (summary, rows) = await RunReadOnly("INSERT {T} VALUES (1); COMMIT\nGO\nINSERT {T} VALUES (2)");
+
+        Assert.Null(summary.Error);
+        Assert.True(summary.Committed);
+        Assert.False(summary.RolledBack);
+        Assert.Equal([1], rows); // committed by the script; the batch after it did not run
+        Assert.Contains(Notes("query.message"), m => m.GetProperty("kind").GetString() == "error" && m.GetProperty("text").GetString()!.Contains("ended the read-only guard"));
+    }
+
+    [Fact]
+    public async Task Read_only_commit_then_begin_tran_is_still_caught()
+    {
+        if (string.IsNullOrEmpty(SqlPassword)) return;
+
+        // @@TRANCOUNT is back to 1 after this batch, but the open transaction is the script's.
+        var (summary, rows) = await RunReadOnly("INSERT {T} VALUES (1); COMMIT; BEGIN TRAN; INSERT {T} VALUES (2)\nGO\nINSERT {T} VALUES (3)");
+
+        Assert.Null(summary.Error);
+        Assert.True(summary.Committed);
+        Assert.False(summary.RolledBack);
+        Assert.Equal([1], rows);
     }
 
     [Fact]

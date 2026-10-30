@@ -11,7 +11,7 @@ function setup() {
     cancelQuery: vi.fn(async () => true),
   };
   const ws = new QueryWorkspace(api);
-  return { ws, api, finish: (s: Partial<QuerySummary> = {}) => resolve({ queryId: "", resultSets: [], elapsedMs: 5, rolledBack: false, cancelled: false, ...s }) };
+  return { ws, api, finish: (s: Partial<QuerySummary> = {}) => resolve({ queryId: "", resultSets: [], elapsedMs: 5, rolledBack: false, committed: false, cancelled: false, ...s }) };
 }
 
 describe("QueryWorkspace", () => {
@@ -172,7 +172,7 @@ describe("QueryWorkspace: IntelliSense", () => {
 
   function setupCatalog() {
     const api = {
-      executeQuery: vi.fn(async (_: { queryId: string; database?: string }) => ({ queryId: "", resultSets: [], elapsedMs: 1, rolledBack: false, cancelled: false })),
+      executeQuery: vi.fn(async (_: { queryId: string; database?: string }) => ({ queryId: "", resultSets: [], elapsedMs: 1, rolledBack: false, committed: false, cancelled: false })),
       cancelQuery: vi.fn(async () => true),
       catalogGet: vi.fn(async (_nodeId: string, database?: string) => ({ key: `key:${database ?? "node"}`, state: "building" as const })),
       catalogRefresh: vi.fn(async (_nodeId: string, database?: string) => ({ key: `key:${database ?? "node"}`, state: "building" as const })),

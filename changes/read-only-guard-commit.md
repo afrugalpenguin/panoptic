@@ -1,0 +1,1 @@
+Fixed: in a read-only environment, a `COMMIT` in the script no longer gets reported as rolled back. Panoptic now flags the query as committed, skips the remaining batches and shows an error. Read-only Synapse serverless environments now refuse to run queries, because they cannot be rolled back.

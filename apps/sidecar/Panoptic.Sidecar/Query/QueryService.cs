@@ -15,7 +15,9 @@ namespace Panoptic.Sidecar.Query;
 ///   query.message { queryId, kind, text }             PRINT output, rows affected, errors
 /// ExecuteAsync returns a summary when everything has finished, been cancelled or failed; results
 /// already streamed are kept. In read-only environments, SQL runs inside a transaction that is
-/// always rolled back.
+/// rolled back at the end. That is a guard, not a permission boundary: a COMMIT in the script ends it
+/// (reported as Committed, and the remaining batches are skipped), and side effects outside the
+/// transaction (xp_cmdshell, sp_send_dbmail, linked servers) are never rolled back.
 /// </summary>
 public sealed class QueryService(ConfigStore store, TreeService tree, SqlBackend sql, CosmosBackend cosmos, Action<string, Action<Utf8JsonWriter>> notify)
 {
@@ -62,7 +64,7 @@ public sealed class QueryService(ConfigStore store, TreeService tree, SqlBackend
         if (run.Cancelled) Message(run, "info", "Query cancelled.");
 
         return new QuerySummary(request.QueryId, run.Sets.Select(n => new ResultSetSummary(n)).ToArray(),
-            Math.Round(run.Clock.Elapsed.TotalMilliseconds), run.RolledBack, run.Cancelled, run.Error, run.Charge);
+            Math.Round(run.Clock.Elapsed.TotalMilliseconds), run.RolledBack, run.Committed, run.Cancelled, run.Error, run.Charge);
     }
 
     private sealed class Run(string queryId, Stopwatch clock)
@@ -71,6 +73,7 @@ public sealed class QueryService(ConfigStore store, TreeService tree, SqlBackend
         public Stopwatch Clock { get; } = clock;
         public List<int> Sets { get; } = [];
         public bool RolledBack { get; set; }
+        public bool Committed { get; set; }
         public bool Cancelled { get; set; }
         public string? Error { get; set; }
         public double? Charge { get; set; }
@@ -86,25 +89,32 @@ public sealed class QueryService(ConfigStore store, TreeService tree, SqlBackend
             foreach (SqlError error in e.Errors) Message(run, "info", error.Message);
         };
 
+        if (target.Environment.ReadOnly)
+        {
+            await using var probe = new SqlCommand("SELECT CAST(SERVERPROPERTY('EngineEdition') AS int)", conn) { CommandTimeout = 30 };
+            if ((int)(await probe.ExecuteScalarAsync(ct))! == 11) // Synapse serverless: no transactions to roll back
+                throw new RpcException(RpcException.InvalidParams,
+                    $"{target.Environment.Name} is read-only, but Synapse serverless pools do not support transactions, so Panoptic cannot roll queries back here. Use a read-only login, or clear the environment's read-only flag.");
+        }
+
         await using var tx = target.Environment.ReadOnly ? conn.BeginTransaction() : null;
         try
         {
-            foreach (var batch in BatchSplitter.Split(text))
+            var guardHeld = await RunBatches(BatchSplitter.Split(text), async batch =>
             {
                 await using var cmd = new SqlCommand(batch, conn, tx) { CommandTimeout = 0 };
                 var setsBefore = run.Sets.Count;
-                await using (var reader = await cmd.ExecuteReaderAsync(ct))
+                await using var reader = await cmd.ExecuteReaderAsync(ct);
+                do
                 {
-                    do
-                    {
-                        if (reader.FieldCount > 0) await StreamSqlSet(run, reader, ct);
-                    } while (await reader.NextResultAsync(ct));
+                    if (reader.FieldCount > 0) await StreamSqlSet(run, reader, ct);
+                } while (await reader.NextResultAsync(ct));
 
-                    reader.Close();
-                    if (reader.RecordsAffected >= 0 && run.Sets.Count == setsBefore)
-                        Message(run, "info", $"({reader.RecordsAffected} row{(reader.RecordsAffected == 1 ? "" : "s")} affected)");
-                }
-            }
+                reader.Close();
+                if (reader.RecordsAffected >= 0 && run.Sets.Count == setsBefore)
+                    Message(run, "info", $"({reader.RecordsAffected} row{(reader.RecordsAffected == 1 ? "" : "s")} affected)");
+            }, tx is null ? null : () => TranCount(conn, tx, ct));
+            if (!guardHeld) run.Committed = true;
         }
         catch (SqlException ex) when (!ct.IsCancellationRequested)
         {
@@ -113,12 +123,65 @@ public sealed class QueryService(ConfigStore store, TreeService tree, SqlBackend
         }
         finally
         {
-            if (tx is not null)
+            if (tx is not null) await EndReadOnly(run, target, conn, tx);
+        }
+    }
+
+    /// <summary>
+    /// Runs the batches in order. With <paramref name="tranCount"/> (read-only environments), checks it after each
+    /// batch and stops as soon as it is 0: a COMMIT or ROLLBACK in the script has ended the guard transaction, so
+    /// the remaining batches would run outside it. Returns false if it stopped for that reason. Statements after
+    /// the COMMIT in the same batch have already run by then; the check is per batch, not per statement.
+    /// </summary>
+    public static async Task<bool> RunBatches(IEnumerable<string> batches, Func<string, Task> execute, Func<Task<int>>? tranCount)
+    {
+        foreach (var batch in batches)
+        {
+            await execute(batch);
+            if (tranCount is not null && await tranCount() == 0) return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// @@TRANCOUNT on the query's connection, or 0 once SqlClient has seen the guard transaction end. The second
+    /// matters for "COMMIT; BEGIN TRAN": the count is back to 1, but the transaction is the script's, not ours.
+    /// </summary>
+    private static async Task<int> TranCount(SqlConnection conn, SqlTransaction tx, CancellationToken ct)
+    {
+        if (tx.Connection is null) return 0;
+        await using var cmd = new SqlCommand("SELECT @@TRANCOUNT", conn, tx) { CommandTimeout = 30 };
+        return (int)(await cmd.ExecuteScalarAsync(ct))!;
+    }
+
+    /// <summary>Rolls back the guard transaction, and says so only if it was still open and the rollback worked.</summary>
+    private async Task EndReadOnly(Run run, QueryTarget target, SqlConnection conn, SqlTransaction tx)
+    {
+        // Zombied: the script (or an error that aborted the transaction) ended it on the server, and SqlClient's
+        // Rollback is then a silent no-op, so it proves nothing.
+        if (tx.Connection is null) run.Committed = true;
+        if (run.Committed)
+        {
+            Message(run, "error", "A COMMIT or ROLLBACK in this script (or an error that aborted the transaction) ended the read-only guard: "
+                + "changes made before it may be committed, statements after it in the same batch ran outside the guard, and later batches were not run.");
+            try
             {
-                try { await tx.RollbackAsync(CancellationToken.None); } catch (InvalidOperationException) { /* already rolled back by the server */ }
-                run.RolledBack = true;
-                Message(run, "info", $"{target.Environment.Name} is read-only: everything this query changed was rolled back.");
+                // A transaction the script began after its COMMIT is not ours to keep open.
+                await using var cleanup = new SqlCommand("IF @@TRANCOUNT > 0 ROLLBACK", conn) { CommandTimeout = 30 };
+                await cleanup.ExecuteNonQueryAsync(CancellationToken.None);
             }
+            catch (Exception) { /* the connection is discarded next anyway */ }
+            return;
+        }
+        try
+        {
+            await tx.RollbackAsync(CancellationToken.None);
+            run.RolledBack = true;
+            Message(run, "info", $"{target.Environment.Name} is read-only: this query's database changes were rolled back.");
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or SqlException)
+        {
+            Message(run, "error", $"{target.Environment.Name} is read-only, but the rollback failed: {ex.Message}. Changes may have been committed.");
         }
     }
 
