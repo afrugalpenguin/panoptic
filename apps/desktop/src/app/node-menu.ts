@@ -6,7 +6,10 @@ interface MenuItem {
   run: () => void;
 }
 
-/** The actions the UI performs itself, opening a query tab. refresh reloads the tree; every other id is node.invoke. */
+/**
+ * The actions the UI performs itself, opening a query tab. refresh reloads the tree; every other id is node.invoke.
+ * Copy name is not an action: the UI offers it on nodes whose meta has "copyText".
+ */
 const TAB_ACTIONS = ["selectTop", "newQuery"] as const;
 export type TabAction = (typeof TAB_ACTIONS)[number];
 
@@ -18,6 +21,8 @@ export interface NodeActionHandlers {
   refresh: () => void;
   /** Runs the action in the sidecar (node.invoke); the app copies the text it returns. */
   invoke: (actionId: string) => void;
+  /** Writes text to the clipboard. Called straight from the click, with no await before it. */
+  copy: (text: string) => void;
 }
 
 /**
@@ -27,11 +32,6 @@ export interface NodeActionHandlers {
 export function shortcutAction(e: Pick<KeyboardEvent, "ctrlKey" | "metaKey" | "key">, node: TreeNode | undefined): TabAction | undefined {
   if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "n") return undefined;
   return node?.actions.includes("newQuery") ? "newQuery" : undefined;
-}
-
-/** What an invoked action puts on the clipboard: the sidecar's text, else the node's label (copyName on most nodes). */
-export function copiedText(node: TreeNode, result: { text?: string | null }): string {
-  return result.text ?? node.label;
 }
 
 /** The menu label for an action id: the sidecar's (node.actionLabels), else the id itself. */
@@ -49,9 +49,15 @@ export function queryItems(node: TreeNode, labels: Record<string, string>, on: N
   return items.length ? [...items, "separator"] : [];
 }
 
-/** The node's other actions in the order the backend gave them: refresh reloads, anything else goes to the sidecar. */
+/**
+ * The node's other actions in the order the backend gave them (refresh reloads, anything else goes to the sidecar),
+ * then Copy name when the backend gave the node copy text.
+ */
 export function actionItems(node: TreeNode, labels: Record<string, string>, on: NodeActionHandlers): MenuItem[] {
-  return node.actions
+  const items: MenuItem[] = node.actions
     .filter((a) => !(TAB_ACTIONS as readonly string[]).includes(a))
     .map((a) => ({ label: actionLabel(a, labels), run: a === "refresh" ? on.refresh : () => on.invoke(a) }));
+  const copyText = node.meta?.copyText;
+  if (copyText !== undefined) items.push({ label: "Copy name", run: () => on.copy(copyText) });
+  return items;
 }

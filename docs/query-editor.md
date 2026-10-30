@@ -19,6 +19,19 @@ Decided 29 Oct 2026. Pairs with docs/explorer-ux.md; the same principles apply.
 - Dragging an explorer row into the editor inserts its name at the drop point: SQL objects schema-qualified (`dbo.Orders`, brackets only where needed), columns and databases by name, Cosmos containers by name and UDFs as `udf.name`. Rows with nothing to insert (folders, connections, Cosmos names that are not identifiers) don't start a drag. The Tauri window has `dragDropEnabled` off, because WebView2 otherwise swallows HTML5 drag and drop.
 - A query tab is bound to a connection and a database. The database is a dropdown in the tab toolbar; `USE x` in the batch also switches the catalog for the statements after it.
 
+### Quoting names
+
+The explorer's Copy name and the editor quote SQL names differently on purpose. Both double a `]` inside brackets. Copy and drag text come from the backends in node meta (`copyText`, `dragText`); IntelliSense quotes its completions in the UI by the drag rule.
+
+| Where | Node | Rule | Plain name | Name with `]` |
+| --- | --- | --- | --- | --- |
+| Copy name | table, view, procedure, function, synonym | always bracketed, schema-qualified, as SSMS copies | `[dbo].[Orders]` | `[dbo].[a]]b]` |
+| Copy name | database, column, key, index | always bracketed, name alone | `[Orders]`, `[Id]`, `[PK_Orders]` | `[odd]]col]` |
+| Copy name | Definition, folders | none: no Copy name | | |
+| Drag into the editor, IntelliSense | objects (schema-qualified), databases, columns | bracketed only when not a regular identifier or a keyword | `dbo.Orders`, `Id` | `dbo.[a]]b]`, `[odd]]col]` |
+
+Keys and indexes cannot be dragged. Cosmos has no identifier quoting: Copy name copies the id of a database, container or item, the name of a stored procedure or trigger, `udf.<name>` for a UDF and the path of a partition key (`/a, /b` for a hierarchical key). Folders, throughput and indexing policy have no Copy name.
+
 ## Catalog
 
 The sidecar owns a metadata catalog per server and per database. It is the only source completions read from.

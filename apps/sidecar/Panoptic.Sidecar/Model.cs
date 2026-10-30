@@ -88,7 +88,7 @@ public sealed record QueryTemplateResult(string? Text, string Language, QuerySco
 public sealed record QueryScope(string Connection, string? Database, string? Container, string Label, string ConnectionLabel);
 public sealed record NodeScopeParams(string NodeId);
 public sealed record NodeInvokeParams(string NodeId, string ActionId);
-/// <param name="Text">What the action produced (copyName: the name to copy). Null: nothing beyond the node's label.</param>
+/// <param name="Text">What the action produced, which the UI copies. Null: nothing to copy.</param>
 public sealed record NodeInvokeResult(string? Text);
 /// <summary>What a node id resolves to for running a query: its environment, connection and the database or container under it.</summary>
 public sealed record QueryTarget(EnvironmentConfig Environment, ConnectionConfig Connection, string? Database, string? Container);

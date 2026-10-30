@@ -156,7 +156,7 @@ public static class Methods
         // Labels for the context menu: the UI renders a node's action ids with these.
         methods["node.actionLabels"] = (_, _) => Task.FromResult(Rpc.Result(tree.ActionLabels(), SidecarJson.Default.DictionaryStringString));
 
-        // Actions the sidecar performs (copyName). A null text means "use the node's label".
+        // Actions a backend adds, performed in the sidecar (no built-in backend has one). Null text: nothing to copy.
         methods["node.invoke"] = async (p, ct) =>
         {
             var args = Rpc.Params(p, SidecarJson.Default.NodeInvokeParams);

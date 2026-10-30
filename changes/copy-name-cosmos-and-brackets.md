@@ -1,0 +1,1 @@
+Fixed: **Copy name** on Cosmos nodes copies the name (a container id, `udf.name` for a UDF, the partition key path) instead of the tree label. SQL database, column, key and index names now copy bracketed like table names, and names containing `]` copy as valid brackets.

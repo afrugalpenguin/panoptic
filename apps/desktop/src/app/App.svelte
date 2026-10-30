@@ -16,7 +16,7 @@
   import ImportDialog from "./ImportDialog.svelte";
   import IconButton from "./IconButton.svelte";
   import KindChips from "./KindChips.svelte";
-  import { actionItems, actionLabel, copiedText, queryItems, shortcutAction, type NodeActionHandlers } from "./node-menu";
+  import { actionItems, actionLabel, queryItems, shortcutAction, type NodeActionHandlers } from "./node-menu";
   import Workspace from "../query/Workspace.svelte";
   import { preloadMonaco } from "../query/preload";
   import { QueryWorkspace } from "../query/store.svelte";
@@ -235,11 +235,11 @@
     }
   };
 
-  /** Runs an action in the sidecar (copyName, or one a backend adds) and copies its text, else the node's label. */
+  /** Runs an action a backend adds in the sidecar and copies the text it returns, if any. */
   async function invokeAction(node: TreeNode, actionId: string) {
     try {
       const result = await api!.invokeNode(node.id, actionId);
-      navigator.clipboard.writeText(copiedText(node, result)).catch(() => {});
+      if (result.text != null) navigator.clipboard.writeText(result.text).catch(() => {});
     } catch (e) {
       lastLoad = { id: node.id, label: node.label, count: 0, ms: 0, error: e instanceof Error ? e.message : String(e) };
     }
@@ -273,6 +273,7 @@
         openQuery: (action) => openQuery(row, action),
         refresh: () => (model.refresh(n.id), n.kind === "database" && refreshQueryTabs(n.id)),
         invoke: (actionId) => invokeAction(n, actionId),
+        copy: (text) => navigator.clipboard.writeText(text).catch(() => {}),
       };
       items.push(...queryItems(n, actionLabels, on));
       // Environments and connections are Panoptic's own config, so their menus also edit, move and delete them.

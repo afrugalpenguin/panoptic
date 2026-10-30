@@ -86,7 +86,7 @@ public sealed class DragTextTests
         var table = NodePath.Parse(tables.First().Id);
         var columns = await Expand(table.Child("f", "columns"));
         Assert.All(columns, c => Assert.Equal(SqlBackend.DragName(c.Meta!["name"]), c.Meta!["dragText"]));
-        Assert.All(await Expand(table.Child("f", "keys")), k => Assert.Null(k.Meta));
-        Assert.All(await Expand(table.Child("f", "indexes")), i => Assert.Null(i.Meta));
+        Assert.All(await Expand(table.Child("f", "keys")), k => Assert.False(k.Meta?.ContainsKey("dragText") ?? false));
+        Assert.All(await Expand(table.Child("f", "indexes")), i => Assert.False(i.Meta?.ContainsKey("dragText") ?? false));
     }
 }

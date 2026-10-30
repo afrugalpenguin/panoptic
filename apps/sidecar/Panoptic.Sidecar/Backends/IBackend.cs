@@ -23,14 +23,15 @@ public interface IBackend
 
     // --- Node actions (optional) ---------------------------------------------------------------------
     // A node's action ids come with it from ChildrenAsync. Labels for the shared ones are in Nodes.ActionLabels.
-    // Node meta may carry ready-made text for the UI: "dragText", what dragging the node into an editor inserts.
+    // Node meta may carry ready-made text for the UI: "dragText", what dragging the node into an editor inserts, and
+    // "copyText", what Copy name copies. The UI offers each only on nodes that have it.
 
     /// <summary>Labels for any action ids this backend adds beyond <see cref="Nodes.ActionLabels"/>.</summary>
     IReadOnlyDictionary<string, string> ActionLabels => Nodes.NoLabels;
 
     /// <summary>
-    /// Performs an action the UI does not perform itself (copyName, and any the backend adds). Returns the text it
-    /// produced; null means nothing beyond the node's label, which the UI then uses.
+    /// Performs an action the UI does not perform itself (any the backend adds; none of the built-in backends add one).
+    /// Returns the text it produced, which the UI copies; null means nothing to copy.
     /// </summary>
     Task<string?> InvokeAsync(ConnectionConfig connection, string? secret, NodePath path, int start, string actionId, CancellationToken cancellationToken) =>
         Task.FromResult(Nodes.InvokeDefault(actionId));
@@ -103,12 +104,12 @@ public interface IQuerySink
 
 public static class Nodes
 {
-    public static readonly string[] Browse = ["refresh", "copyName"];
+    public static readonly string[] Browse = ["refresh"];
     /// <summary>Connections, databases: can open a query against them.</summary>
-    public static readonly string[] Queryable = ["newQuery", "refresh", "copyName"];
+    public static readonly string[] Queryable = ["newQuery", "refresh"];
     /// <summary>Tables, views, containers: can also select their first rows.</summary>
-    public static readonly string[] Selectable = ["selectTop", "newQuery", "refresh", "copyName"];
-    public static readonly string[] LeafActions = ["copyName"];
+    public static readonly string[] Selectable = ["selectTop", "newQuery", "refresh"];
+    public static readonly string[] LeafActions = [];
     /// <summary>The actions that open a query tab: only offered by an <see cref="IQueryBackend"/>.</summary>
     public static readonly string[] QueryActions = ["selectTop", "newQuery"];
 
@@ -118,14 +119,13 @@ public static class Nodes
         ["selectTop"] = "Select top 1000",
         ["newQuery"] = "New query",
         ["refresh"] = "Refresh",
-        ["copyName"] = "Copy name",
     };
 
     public static readonly IReadOnlyDictionary<string, string> NoLabels = new Dictionary<string, string>();
 
-    /// <summary>copyName with nothing better than the label; any other id is not an action this backend knows.</summary>
+    /// <summary>An action id this backend does not know.</summary>
     public static string? InvokeDefault(string actionId) =>
-        actionId == "copyName" ? null : throw new RpcException(RpcException.InvalidParams, $"Unknown action: {actionId}");
+        throw new RpcException(RpcException.InvalidParams, $"Unknown action: {actionId}");
 
     public static TreeNode Folder(NodePath parent, string folder, string label) =>
         new(parent.Child("f", folder).Id, "folder", label, "folder", true, Browse);
