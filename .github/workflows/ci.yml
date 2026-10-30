@@ -101,6 +101,7 @@ jobs:
           "${sqlcmd[@]}" -i /tmp/seed.sql
       - name: SQL integration tests
         run: |
+          set -o pipefail
           dotnet test apps/sidecar -p:EnableWindowsTargeting=true --filter "Category=SqlIntegration" --logger "console;verbosity=detailed" | tee test.log
           # Fail closed: a missing password would skip everything and still pass.
           if grep -q 'Set PANOPTIC_TEST_SQL_PASSWORD' test.log; then echo "::error::SQL tests were skipped for lack of a password"; exit 1; fi
