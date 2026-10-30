@@ -203,7 +203,7 @@
   async function recordVersionSeen(current: string) {
     if (settings.lastSeenVersion === current) return;
     const unseen = sectionsSince(changelog, settings.lastSeenVersion);
-    if (unseen.length > 0) workspace.openWhatsNew(unseen);
+    if (unseen.length > 0) workspace.openWhatsNew(unseen, "launch");
     try {
       settings = await api!.saveSettings({ ...settings, lastSeenVersion: current });
     } catch {
@@ -479,7 +479,7 @@
   <SettingsDialog {settings} {update} onSave={saveSettings} onCheckNow={() => checkForUpdates()}
     hasChangelog={changelog.length > 0}
     onWhatsNew={() => {
-      workspace.openWhatsNew(changelog);
+      workspace.openWhatsNew(changelog, "settings");
       dialog = undefined;
     }}
     onClose={() => (dialog = undefined)} />

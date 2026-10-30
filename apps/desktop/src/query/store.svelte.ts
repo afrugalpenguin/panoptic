@@ -1,6 +1,6 @@
 import type { EditorSettings } from "../app/api";
 import type { Problem } from "../app/problems";
-import type { ChangelogSection } from "../whats-new";
+import type { ChangelogSection, WhatsNewSource } from "../whats-new";
 import { CatalogStore, type CatalogNotice } from "./catalog.svelte";
 import type { Options } from "./intellisense/engine";
 import { findName, lineAt, locatable, quotedName, type Found } from "./intellisense/locate";
@@ -109,16 +109,17 @@ export class QueryTab {
 export class WhatsNewTab {
   readonly kind = "whats-new" as const;
   readonly id = "whats-new";
-  title = $state("");
+  readonly title = "What's new";
   sections = $state.raw<ChangelogSection[]>([]);
+  opened = $state<WhatsNewSource>("launch");
 
-  constructor(sections: ChangelogSection[]) {
-    this.show(sections);
+  constructor(sections: ChangelogSection[], opened: WhatsNewSource) {
+    this.show(sections, opened);
   }
 
-  show(sections: ChangelogSection[]): void {
+  show(sections: ChangelogSection[], opened: WhatsNewSource): void {
     this.sections = sections;
-    this.title = sections.length ? `What's new in v${sections[0].version}` : "What's new";
+    this.opened = opened;
   }
 }
 
@@ -296,11 +297,11 @@ export class QueryWorkspace {
   }
 
   /** Opens the What's new tab, or focuses and refreshes it if it is already open. */
-  openWhatsNew(sections: ChangelogSection[]): WhatsNewTab {
+  openWhatsNew(sections: ChangelogSection[], opened: WhatsNewSource): WhatsNewTab {
     let tab = this.tabs.find((t): t is WhatsNewTab => t.kind === "whats-new");
-    if (tab) tab.show(sections);
+    if (tab) tab.show(sections, opened);
     else {
-      this.tabs.push(new WhatsNewTab(sections));
+      this.tabs.push(new WhatsNewTab(sections, opened));
       tab = this.tabs[this.tabs.length - 1] as WhatsNewTab;
     }
     this.activeId = tab.id;

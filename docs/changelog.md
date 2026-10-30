@@ -1,6 +1,6 @@
 # Changelog and What's new spec
 
-Decided 29 Oct 2026. Pairs with ADR 0013 (write it first, same decision in ADR form).
+Decided 29 Oct 2026. Pairs with ADR 0013 (write it first, same decision in ADR form). Visual spec v2 for the tab added 30 Oct 2026 at the end.
 
 ## Why this shape
 
@@ -75,8 +75,8 @@ Within a section fragments are grouped by category in the order Added, Changed, 
   - `compareVersions(a, b)` numeric three-part compare, unit-tested.
   - `sectionsSince(sections, lastSeen)` returns every section with version greater than lastSeen, newest first. `lastSeen` null returns `[]`: a first install shows nothing.
 - Startup, in App.svelte after settings load and before update checks are scheduled: `const current = await currentVersion()`; if `settings.lastSeenVersion !== current`: when `lastSeenVersion` is not null, call `changelog_markdown`, take `sectionsSince`, and if non-empty open the What's new tab; in every case save `lastSeenVersion = current` through `settings.save`. Save happens even when the tab is not opened, so the version is recorded on first install. Opening the tab must not delay first paint: do it after the tree has loaded, same place `scheduleUpdateChecks` is wired.
-- The tab lives in the existing workspace. Generalise the workspace tab list to a discriminated union: `QueryTab` stays as is with `kind: "query"`, new `WhatsNewTab` has `kind: "whats-new"`, `id: "whats-new"` (singleton; opening again focuses it), `title: "What's new in v0.2.13"` (newest version shown) and `sections`. Workspace.svelte renders `QueryView` for query tabs and `WhatsNewView` for the other. The tab strip's env colour band is transparent for it. Middle-click and the x close it like any tab. Query store logic (routing of rows and messages) only ever touches query tabs; filter by kind, do not add optional fields to `QueryTab`.
-- `WhatsNewView.svelte`: scrollable, full workspace width (same horizontal padding as the query editor, no column max width), UI font. A masthead at the top: the app's own logo (reused from the existing icon asset, no second copy) at roughly h1 cap height, "What's new" as an h1, current version muted beside it; scrolls with the content, not sticky. Each section is an `h2` with the version and date muted beside it, then a `ul` with generous line-height and item spacing, and a faint rule between sections. Existing theme tokens only. Rendering uses a hand-written markdown subset: `**bold**`, `` `code` ``, `[text](https://...)` opened with the Tauri opener plugin (or `shell.open` if that is what the repo already uses for external links; add `opener:allow-open-url` to capabilities only if the opener plugin is introduced, scoped to `https://*`: without a scope it denies every url). Nothing else is interpreted; everything else is text. No markdown library.
+- The tab lives in the existing workspace. Generalise the workspace tab list to a discriminated union: `QueryTab` stays as is with `kind: "query"`, new `WhatsNewTab` has `kind: "whats-new"`, `id: "whats-new"` (singleton; opening again focuses it), `title: "What's new"` and `sections`. Workspace.svelte renders `QueryView` for query tabs and `WhatsNewView` for the other. The tab strip's env colour band is transparent for it. Middle-click and the x close it like any tab. Query store logic (routing of rows and messages) only ever touches query tabs; filter by kind, do not add optional fields to `QueryTab`.
+- `WhatsNewView.svelte`: see "Visual spec v2" below. Rendering uses a hand-written markdown subset: `**bold**`, `` `code` ``, `[text](https://...)` opened with the Tauri opener plugin. Nothing else is interpreted; everything else is text. No markdown library.
 - Settings dialog: a "What's new" button next to "Check now". It opens the tab with every section (not sliced), so the full history is always reachable. Disabled with a tooltip when the changelog is empty.
 - No modal, no toast, no sound. Closing the tab is the only interaction. If the workspace already has query tabs open, the What's new tab is appended and made active once; the user's query tabs are untouched.
 
@@ -89,3 +89,23 @@ Within a section fragments are grouped by category in the order Added, Changed, 
 ## Out of scope
 
 Fetching notes from GitHub at runtime (would be a second outbound call, ADR 0009 and 0010), a `CHANGELOG.md` committed to the repo, editing fragments after merge, categories beyond the four above, a "don't show again" setting (there is nothing to dismiss; the tab opens once per version).
+
+## What's new tab: visual spec v2 (30 Oct 2026)
+
+Replaces the earlier `WhatsNewView.svelte` description. Mockup: board "D. Combined (chosen)" on the "What's new header mockups" canvas. Everything in existing theme tokens; the only new colours are the two from the logo, cyan `#26c6da` and amber `#ffc107`, introduced as `--brand-cyan` and `--brand-amber` in app.css (same values in both themes).
+
+Known bug fixed here: the logo never rendered in the installed build. `128x128.png` is 1.6 KB, under Vite's 4 KB `assetsInlineLimit`, so the production build inlined it as a `data:` URI, and the CSP (`default-src 'self'`, no `img-src`) blocks `data:` images. It worked in `tauri dev`. Fix: `build.assetsInlineLimit: 0` in vite.config.ts, with a comment saying why. Do not loosen the CSP.
+
+### Masthead
+
+Full width, background `--bg-pane`, bottom border `--border`, padding about 30px 40px 26px. A two-stripe left edge, 4px cyan then 4px amber, full height of the masthead. Contents, left to right: the logo at 64px (the existing `128x128@2x.png` or `icon.png`, whichever is sharp at 64px on a 2x display); a title block with `Panoptic 0.2.44` at 26px/600, the version in amber; under it a muted 13px line: `Updated today. N releases since you last opened it.` (N = unseen count; when opened from Settings: `Every release.`); a spacer; a secondary button `Releases on GitHub` opening `https://github.com/afrugalpenguin/panoptic/releases` through the opener. The tab strip title becomes `What's new` with the 14px logo as the tab icon, env band transparent.
+
+### Timeline
+
+Below the masthead, padding 8px 40px 24px. One row per release, flex: a 120px right-aligned gutter holding the version (14px/600), the date (11px muted, `30 Oct` form) and, on the current version only, a small pill `current` (`--bg-selected` background); the gutter's right edge is a 2px vertical rule, `--accent` for the current version and `--border` for the others. Body column padding 14px 0 14px 22px, line-height 1.6, items 10px apart. Each item is a flex row: a 64px category tag (11px/600, 4px radius, tinted background, text in the category colour: Added green `--ok`, Changed amber, Fixed cyan, Removed red `--bad`, each tint `color-mix(in srgb, <colour> 15%, var(--bg-pane))`) then the note text. The generator already emits `Added:` style prefixes grouped in order; the parser splits the prefix off into the tag. Earlier versions' text is a step lighter than `--text` (not `--text-muted`); the current version's is `--text`.
+
+The newest release is separated from the rest by a 1px horizontal rule (`--border`, margin 14px 0) across the full content width. The rule is not drawn when there is only one release in the tab.
+
+### What is shown
+
+On launch: every release newer than `lastSeenVersion`, however many. From Settings: every release in the bundled file. There is no cap on either; a "last N" cap was considered and dropped (the cadence is one release per merge, so a count means nothing, and truncating is the only way to hide something unseen).

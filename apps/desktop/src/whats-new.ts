@@ -66,6 +66,38 @@ export function bullets(body: string): string[] {
   return out;
 }
 
+export type Category = "Added" | "Changed" | "Fixed" | "Removed";
+
+/** Splits a bullet's leading "Added: " style prefix (the generator writes one on every bullet) from its note. */
+export function category(item: string): { category: Category | undefined; text: string } {
+  const m = /^(Added|Changed|Fixed|Removed): /.exec(item);
+  return m ? { category: m[1] as Category, text: item.slice(m[0].length) } : { category: undefined, text: item };
+}
+
+const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** "2026-10-30" as "30 Oct"; empty when there is no date. */
+export function shortDate(date: string): string {
+  const m = DATE.exec(date);
+  return m ? `${Number(m[3])} ${MONTHS[Number(m[2]) - 1]}` : "";
+}
+
+/** Where the tab was opened from: on launch it holds the unseen releases, from Settings every release. */
+export type WhatsNewSource = "launch" | "settings";
+
+/** The masthead line under the title: when the newest release shipped, then what the tab holds. */
+export function subtitle(sections: ChangelogSection[], opened: WhatsNewSource, today: Date): string {
+  if (sections.length === 0) return "";
+  const n = sections.length;
+  const holds = opened === "settings" ? "Every release." : `${n} ${n === 1 ? "release" : "releases"} since you last opened it.`;
+  const m = DATE.exec(sections[0].date);
+  if (!m) return holds;
+  const days = Math.round((Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()) - Date.UTC(+m[1], +m[2] - 1, +m[3])) / 86_400_000);
+  const when = days === 0 ? "today" : days === 1 ? "yesterday" : shortDate(sections[0].date);
+  return `Updated ${when}. ${holds}`;
+}
+
 // The only markdown interpreted: **bold**, `code` and [text](https://...). Everything else is text.
 const INLINE = /\*\*([^*\n]+)\*\*|`([^`\n]+)`|\[([^\]\n]+)\]\((https:\/\/[^\s)]+)\)/g;
 

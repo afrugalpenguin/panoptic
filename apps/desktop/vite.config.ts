@@ -32,6 +32,10 @@ export default defineConfig(() => ({
     // It is fetched when a connection is first selected and created when the first query tab opens
     // (ADR 0006), never at start-up, so the default 500 kB warning does not apply to it.
     chunkSizeWarningLimit: 3500,
+    // Never inline assets as data: URIs. The CSP is default-src 'self' with no img-src, so a data: image
+    // is blocked: the 1.6 KB logo, under the 4 KB default limit, showed in tauri dev but not in the
+    // installed build. Emitting every asset as a file keeps the CSP as strict as it is.
+    assetsInlineLimit: 0,
     rollupOptions: {
       input: { main: "index.html", bench: "bench.html" },
     },

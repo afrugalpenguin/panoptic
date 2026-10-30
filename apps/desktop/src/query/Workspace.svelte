@@ -1,4 +1,5 @@
 <script lang="ts">
+  import logo from "../../src-tauri/icons/32x32.png";
   import ProblemsView from "./ProblemsView.svelte";
   import QueryView from "./QueryView.svelte";
   import WhatsNewView from "./WhatsNewView.svelte";
@@ -30,6 +31,7 @@
         title={tab.kind === "query" ? `${tab.target.connection} / ${tab.target.label}` : tab.title}
       >
         {#if tab.kind === "query" && tab.running}<span class="spinner"></span>{/if}
+        {#if tab.kind === "whats-new"}<img class="icon" src={logo} alt="" />{/if}
         <span class="title">{tab.title}</span>
         <button class="close" aria-label="Close {tab.title}" onclick={(e) => (e.stopPropagation(), workspace.close(tab.id))}>x</button>
       </div>
@@ -76,6 +78,10 @@
   }
   .tab.on {
     background: var(--bg-pane);
+  }
+  .icon {
+    width: 14px;
+    height: 14px;
   }
   .title {
     overflow: hidden;
