@@ -99,7 +99,7 @@ jobs:
           # created at releaseCommitish when the release is published.
           releaseDraft: true
           prerelease: false
-          includeUpdaterJson: true
+          uploadUpdaterJson: true
 
       - name: Attach portable zip
         shell: pwsh
