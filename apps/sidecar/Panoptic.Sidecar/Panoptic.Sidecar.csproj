@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <AssemblyMetadata Include="PublishMode" Value="$(PanopticMode)" />
+    <InternalsVisibleTo Include="Panoptic.Sidecar.Tests" />
   </ItemGroup>
 
   <ItemGroup>

@@ -106,14 +106,27 @@ public sealed class CosmosBackend(Credentials credentials) : IBackend
         ];
     }
 
-    private static async Task<string> Throughput(Database db, Container container, CancellationToken ct)
+    private static Task<string> Throughput(Database db, Container container, CancellationToken ct) =>
+        Throughput(t => container.ReadThroughputAsync(new RequestOptions(), t), t => db.ReadThroughputAsync(new RequestOptions(), t), ct);
+
+    /// <summary>Takes the two offer reads as delegates so tests can fake them.</summary>
+    internal static async Task<string> Throughput(
+        Func<CancellationToken, Task<ThroughputResponse>> readOwn,
+        Func<CancellationToken, Task<ThroughputResponse>> readShared,
+        CancellationToken ct)
     {
         static string Format(ThroughputResponse r) =>
             r.Resource.AutoscaleMaxThroughput is int max ? $"autoscale up to {max:N0} RU/s" : $"{r.Resource.Throughput:N0} RU/s";
         try
         {
-            var own = await container.ReadThroughputAsync(new RequestOptions(), ct);
+            var own = await readOwn(ct);
             if (own.Resource is not null) return Format(own);
+        }
+        catch (CosmosException ex) when (ex.StatusCode is HttpStatusCode.Forbidden)
+        {
+            // Cosmos RBAC data-plane roles cannot read offers, so the database read would 403 too.
+            // Only this leaf degrades; the container's other reads still surface their own errors.
+            return "not visible with this identity";
         }
         catch (CosmosException ex) when (ex.StatusCode is HttpStatusCode.NotFound)
         {
@@ -126,7 +139,7 @@ public sealed class CosmosBackend(Credentials credentials) : IBackend
 
         try
         {
-            var shared = await db.ReadThroughputAsync(new RequestOptions(), ct);
+            var shared = await readShared(ct);
             return shared.Resource is null ? "unknown" : $"{Format(shared)} (shared)";
         }
         catch (CosmosException)
