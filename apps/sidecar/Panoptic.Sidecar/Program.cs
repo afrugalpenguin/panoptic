@@ -26,21 +26,14 @@ void Notify(string method, Action<Utf8JsonWriter> parameters) => _ = WriteLine(J
 var credentials = new Credentials(prompt =>
     Notify("auth.deviceCode", w => JsonSerializer.Serialize(w, prompt, SidecarJson.Default.DeviceCodePrompt)));
 var store = new ConfigStore(Environment.GetEnvironmentVariable("PANOPTIC_STORE") ?? ConfigStore.DefaultPath);
-var sql = new SqlBackend(credentials);
-var cosmos = new CosmosBackend(credentials);
-var tree = new TreeService(store, new Dictionary<string, IBackend>
-{
-    [ConnectionKinds.Sql] = sql,
-    [ConnectionKinds.Synapse] = sql,
-    [ConnectionKinds.Cosmos] = cosmos,
-});
+var tree = new TreeService(store, BackendRegistry.Create(credentials));
 
 var startupMs = (DateTime.Now - Process.GetCurrentProcess().StartTime).TotalMilliseconds;
-var query = new Panoptic.Sidecar.Query.QueryService(store, tree, sql, cosmos, Notify);
+var query = new Panoptic.Sidecar.Query.QueryService(store, tree, Notify);
 var catalog = new Panoptic.Sidecar.Catalog.CatalogService(
     p => tree.ResolveTarget(p.NodeId, p.Database),
     new Panoptic.Sidecar.Catalog.CatalogCache(Environment.GetEnvironmentVariable("PANOPTIC_CATALOG") ?? Panoptic.Sidecar.Catalog.CatalogCache.DefaultFolder),
-    new Panoptic.Sidecar.Catalog.CatalogSources(store, sql, cosmos),
+    new Panoptic.Sidecar.Catalog.CatalogSources(store, tree),
     (method, notice) => Notify(method, w => JsonSerializer.Serialize(w, notice, SidecarJson.Default.CatalogNotice)));
 var dispatcher = new JsonRpcDispatcher(Methods.Create(new SidecarInfo(Math.Round(startupMs, 1), version, mode), store, tree, query, catalog));
 

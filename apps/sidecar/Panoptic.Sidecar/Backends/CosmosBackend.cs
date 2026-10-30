@@ -3,6 +3,8 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Azure.Cosmos;
+using Panoptic.Sidecar.Catalog;
+using Panoptic.Sidecar.Query;
 
 namespace Panoptic.Sidecar.Backends;
 
@@ -13,6 +15,7 @@ namespace Panoptic.Sidecar.Backends;
 public sealed class CosmosBackend(Credentials credentials) : IBackend
 {
     private const int ItemSample = 100;
+    private static readonly HashSet<string> SystemProperties = ["_rid", "_self", "_etag", "_attachments"];
 
     private readonly ConcurrentDictionary<string, (string Fingerprint, CosmosClient Client)> _clients = new();
 
@@ -58,6 +61,98 @@ public sealed class CosmosBackend(Credentials credentials) : IBackend
     {
         if (_clients.TryRemove(connectionId, out var entry)) entry.Client.Dispose();
     }
+
+    // --- Query editor -----------------------------------------------------------------------------------
+
+    public string EditorLanguage => "cosmos";
+
+    /// <summary>selectTop on a container; any other action opens empty.</summary>
+    public string? TemplateFor(NodePath path, string action)
+    {
+        if (action != "selectTop") return "";
+        var last = path.Count > 0 ? path[path.Count - 1] : default;
+        return last.Type == "c" ? "SELECT TOP 1000 * FROM c" : null;
+    }
+
+    /// <summary>
+    /// Runs one query against the target's container as one result set. Documents become rows: id first, as Data
+    /// Explorer shows it, then each property in the order first seen, system properties hidden; columns grow as new
+    /// properties appear. Cosmos queries cannot write, so read-only environments need no guard here.
+    /// </summary>
+    public async Task ExecuteAsync(QueryTarget target, string? secret, string text, IQuerySink sink, CancellationToken ct)
+    {
+        if (target.Database is null || target.Container is null)
+            throw new RpcException(RpcException.InvalidParams, "Select a container to query: Cosmos queries run against one container.");
+
+        var client = ClientFor(target.Connection, secret);
+        var container = client.GetContainer(target.Database, target.Container);
+        using var iterator = container.GetItemQueryStreamIterator(new QueryDefinition(text), requestOptions: new QueryRequestOptions { MaxItemCount = sink.BatchSize });
+
+        var set = sink.BeginSet();
+        var columns = new List<string>();
+        var position = new Dictionary<string, int>();
+        var sent = 0;
+        sink.AddCharge(0);
+
+        try
+        {
+            while (iterator.HasMoreResults)
+            {
+                using var response = await iterator.ReadNextAsync(ct);
+                sink.AddCharge(response.Headers.RequestCharge);
+                if (!response.IsSuccessStatusCode)
+                    throw new RpcException(RpcException.OperationFailed, $"{(int)response.StatusCode} {response.ErrorMessage?.Split('\n')[0]}");
+
+                using var page = await JsonDocument.ParseAsync(response.Content, cancellationToken: ct);
+                var rows = new List<object?[]>();
+                foreach (var doc in page.RootElement.GetProperty("Documents").EnumerateArray())
+                {
+                    var values = new Dictionary<int, object?>();
+                    if (doc.ValueKind != JsonValueKind.Object)
+                    {
+                        values[Column("value")] = doc.Clone(); // SELECT VALUE ... returns bare values
+                    }
+                    else
+                    {
+                        if (doc.TryGetProperty("id", out var id)) values[Column("id")] = id.Clone();
+                        foreach (var prop in doc.EnumerateObject())
+                            if (prop.Name != "id" && !SystemProperties.Contains(prop.Name)) values[Column(prop.Name)] = prop.Value.Clone();
+                    }
+                    var row = new object?[columns.Count];
+                    foreach (var (i, value) in values) row[i] = value;
+                    rows.Add(row);
+                }
+
+                var newColumns = columns.Count != sent;
+                var none = sink.RowCount(set) == 0;
+                if (rows.Count > 0 || none)
+                    sink.Rows(set, newColumns || none ? columns.Select(c => new ResultColumn(c, "")).ToArray() : null, rows);
+                sent = columns.Count;
+            }
+        }
+        catch (CosmosException ex) when (!ct.IsCancellationRequested)
+        {
+            sink.Fail($"{(int)ex.StatusCode} {ex.StatusCode}: {ex.Message.Split('\n')[0]}");
+        }
+
+        int Column(string name)
+        {
+            if (position.TryGetValue(name, out var i)) return i;
+            i = columns.Count;
+            columns.Add(name);
+            position[name] = i;
+            return i;
+        }
+    }
+
+    /// <summary>Cosmos has no cheap change stamp, so the catalog is rebuilt (re-sampled) once per session.</summary>
+    public Task<DatabaseCatalog> CatalogAsync(QueryTarget target, string? secret, EditorSettings editor, CancellationToken ct)
+    {
+        if (target.Database is null) throw new RpcException(RpcException.InvalidParams, "Select a Cosmos database or container for IntelliSense.");
+        return CosmosCatalog.BuildAsync(ClientFor(target.Connection, secret), target.Database, editor.CatalogSampleDocs, ct);
+    }
+
+    // --- Tree -------------------------------------------------------------------------------------------
 
     private static async Task<TreeNode[]> Databases(CosmosClient client, NodePath path, CancellationToken ct)
     {

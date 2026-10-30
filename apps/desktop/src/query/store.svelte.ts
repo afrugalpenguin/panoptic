@@ -5,7 +5,7 @@ import { CatalogStore, type CatalogNotice } from "./catalog.svelte";
 import type { Options } from "./intellisense/engine";
 import type { ModelInfo } from "./intellisense/providers";
 import { isDdl } from "./intellisense/scanner";
-import type { CellValue, MessageNotification, QuerySummary, QueryTarget, ResultColumn, RowsNotification } from "./types";
+import type { CellValue, MessageNotification, QueryScope, QuerySummary, QueryTarget, ResultColumn, RowsNotification } from "./types";
 
 export interface QueryApi {
   executeQuery: (request: { queryId: string; nodeId: string; text: string; database?: string }) => Promise<QuerySummary>;
@@ -16,7 +16,10 @@ export interface QueryApi {
   databases?: (connectionNodeId: string) => Promise<string[]>;
 }
 
-/** The connection part of a node id (env:x/conn:y) and its database and Cosmos container segments, decoded. */
+/**
+ * The connection part of a node id (env:x/conn:y) and its database and Cosmos container segments, decoded. Only for
+ * targets without a sidecar-resolved scope (QueryTarget.scope); the app passes the sidecar's.
+ */
 export function nodeParts(nodeId: string): { connection: string; database?: string; container?: string } {
   const segments = nodeId.split("/");
   const result: { connection: string; database?: string; container?: string } = { connection: segments.slice(0, 2).join("/") };
@@ -130,20 +133,25 @@ export class QueryWorkspace {
     return tab;
   }
 
+  /** The tab's connection, database and container: the sidecar's scope, else read from the node id. */
+  private scopeOf(target: QueryTarget): QueryScope {
+    return target.scope ?? nodeParts(target.nodeId);
+  }
+
   /** The database the tab runs against: the picker's choice, else the node's own (undefined: the connection default). */
   databaseOf(tab: QueryTab): string | undefined {
-    return tab.database ?? nodeParts(tab.target.nodeId).database;
+    return tab.database ?? this.scopeOf(tab.target).database;
   }
 
   setDatabase(tab: QueryTab, database: string): void {
-    tab.database = database === nodeParts(tab.target.nodeId).database ? undefined : database;
+    tab.database = database === this.scopeOf(tab.target).database ? undefined : database;
     tab.catalogKey = undefined;
     void this.loadCatalog(tab);
   }
 
   private remember(tab: QueryTab, database: string | undefined, key: string): void {
     if (!database) return;
-    const connection = nodeParts(tab.target.nodeId).connection;
+    const connection = this.scopeOf(tab.target).connection;
     this.databaseKeys.set(connection, { ...this.databaseKeys.get(connection), [database.toLowerCase()]: key });
   }
 
@@ -163,7 +171,7 @@ export class QueryWorkspace {
   private async loadDatabases(tab: QueryTab): Promise<void> {
     if (!this.api.databases || tab.target.language !== "sql") return;
     try {
-      tab.databases = await this.api.databases(nodeParts(tab.target.nodeId).connection);
+      tab.databases = await this.api.databases(this.scopeOf(tab.target).connection);
     } catch {
       tab.databases = [];
     }
@@ -171,7 +179,7 @@ export class QueryWorkspace {
 
   /** A database named in the text (USE x, x.schema.) has no catalog yet: fetch it once, in the background. */
   private async fetchDatabase(tab: QueryTab, database: string): Promise<void> {
-    const connection = nodeParts(tab.target.nodeId).connection;
+    const connection = this.scopeOf(tab.target).connection;
     const marker = `${connection}|${database.toLowerCase()}`;
     if (!this.api.catalogGet || this.databaseKeys.get(connection)?.[database.toLowerCase()] || this.fetching.has(marker)) return;
     this.fetching.add(marker);
@@ -191,7 +199,7 @@ export class QueryWorkspace {
   intellisense(tab: QueryTab): () => ModelInfo | undefined {
     return () => {
       if (!this.editor.intellisense) return undefined;
-      const parts = nodeParts(tab.target.nodeId);
+      const parts = this.scopeOf(tab.target);
       const databases = this.databaseKeys.get(parts.connection) ?? {};
       const keys = [...new Set([tab.catalogKey, ...Object.values(databases)])].filter((k): k is string => !!k);
       const options: Options = { language: tab.target.language === "cosmos" ? "cosmos-sql" : "tsql" };
@@ -231,12 +239,16 @@ export class QueryWorkspace {
     this.databaseKeys.set(connection, Object.fromEntries(Object.entries(keys).filter((e) => !failed(e))));
   }
 
-  /** Explorer refresh on a connection or database: rebuild the catalogs of query tabs open against it. */
+  /** Explorer refresh on a connection or database, by node id: see refreshForScope. */
   refreshForNode(nodeId: string): void {
-    const node = nodeParts(nodeId);
+    this.refreshForScope(nodeParts(nodeId));
+  }
+
+  /** Explorer refresh on a connection or database (its query.scope): rebuild the catalogs of query tabs open against it. */
+  refreshForScope(node: QueryScope): void {
     this.forgetFailed(node.connection, node.database);
     for (const t of this.tabs) {
-      if (t.kind !== "query" || nodeParts(t.target.nodeId).connection !== node.connection) continue;
+      if (t.kind !== "query" || this.scopeOf(t.target).connection !== node.connection) continue;
       if (node.database === undefined || node.database.toLowerCase() === this.databaseOf(t)?.toLowerCase()) this.refreshCatalog(t);
     }
   }
@@ -307,7 +319,7 @@ export class QueryWorkspace {
     try {
       tab.summary = await this.api.executeQuery({ queryId: tab.queryId, nodeId: tab.target.nodeId, text, database: tab.database });
       if (this.editor.autoRefreshOnDdl && tab.target.language === "sql" && isDdl(text)) {
-        this.forgetFailed(nodeParts(tab.target.nodeId).connection);
+        this.forgetFailed(this.scopeOf(tab.target).connection);
         this.refreshCatalog(tab);
       }
       tab.error = tab.summary.error ?? undefined;

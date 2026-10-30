@@ -85,25 +85,12 @@ public sealed class CatalogService(Func<CatalogParams, QueryTarget> resolve, Cat
     }
 }
 
-/// <summary>Catalog builds against the real backends.</summary>
-public sealed class CatalogSources(ConfigStore store, SqlBackend sql, CosmosBackend cosmos) : ICatalogSource
+/// <summary>Catalog builds against the real backends: whichever one serves the target's connection kind.</summary>
+public sealed class CatalogSources(ConfigStore store, TreeService tree) : ICatalogSource
 {
-    public async Task<string?> StampAsync(QueryTarget target, CancellationToken ct)
-    {
-        if (target.Connection.Kind == ConnectionKinds.Cosmos) return null;
-        await using var conn = await sql.OpenAsync(target.Connection, store.GetSecret(target.Connection.Id), target.Database, ct);
-        return await SqlCatalog.StampAsync(conn, ct);
-    }
+    public Task<string?> StampAsync(QueryTarget target, CancellationToken ct) =>
+        tree.BackendFor(target.Connection).CatalogStampAsync(target, store.GetSecret(target.Connection.Id), ct);
 
-    public async Task<DatabaseCatalog> BuildAsync(QueryTarget target, CancellationToken ct)
-    {
-        if (target.Connection.Kind == ConnectionKinds.Cosmos)
-        {
-            if (target.Database is null) throw new RpcException(RpcException.InvalidParams, "Select a Cosmos database or container for IntelliSense.");
-            var client = cosmos.ClientFor(target.Connection, store.GetSecret(target.Connection.Id));
-            return await CosmosCatalog.BuildAsync(client, target.Database, store.Settings.Editor.CatalogSampleDocs, ct);
-        }
-        await using var conn = await sql.OpenAsync(target.Connection, store.GetSecret(target.Connection.Id), target.Database, ct);
-        return await SqlCatalog.BuildAsync(conn, ct);
-    }
+    public Task<DatabaseCatalog> BuildAsync(QueryTarget target, CancellationToken ct) =>
+        tree.BackendFor(target.Connection).CatalogAsync(target, store.GetSecret(target.Connection.Id), store.Settings.Editor, ct);
 }

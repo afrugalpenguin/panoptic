@@ -59,6 +59,42 @@ public sealed class TreeService(ConfigStore store, IReadOnlyDictionary<string, I
         return new QueryTarget(env, connection, database ?? nodeDatabase, container);
     }
 
+    /// <summary>
+    /// What a query tab opened on a node runs against and is called, so the UI never parses node ids: the connection's
+    /// node id, the node's own database and container segments, and the nearest of their names.
+    /// </summary>
+    public QueryScope ScopeOf(string nodeId)
+    {
+        var target = ResolveTarget(nodeId);
+        var path = NodePath.Parse(nodeId);
+        var segment = (string type) => path.Segments.Skip(2).FirstOrDefault(s => s.Type == type).Value;
+        var (database, container) = (segment("db"), segment("c"));
+        return new QueryScope(NodePath.Root.Child("env", target.Environment.Id).Child("conn", target.Connection.Id).Id,
+            database, container, container ?? database ?? target.Connection.Name, target.Connection.Name);
+    }
+
+    /// <summary>
+    /// Runs a node action the sidecar performs (node.invoke). Environments and connections have no name beyond their
+    /// label; below a connection the backend answers.
+    /// </summary>
+    public async Task<string?> InvokeAsync(string nodeId, string actionId, CancellationToken cancellationToken)
+    {
+        var path = NodePath.Parse(nodeId);
+        if (path.Count == 1 && path[0].Type == "env") return Nodes.InvokeDefault(actionId);
+        var target = ResolveTarget(nodeId);
+        if (path.Count == 2) return Nodes.InvokeDefault(actionId);
+        return await BackendFor(target.Connection).InvokeAsync(target.Connection, store.GetSecret(target.Connection.Id), path, 2, actionId, cancellationToken);
+    }
+
+    /// <summary>Menu labels for every action id a node can carry: the shared ones, then any a backend adds.</summary>
+    public Dictionary<string, string> ActionLabels()
+    {
+        var labels = new Dictionary<string, string>(Nodes.ActionLabels);
+        foreach (var backend in backends.Values.Distinct())
+            foreach (var (id, label) in backend.ActionLabels) labels.TryAdd(id, label);
+        return labels;
+    }
+
     public IBackend BackendFor(ConnectionConfig connection) =>
         backends.TryGetValue(connection.Kind, out var backend)
             ? backend

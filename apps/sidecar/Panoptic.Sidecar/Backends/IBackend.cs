@@ -1,10 +1,17 @@
+using Panoptic.Sidecar.Catalog;
+using Panoptic.Sidecar.Query;
+
 namespace Panoptic.Sidecar.Backends;
 
 /// <summary>
-/// One data source kind (SQL Server, Cosmos). Everything backend-specific lives behind this.
+/// One data source kind (SQL Server, Cosmos). Everything backend-specific lives behind this: the services and RPC
+/// methods only ever reach a backend through <see cref="BackendRegistry"/>, never by type or connection kind.
+/// Members with a default body are optional: a backend that only browses gets "not supported" for the rest.
 /// </summary>
 public interface IBackend
 {
+    // --- Tree ----------------------------------------------------------------------------------------
+
     /// <param name="path">Full node path; segments from <paramref name="start"/> belong to this backend.</param>
     Task<TreeNode[]> ChildrenAsync(ConnectionConfig connection, string? secret, NodePath path, int start, CancellationToken cancellationToken);
 
@@ -13,6 +20,82 @@ public interface IBackend
 
     /// <summary>Drops any cached client for a connection whose settings changed or was removed.</summary>
     void Forget(string connectionId);
+
+    // --- Node actions --------------------------------------------------------------------------------
+    // A node's action ids come with it from ChildrenAsync. Labels for the shared ones are in Nodes.ActionLabels.
+
+    /// <summary>Labels for any action ids this backend adds beyond <see cref="Nodes.ActionLabels"/>.</summary>
+    IReadOnlyDictionary<string, string> ActionLabels => Nodes.NoLabels;
+
+    /// <summary>
+    /// Performs an action the UI does not perform itself (copyName, and any the backend adds). Returns the text it
+    /// produced; null means nothing beyond the node's label, which the UI then uses.
+    /// </summary>
+    Task<string?> InvokeAsync(ConnectionConfig connection, string? secret, NodePath path, int start, string actionId, CancellationToken cancellationToken) =>
+        Task.FromResult(Nodes.InvokeDefault(actionId));
+
+    // --- Query editor --------------------------------------------------------------------------------
+
+    /// <summary>The editor language the UI opens this backend's query tabs in: "sql" (T-SQL) or "cosmos" today.</summary>
+    string EditorLanguage => "plaintext";
+
+    /// <summary>Text for a query tab opened by a node action: selectTop on a table, view or container (null on any
+    /// other node), or empty for newQuery and anything else.</summary>
+    string? TemplateFor(NodePath path, string action) => action == "selectTop" ? null : "";
+
+    /// <summary>
+    /// Runs query text, streaming results into <paramref name="sink"/>. The target carries the environment, so the
+    /// backend applies the read-only policy its own way (or refuses). Errors the backend reports itself go through
+    /// <see cref="IQuerySink.Fail"/>; anything thrown becomes the run's error. Cancellation throws.
+    /// </summary>
+    Task ExecuteAsync(QueryTarget target, string? secret, string text, IQuerySink sink, CancellationToken cancellationToken) =>
+        throw new RpcException(RpcException.InvalidParams, $"{target.Connection.Kind} connections cannot run queries.");
+
+    // --- IntelliSense catalog ------------------------------------------------------------------------
+
+    /// <summary>A cheap value that changes when the database's objects change. Null when there is no cheap check:
+    /// the catalog is then rebuilt once per session.</summary>
+    Task<string?> CatalogStampAsync(QueryTarget target, string? secret, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
+
+    Task<DatabaseCatalog> CatalogAsync(QueryTarget target, string? secret, EditorSettings editor, CancellationToken cancellationToken) =>
+        throw new RpcException(RpcException.InvalidParams, $"{target.Connection.Kind} connections have no IntelliSense catalog.");
+}
+
+/// <summary>
+/// Where a backend streams a query's results (<see cref="IBackend.ExecuteAsync"/>). The query service behind it owns
+/// the run: notifications, row counts, timing, cancellation and the summary.
+/// </summary>
+public interface IQuerySink
+{
+    /// <summary>Rows per query.rows notification, and the page size to ask a driver for.</summary>
+    int BatchSize { get; }
+
+    /// <summary>Result sets begun so far.</summary>
+    int SetCount { get; }
+
+    /// <summary>Starts the next result set and returns its index.</summary>
+    int BeginSet();
+
+    /// <summary>Rows already sent for a set.</summary>
+    int RowCount(int set);
+
+    /// <summary>Sends a batch of rows (columns on a set's first batch, and again whenever they change) and counts them.</summary>
+    void Rows(int set, ResultColumn[]? columns, IReadOnlyList<object?[]> rows);
+
+    /// <summary>A query.message: "info" (PRINT output, rows affected) or "error".</summary>
+    void Message(string kind, string text);
+
+    /// <summary>Records the run's error and reports it as an error message.</summary>
+    void Fail(string error);
+
+    /// <summary>Read-only guard: the changes were rolled back.</summary>
+    void RolledBack();
+
+    /// <summary>Read-only guard: the script ended the guard early, so changes may be committed.</summary>
+    void Committed();
+
+    /// <summary>Adds request units to the run's charge (Cosmos). Adding 0 reports a charge of 0.</summary>
+    void AddCharge(double charge);
 }
 
 public static class Nodes
@@ -23,6 +106,21 @@ public static class Nodes
     /// <summary>Tables, views, containers: can also select their first rows.</summary>
     public static readonly string[] Selectable = ["selectTop", "newQuery", "refresh", "copyName"];
     public static readonly string[] LeafActions = ["copyName"];
+
+    /// <summary>Menu labels for the actions every backend shares (node.actionLabels).</summary>
+    public static readonly IReadOnlyDictionary<string, string> ActionLabels = new Dictionary<string, string>
+    {
+        ["selectTop"] = "Select top 1000",
+        ["newQuery"] = "New query",
+        ["refresh"] = "Refresh",
+        ["copyName"] = "Copy name",
+    };
+
+    public static readonly IReadOnlyDictionary<string, string> NoLabels = new Dictionary<string, string>();
+
+    /// <summary>copyName with nothing better than the label; any other id is not an action this backend knows.</summary>
+    public static string? InvokeDefault(string actionId) =>
+        actionId == "copyName" ? null : throw new RpcException(RpcException.InvalidParams, $"Unknown action: {actionId}");
 
     public static TreeNode Folder(NodePath parent, string folder, string label) =>
         new(parent.Child("f", folder).Id, "folder", label, "folder", true, Browse);

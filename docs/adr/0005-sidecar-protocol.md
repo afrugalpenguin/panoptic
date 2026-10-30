@@ -26,3 +26,12 @@ Added 2026-10-30. Any request can be cancelled with the notification `$/cancelRe
 - `tree.children` and `connection.test` honour the token down to the driver. `catalog.get` and `catalog.refresh` answer at once from memory or disk; the build they may start is shared by every request for that database and outlives the request, so it is not tied to any one request's token.
 
 `query.execute` keeps its own `query.cancel { queryId }` method. It predates this, is keyed by the UI's query id, and reports a cancelled run as a normal summary with `cancelled: true`, keeping the rows already streamed. `$/cancelRequest` on a `query.execute` request id has the same effect, because the query links its token to the request's. Moving the query tab to `$/cancelRequest` and retiring `query.cancel` is a possible follow-up, not part of this change.
+
+## Backend contract methods
+
+Added 2026-10-30. Everything below a connection is served by that connection kind's `IBackend`, registered once in `BackendRegistry` (tree, query execution, templates, editor language, IntelliSense catalog, node actions). So that the UI never parses node ids or tests connection kinds for behaviour, these were added. All are additive: no existing method or field changed.
+
+- `query.template` results carry `scope`: `{ connection, database?, container?, label, connectionLabel }`. `connection` is the connection's node id; `database` and `container` are the node's own segments (absent means the connection default); `label` is the nearest container, database or connection name, which names a new query tab.
+- `query.scope { nodeId }` returns the same scope on its own. An explorer refresh of a connection or database uses it to find the query tabs whose catalogs to rebuild.
+- `node.actionLabels` returns `{ actionId: label }` for every action id a node can carry: the shared ones (`selectTop`, `newQuery`, `refresh`, `copyName`) and any a backend adds. The UI performs `selectTop`, `newQuery` and `refresh` itself and adds its own keyboard hints.
+- `node.invoke { nodeId, actionId }` performs any other action in the sidecar and returns `{ text? }`, which the UI copies to the clipboard; an absent `text` means "use the node's label". `copyName` is the only such action today.

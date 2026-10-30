@@ -128,6 +128,12 @@ export class TreeModel {
     return this.parents.get(id);
   }
 
+  /** Ids of a node's loaded children ("" for the environments); empty while loading, failed or not loaded. */
+  childIds(id: string): string[] {
+    const state = this.children.get(id);
+    return state?.status === "loaded" ? [...state.ids] : [];
+  }
+
   isExpanded(id: string): boolean {
     return this.expanded.has(id);
   }
