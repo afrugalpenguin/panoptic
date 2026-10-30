@@ -21,7 +21,7 @@ public sealed class FakeBackend : IQueryBackend
         Task.FromResult<TreeNode[]>(Nodes.Shape(path.From(start)) switch
         {
             "" => [Nodes.Branch(path.Child("db", "main"), "database", "main", "database", actions: Nodes.Queryable)],
-            "db" => [Nodes.Branch(path.Child("t", "widgets"), "table", "widgets", "table", actions: ["selectTop", "newQuery", "refresh", "copyName", "copyPath"])],
+            "db" => [Nodes.Branch(path.Child("t", "widgets"), "table", "widgets", "table", actions: ["selectTop", "newQuery", "refresh", "copyPath"])],
             _ => [],
         });
 
@@ -34,7 +34,6 @@ public sealed class FakeBackend : IQueryBackend
     public Task<string?> InvokeAsync(ConnectionConfig connection, string? secret, NodePath path, int start, string actionId, CancellationToken ct) =>
         Task.FromResult<string?>(actionId switch
         {
-            "copyName" => Quote(path[path.Count - 1].Value),
             "copyPath" => string.Join('.', path.From(start).Select(s => Quote(s.Value))),
             _ => Nodes.InvokeDefault(actionId),
         });
@@ -202,10 +201,11 @@ public sealed class BackendContractTests : IDisposable
         Assert.Equal("Copy path", labels.GetProperty("copyPath").GetString());
         Assert.Equal("Select top 1000", labels.GetProperty("selectTop").GetString());
 
-        Assert.Equal("\"widgets\"", (await Call(sidecar, "node.invoke", new { nodeId = Widgets, actionId = "copyName" })).GetProperty("text").GetString());
         Assert.Equal("\"main\".\"widgets\"", (await Call(sidecar, "node.invoke", new { nodeId = Widgets, actionId = "copyPath" })).GetProperty("text").GetString());
-        // Connections copy their label, which the UI already has.
-        Assert.False((await Call(sidecar, "node.invoke", new { nodeId = "env:e/conn:f", actionId = "copyName" })).TryGetProperty("text", out _));
+        // Copy name is node meta now, not an action.
+        Assert.False(labels.TryGetProperty("copyName", out _));
+        var error = await Error(sidecar, "node.invoke", new { nodeId = "env:e/conn:f", actionId = "copyName" });
+        Assert.Equal(RpcException.InvalidParams, error.GetProperty("code").GetInt32());
     }
 
     [Fact]
@@ -236,12 +236,12 @@ public sealed class BackendContractTests : IDisposable
         var sidecar = Sidecar();
 
         var connection = (await Call(sidecar, "tree.children", new { nodeId = "env:e" })).EnumerateArray().First(n => n.GetProperty("id").GetString() == "env:e/conn:b");
-        Assert.Equal(["refresh", "copyName"], ActionsOf(connection));
+        Assert.Equal(["refresh"], ActionsOf(connection));
         var thing = Assert.Single((await Call(sidecar, "tree.children", new { nodeId = "env:e/conn:b" })).EnumerateArray());
-        Assert.Equal(["refresh", "copyName"], ActionsOf(thing));
+        Assert.Equal(["refresh"], ActionsOf(thing));
         // A query backend's connection and nodes keep theirs.
         var fake = (await Call(sidecar, "tree.children", new { nodeId = "env:e" })).EnumerateArray().First(n => n.GetProperty("id").GetString() == "env:e/conn:f");
-        Assert.Equal(["newQuery", "refresh", "copyName"], ActionsOf(fake));
+        Assert.Equal(["newQuery", "refresh"], ActionsOf(fake));
 
         var summary = await Call(sidecar, "query.execute", new { queryId = "q3", nodeId = "env:e/conn:b", text = "x" });
         Assert.Equal("browse connections cannot run queries.", summary.GetProperty("error").GetString());
@@ -263,68 +263,5 @@ public sealed class BackendContractTests : IDisposable
 
         Assert.Equal([ConnectionKinds.Cosmos, ConnectionKinds.Sql, ConnectionKinds.Synapse], backends.Keys.Order());
         Assert.Same(backends[ConnectionKinds.Sql], backends[ConnectionKinds.Synapse]);
-    }
-}
-
-/// <summary>
-/// Pins copyName exactly as it was when the UI computed it from node meta: [schema].[name] with no escaping of ],
-/// a column's bare name, else the node's label (null here: the UI copies the label). The missing escaping, and Cosmos
-/// copying labels such as "Partition key: /pk", are known bugs preserved deliberately by the refactor that moved this
-/// into the backends; a follow-up fix changes them.
-/// </summary>
-public sealed class CopyNameTests : IDisposable
-{
-    private readonly string _path = Path.Combine(Path.GetTempPath(), $"panoptic-test-{Guid.NewGuid():N}", "store.bin");
-
-    public void Dispose()
-    {
-        var dir = Path.GetDirectoryName(_path)!;
-        if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
-    }
-
-    private TreeService Tree()
-    {
-        var store = new ConfigStore(_path);
-        store.SaveEnvironment(new EnvironmentConfig("e", "Dev", "#000", false, []));
-        store.SaveConnection("e", new ConnectionConfig("s", "sql", ConnectionKinds.Sql, "srv", AuthKinds.Sql, User: "sa"), "pw");
-        store.SaveConnection("e", new ConnectionConfig("y", "syn", ConnectionKinds.Synapse, "srv", AuthKinds.Sql, User: "sa"), "pw");
-        store.SaveConnection("e", new ConnectionConfig("c", "cos", ConnectionKinds.Cosmos, "https://localhost:8081", AuthKinds.Key), "key");
-        return new TreeService(store, BackendRegistry.Create(new Credentials(_ => { })));
-    }
-
-    [Theory]
-    [InlineData("env:e/conn:s/db:Orders/f:tables/o:dbo%1FOrders", "[dbo].[Orders]")]
-    [InlineData("env:e/conn:s/db:Orders/f:tables/o:my%20schema%1FOdd%5DName", "[my schema].[Odd]Name]")]
-    [InlineData("env:e/conn:y/db:Pool/f:views/o:dbo%1Fv", "[dbo].[v]")]
-    [InlineData("env:e/conn:s/db:Orders/f:synonyms/o:dbo%1FSyn", "[dbo].[Syn]")]
-    [InlineData("env:e/conn:s/db:Orders/f:tables/o:dbo%1FOrders/f:columns/col:Unit%20Price", "Unit Price")]
-    [InlineData("env:e/conn:s/db:Orders/f:tables/o:dbo%1Fa%5Db/f:columns/col:x%5Dy", "x]y")]
-    public async Task Sql_names_match_the_old_ui_rule(string nodeId, string expected)
-    {
-        Assert.Equal(expected, await Tree().InvokeAsync(nodeId, "copyName", default));
-    }
-
-    [Theory]
-    [InlineData("env:e")]
-    [InlineData("env:e/conn:s")]
-    [InlineData("env:e/conn:s/db:Orders")]
-    [InlineData("env:e/conn:s/db:Orders/f:tables")]
-    [InlineData("env:e/conn:s/db:Orders/f:tables/o:dbo%1FOrders/f:keys/key:PK_Orders")]
-    [InlineData("env:e/conn:s/db:Orders/f:views/o:dbo%1Fv/def:definition")]
-    [InlineData("env:e/conn:c/db:shop")]
-    [InlineData("env:e/conn:c/db:shop/c:orders")]
-    [InlineData("env:e/conn:c/db:shop/c:orders/prop:partitionKey")]
-    [InlineData("env:e/conn:c/db:shop/c:orders/f:items/item:a1")]
-    [InlineData("env:e/conn:c/db:shop/c:orders/f:udfs/udf:tax")]
-    public async Task Everything_else_copies_its_label(string nodeId)
-    {
-        Assert.Null(await Tree().InvokeAsync(nodeId, "copyName", default));
-    }
-
-    [Fact]
-    public async Task Unknown_actions_are_refused()
-    {
-        var ex = await Assert.ThrowsAsync<RpcException>(() => Tree().InvokeAsync("env:e/conn:c/db:shop", "dropEverything", default));
-        Assert.Equal(RpcException.InvalidParams, ex.Code);
     }
 }

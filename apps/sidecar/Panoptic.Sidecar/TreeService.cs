@@ -76,8 +76,8 @@ public sealed class TreeService(ConfigStore store, IReadOnlyDictionary<string, I
     }
 
     /// <summary>
-    /// Runs a node action the sidecar performs (node.invoke). Environments and connections have no name beyond their
-    /// label; below a connection the backend answers.
+    /// Runs a node action the sidecar performs (node.invoke). Environments and connections have none; below a
+    /// connection the backend answers.
     /// </summary>
     public async Task<string?> InvokeAsync(string nodeId, string actionId, CancellationToken cancellationToken)
     {
@@ -137,5 +137,5 @@ public sealed class TreeService(ConfigStore store, IReadOnlyDictionary<string, I
         c.Kind,
         true,
         queryable ? Nodes.Queryable : Nodes.Browse,
-        new() { ["connectionKind"] = c.Kind, ["endpoint"] = c.Endpoint, ["connectionId"] = c.Id });
+        new() { ["connectionKind"] = c.Kind, ["endpoint"] = c.Endpoint, ["connectionId"] = c.Id, ["copyText"] = c.Name });
 }

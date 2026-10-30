@@ -33,6 +33,9 @@ public sealed class CosmosBackend(Credentials credentials) : IQueryBackend
         return meta;
     }
 
+    /// <summary>Node meta "copyText", what Copy name copies: the resource's id, udf.name for a UDF.</summary>
+    private static Dictionary<string, string> CopyText(string text) => new() { ["copyText"] = text };
+
     private readonly ConcurrentDictionary<string, (string Fingerprint, CosmosClient Client)> _clients = new();
 
     public async Task<TreeNode[]> ChildrenAsync(ConnectionConfig c, string? secret, NodePath path, int start, CancellationToken ct)
@@ -178,9 +181,16 @@ public sealed class CosmosBackend(Credentials credentials) : IQueryBackend
         return docs
             .Select(d => d.GetProperty("id").GetString()!)
             .Order(StringComparer.OrdinalIgnoreCase)
-            .Select(id => Nodes.Branch(path.Child("db", id), "database", id, "database", actions: Nodes.Queryable))
+            .Select(id => DatabaseNode(path, id))
             .ToArray();
     }
+
+    internal static TreeNode DatabaseNode(NodePath path, string id) =>
+        Nodes.Branch(path.Child("db", id), "database", id, "database", CopyText(id), Nodes.Queryable);
+
+    internal static TreeNode ContainerNode(NodePath path, string id, IEnumerable<string> partitionKeyPaths) =>
+        Nodes.Branch(path.Child("c", id), "container", id, "container",
+            WithDragText(id, new() { ["partitionKey"] = string.Join(", ", partitionKeyPaths), ["copyText"] = id }), Nodes.Selectable);
 
     private static async Task<TreeNode[]> Containers(Database db, NodePath path, CancellationToken ct)
     {
@@ -188,8 +198,7 @@ public sealed class CosmosBackend(Credentials credentials) : IQueryBackend
         return docs
             .Select(d => (Id: d.GetProperty("id").GetString()!, Pk: PartitionKeyPaths(d)))
             .OrderBy(x => x.Id, StringComparer.OrdinalIgnoreCase)
-            .Select(x => Nodes.Branch(path.Child("c", x.Id), "container", x.Id, "container",
-                WithDragText(x.Id, new() { ["partitionKey"] = string.Join(", ", x.Pk) }), Nodes.Selectable))
+            .Select(x => ContainerNode(path, x.Id, x.Pk))
             .ToArray();
     }
 
@@ -207,6 +216,14 @@ public sealed class CosmosBackend(Credentials credentials) : IQueryBackend
         var policy = root.TryGetProperty("indexingPolicy", out var p) ? p.GetRawText() : "{}";
         var pk = string.Join(", ", PartitionKeyPaths(root));
 
+        return ContainerChildNodes(path, policy, pk, await throughputTask);
+    }
+
+    /// <summary>The partition key copies its path; throughput, the indexing policy and the folders have no name to copy.</summary>
+    internal static TreeNode[] ContainerChildNodes(NodePath path, string policy, string pk, string throughput)
+    {
+        var pkMeta = new Dictionary<string, string> { ["value"] = pk };
+        if (pk.Length > 0) pkMeta["copyText"] = pk;
         return
         [
             Nodes.Folder(path, "items", $"Items (first {ItemSample})"),
@@ -214,8 +231,8 @@ public sealed class CosmosBackend(Credentials credentials) : IQueryBackend
             Nodes.Folder(path, "sprocs", "Stored procedures"),
             Nodes.Folder(path, "triggers", "Triggers"),
             Nodes.Folder(path, "udfs", "UDFs"),
-            Nodes.Leaf(path.Child("prop", "partitionKey"), "property", $"Partition key: {pk}", "property", new() { ["value"] = pk }),
-            Nodes.Leaf(path.Child("prop", "throughput"), "property", $"Throughput: {await throughputTask}", "property"),
+            Nodes.Leaf(path.Child("prop", "partitionKey"), "property", $"Partition key: {pk}", "property", pkMeta),
+            Nodes.Leaf(path.Child("prop", "throughput"), "property", $"Throughput: {throughput}", "property"),
         ];
     }
 
@@ -268,9 +285,15 @@ public sealed class CosmosBackend(Credentials credentials) : IQueryBackend
             "Documents", ct, limit: ItemSample);
         return docs
             .Select(d => d.GetProperty("id").GetString()!)
-            .Select(id => Nodes.Leaf(path.Child("item", id), "document", id, "document"))
+            .Select(id => ItemNode(path, id))
             .ToArray();
     }
+
+    internal static TreeNode ItemNode(NodePath path, string id) => Nodes.Leaf(path.Child("item", id), "document", id, "document", CopyText(id));
+
+    /// <summary>A stored procedure, trigger or UDF. A UDF is called as udf.name, so that is what it copies and drags.</summary>
+    internal static TreeNode ScriptNode(NodePath path, string kind, string id) =>
+        Nodes.Leaf(path.Child(kind, id), kind, id, kind, kind == "udf" ? WithDragText($"udf.{id}", CopyText($"udf.{id}")) : CopyText(id));
 
     private static async Task<TreeNode[]> Scripts(Container container, NodePath path, string kind, CancellationToken ct)
     {
@@ -286,7 +309,7 @@ public sealed class CosmosBackend(Credentials credentials) : IQueryBackend
         return docs
             .Select(d => d.GetProperty("id").GetString()!)
             .Order(StringComparer.OrdinalIgnoreCase)
-            .Select(id => Nodes.Leaf(path.Child(kind, id), kind, id, kind, kind == "udf" ? WithDragText($"udf.{id}") : null))
+            .Select(id => ScriptNode(path, kind, id))
             .ToArray();
     }
 

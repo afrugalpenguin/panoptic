@@ -136,7 +136,7 @@ export function createApi(rpc: RpcClient) {
     queryScope: (nodeId: string) => rpc.request<QueryScope>("query.scope", { nodeId }),
     /** Context menu labels for every action id a node can carry. */
     actionLabels: () => rpc.request<Record<string, string>>("node.actionLabels"),
-    /** Runs a node action in the sidecar (copyName and any a backend adds); null text means "use the label". */
+    /** Runs a node action a backend adds in the sidecar; null text means nothing to copy. */
     invokeNode: (nodeId: string, actionId: string) => rpc.request<{ text?: string | null }>("node.invoke", { nodeId, actionId }),
     /** Aborting `signal` cancels the expand in the sidecar ($/cancelRequest) and rejects with an AbortError. */
     children: (nodeId: string, signal?: AbortSignal) => rpc.request<TreeNode[]>("tree.children", { nodeId }, 180_000, signal),
