@@ -17,3 +17,4 @@ One ADR per decision in the plan's decisions table. Write the ADR before the cod
 | [0011](0011-code-signing.md) | Unsigned installer for M0 | Accepted |
 | [0012](0012-no-diff.md) | Cross-environment diff is not core; a plugin later at most | Accepted |
 | [0013](0013-changelog.md) | Changelog generated from change fragments, shown as a What's new tab | Accepted |
+| [0014](0014-code-signing.md) | Sign release builds before the next daily-use trial (will supersede 0011) | Proposed |

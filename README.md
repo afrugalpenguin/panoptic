@@ -50,7 +50,13 @@ Download `Panoptic_<version>_x64-setup.exe` from the
 installs per-user into `%LOCALAPPDATA%\Panoptic` with no elevation. To run without installing,
 unzip `Panoptic_<version>_x64-portable.zip` anywhere and run `panoptic.exe`.
 
-Builds are not code-signed yet, so SmartScreen warns on first install (More info, Run anyway).
+Builds are not code-signed yet (signing is planned, see
+[ADR 0014](docs/adr/0014-code-signing.md)). SmartScreen may warn on first install (More info,
+Run anyway), and Microsoft Defender may quarantine `panoptic.exe` as
+`Trojan:Win32/Bearfoos.A!ml`, either as the installer writes it or some time later. This is a
+false positive on an unknown unsigned file. Until builds are signed, add a Defender folder
+exclusion for `%LOCALAPPDATA%\Panoptic` (Windows Security, Virus and threat protection, Manage
+settings, Exclusions) and reinstall; on a managed machine that exclusion may need your IT team.
 Installed copies check for updates on launch and offer "Restart to update". Settings can switch
 that to hourly or turn automatic checks off. The portable build tells you when a new version
 exists.
