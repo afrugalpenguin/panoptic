@@ -1,5 +1,6 @@
 <script lang="ts">
   import { openUrl } from "@tauri-apps/plugin-opener";
+  import logo from "../../src-tauri/icons/128x128.png";
   import { bullets, inlineTokens, openLink } from "../whats-new";
   import type { WhatsNewTab } from "./store.svelte";
 
@@ -16,6 +17,12 @@
 {/snippet}
 
 <article class="whats-new">
+  <header>
+    <h1>
+      <img src={logo} alt="" />What's new
+      {#if tab.sections.length}<span class="muted">v{tab.sections[0].version}</span>{/if}
+    </h1>
+  </header>
   {#each tab.sections as section (section.version)}
     {@const items = bullets(section.body)}
     <section>
@@ -41,18 +48,36 @@
   .whats-new {
     height: 100%;
     overflow: auto;
-    padding: 20px 28px 40px;
-    font: 13px/1.6 var(--font-ui);
+    padding: 20px 10px 40px;
+    font: 13px/1.7 var(--font-ui);
     user-select: text;
   }
-  section {
-    max-width: 72ch;
+  header {
+    margin-bottom: 20px;
+  }
+  h1 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    font-size: 22px;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+  h1 img {
+    height: 0.8em;
+  }
+  h1 .muted {
+    font-size: 13px;
+    font-weight: 400;
   }
   section + section {
-    margin-top: 22px;
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
   }
   h2 {
-    margin: 0 0 6px;
+    margin: 0 0 8px;
     font-size: 15px;
     font-weight: 600;
   }
@@ -67,7 +92,7 @@
     padding-left: 20px;
   }
   li + li {
-    margin-top: 3px;
+    margin-top: 8px;
   }
   code {
     padding: 0 4px;
