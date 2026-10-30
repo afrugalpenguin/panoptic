@@ -36,7 +36,7 @@
   let kindFilter = $state<string>();
   let selectedKey = $state<string>();
   let lastLoad = $state<LoadReport>();
-  let inFlight = $state<{ label: string; startedAt: number }>();
+  let inFlight = $state<{ id: string; label: string; startedAt: number }>();
   let startup = $state("");
   let update = $state<UpdateState>();
   let deviceCode = $state<DeviceCodePrompt>();
@@ -59,7 +59,7 @@
   let treeWidth = $state(readWidth());
 
   const model = new TreeModel(
-    (id) => api!.children(id),
+    (id, signal) => api!.children(id, signal),
     () => {
       rows = model.rows();
       problems = model.problems();
@@ -67,7 +67,7 @@
       kinds = model.kinds();
       kindFilter = model.activeKind();
       const loading = model.inFlight()[0];
-      inFlight = loading ? { label: model.node(loading.id)?.label ?? "tree", startedAt: loading.startedAt } : undefined;
+      inFlight = loading ? { id: loading.id, label: model.node(loading.id)?.label ?? "tree", startedAt: loading.startedAt } : undefined;
     },
     undefined,
     (report) => {
@@ -443,7 +443,7 @@
   </main>
 
   <div class="status-host">
-    <StatusBar {sidecar} {sidecarText} {inFlight} {lastLoad} {startup} {update} problems={problems.length} onOpenProblems={() => openProblems()} />
+    <StatusBar {sidecar} {sidecarText} {inFlight} {lastLoad} {startup} {update} problems={problems.length} onOpenProblems={() => openProblems()} onCancelLoad={(id) => model.cancel(id)} />
   </div>
 </div>
 

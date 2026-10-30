@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { TreeNode } from "./api";
-import { RpcError } from "../rpc";
+import { AbortError, RpcError } from "../rpc";
 import { ENV_GAP, moveEnvironment, ROW_HEIGHT, TreeModel } from "./tree-model";
 
 const node = (id: string, hasChildren = true, meta?: Record<string, string>): TreeNode => ({
@@ -251,6 +251,90 @@ describe("TreeModel", () => {
 
     const a = model.rows().find((r) => r.key === "a");
     expect(a?.type === "node" && a.label).toEqual({ prefix: "orders-", core: "uat", suffix: ".x.com" });
+  });
+
+  describe("cancel", () => {
+    /** Like the real RPC client: a load never settles on its own and rejects with an AbortError when aborted. */
+    function hanging(fail = new Set<string>()) {
+      const signals = new Map<string, AbortSignal>();
+      const load = vi.fn((id: string, signal: AbortSignal) => {
+        signals.set(id, signal);
+        if (id === "") return Promise.resolve([node("a")]);
+        if (fail.has(id)) return Promise.reject(new Error(`boom ${id}`));
+        return new Promise<TreeNode[]>((_, reject) => signal.addEventListener("abort", () => reject(new AbortError("tree.children"))));
+      });
+      const loaded: { error?: string }[] = [];
+      const model = new TreeModel(load, () => {}, undefined, (r) => loaded.push(r));
+      return { model, load, signals, loaded, fail };
+    }
+
+    it("collapsing a node that is loading aborts its load, with no error row, problem or status error", async () => {
+      const { model, signals, loaded } = hanging();
+      await model.loadRoot();
+      loaded.length = 0;
+
+      const pending = model.toggle("a");
+      expect(labels(model)).toEqual(["a", "  <loading>"]);
+      model.toggle("a");
+      await pending;
+
+      expect(signals.get("a")!.aborted).toBe(true);
+      expect(labels(model)).toEqual(["a"]);
+      expect(model.rows()[0]).toMatchObject({ type: "node", loading: false, error: undefined });
+      expect(model.problems()).toEqual([]);
+      expect(model.inFlight()).toEqual([]);
+      expect(loaded).toEqual([]);
+    });
+
+    it("expanding again after a cancelled load starts a fresh one", async () => {
+      const { model, load } = hanging();
+      await model.loadRoot();
+      const first = model.toggle("a");
+      model.collapse("a");
+      await first;
+
+      void model.toggle("a");
+      expect(labels(model)).toEqual(["a", "  <loading>"]);
+      expect(load).toHaveBeenCalledTimes(3);
+    });
+
+    it("cancel from the status bar collapses the node and stops its load", async () => {
+      const { model, signals } = hanging();
+      await model.loadRoot();
+      const pending = model.toggle("a");
+      model.cancel(model.inFlight()[0].id);
+      await pending;
+
+      expect(signals.get("a")!.aborted).toBe(true);
+      expect(model.isExpanded("a")).toBe(false);
+      expect(labels(model)).toEqual(["a"]);
+    });
+
+    it("a cancelled retry leaves the earlier failure in place", async () => {
+      const { model, fail } = hanging(new Set(["a"]));
+      await model.loadRoot();
+      await model.toggle("a");
+      expect(model.problems()).toHaveLength(1);
+
+      fail.delete("a");
+      model.collapse("a");
+      const retry = model.toggle("a");
+      model.collapse("a");
+      await retry;
+
+      expect(model.rows()[0]).toMatchObject({ type: "node", error: { summary: "boom a" } });
+      expect(model.problems()).toHaveLength(1);
+    });
+
+    it("collapse all aborts the loads of the nodes it collapses", async () => {
+      const { model, signals } = hanging();
+      await model.loadRoot();
+      const pending = model.toggle("a");
+      model.collapseAll();
+      await pending;
+      expect(signals.get("a")!.aborted).toBe(true);
+      expect(model.inFlight()).toEqual([]);
+    });
   });
 
   describe("layout", () => {

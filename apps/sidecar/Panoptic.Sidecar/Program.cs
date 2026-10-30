@@ -44,15 +44,19 @@ var catalog = new Panoptic.Sidecar.Catalog.CatalogService(
     (method, notice) => Notify(method, w => JsonSerializer.Serialize(w, notice, SidecarJson.Default.CatalogNotice)));
 var dispatcher = new JsonRpcDispatcher(Methods.Create(new SidecarInfo(Math.Round(startupMs, 1), version, mode), store, tree, query, catalog));
 
-// Requests run concurrently so a slow expand never blocks ping or another expand.
+// Requests run concurrently so a slow expand never blocks ping, another expand or a $/cancelRequest.
+// HandleAsync registers each request on this loop before yielding to the thread pool, so a cancel read
+// after its request always finds it.
 var inFlight = new List<Task>();
 while (await stdin.ReadLineAsync() is { } line)
 {
     if (string.IsNullOrWhiteSpace(line)) continue;
     inFlight.RemoveAll(t => t.IsCompleted);
-    inFlight.Add(Task.Run(async () =>
-    {
-        if (await dispatcher.HandleAsync(line) is { } response) await WriteLine(response);
-    }));
+    inFlight.Add(Handle(line));
 }
 await Task.WhenAll(inFlight);
+
+async Task Handle(string line)
+{
+    if (await dispatcher.HandleAsync(line) is { } response) await WriteLine(response);
+}

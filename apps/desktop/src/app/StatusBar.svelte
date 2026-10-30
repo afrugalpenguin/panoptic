@@ -13,16 +13,19 @@
     update,
     problems,
     onOpenProblems,
+    onCancelLoad,
   }: {
     sidecar: "connecting" | "connected" | "disconnected";
     sidecarText: string;
-    inFlight: { label: string; startedAt: number } | undefined;
+    inFlight: { id: string; label: string; startedAt: number } | undefined;
     lastLoad: LoadReport | undefined;
     startup: string;
     update: UpdateState | undefined;
     /** Explorer errors; shown as a count badge that opens the Problems tab. */
     problems: number;
     onOpenProblems: () => void;
+    /** Stops the in-flight load shown by the elapsed timer. */
+    onCancelLoad: (id: string) => void;
   } = $props();
 
   let now = $state(Date.now());
@@ -39,6 +42,7 @@
   <span class="item grow">
     {#if inFlight}
       <span class="spinner"></span>Loading {inFlight.label}... {((now - inFlight.startedAt) / 1000).toFixed(1)} s
+      <button class="cancel" title="Stop loading {inFlight.label}" onclick={() => inFlight && onCancelLoad(inFlight.id)}>Cancel</button>
     {:else if lastLoad?.error}
       <span class="bad">{lastLoad.label}: {lastLoad.error}</span>
     {:else if lastLoad}
@@ -112,6 +116,14 @@
     background: none;
     color: var(--bad);
   }
+  .cancel {
+    padding: 0 6px;
+    font-size: 12px;
+    border: none;
+    background: none;
+    color: var(--accent);
+  }
+  .cancel:hover,
   .problems:hover {
     background: var(--bg-hover);
   }

@@ -1,6 +1,7 @@
 import type { NodeError, TreeNode } from "./api";
 import { kindBadge, type KindBadge } from "./kinds";
 import { computeLabels, leafLabel, type LabelSegments } from "./labels";
+import { isAbortError } from "../rpc";
 import { toNodeError, type Problem } from "./problems";
 
 /** Fixed row heights per level (docs/explorer-ux.md); the virtualiser lays rows out from these alone. */
@@ -109,9 +110,11 @@ export class TreeModel {
   private envOrder: string[] = [];
   /** Each node's last failed load, kept while a retry is loading (docs/explorer-errors.md); cleared on success. */
   private readonly failures = new Map<string, { error: NodeError; at: number }>();
+  /** Aborts each in-flight load; collapsing a node, or cancelling from the status bar, aborts its load. */
+  private readonly loads = new Map<string, AbortController>();
 
   constructor(
-    private readonly load: (id: string) => Promise<TreeNode[]>,
+    private readonly load: (id: string, signal: AbortSignal) => Promise<TreeNode[]>,
     private readonly onChange: () => void,
     private readonly staleMs = DEFAULT_STALE_MS,
     private readonly onLoaded: (report: LoadReport) => void = () => {},
@@ -157,15 +160,24 @@ export class TreeModel {
     else this.onChange();
   }
 
+  /** Collapsing a node that is still loading cancels the load; expanding again starts a fresh one. */
   collapse(id: string): void {
     this.expanded.delete(id);
+    this.loads.get(id)?.abort();
     this.onChange();
   }
 
-  /** Collapses every node, so re-expanding shows each level closed. */
+  /** Collapses every node, so re-expanding shows each level closed. Loads under way for them are cancelled. */
   collapseAll(): void {
+    for (const id of this.expanded) this.loads.get(id)?.abort();
     this.expanded.clear();
     this.onChange();
+  }
+
+  /** The status bar's cancel: stops a node's load and collapses it, as if it had never been expanded. */
+  cancel(id: string): void {
+    if (this.expanded.has(id)) this.collapse(id);
+    else this.loads.get(id)?.abort();
   }
 
   /**
@@ -337,11 +349,14 @@ export class TreeModel {
 
   private async loadChildren(id: string): Promise<void> {
     const startedAt = performance.now();
+    const prior = this.children.get(id);
+    const controller = new AbortController();
+    this.loads.set(id, controller);
     this.children.set(id, { status: "loading", startedAt: Date.now() });
     this.onChange();
     const label = this.nodes.get(id)?.label ?? "tree";
     try {
-      const items = await this.load(id);
+      const items = await this.load(id, controller.signal);
       for (const item of items) {
         this.nodes.set(item.id, item);
         this.parents.set(item.id, id);
@@ -351,10 +366,21 @@ export class TreeModel {
       this.buildLabels(items);
       this.onLoaded({ id, label, count: items.length, ms: Math.round(performance.now() - startedAt) });
     } catch (e) {
-      const error = toNodeError(e);
-      this.children.set(id, { status: "error", error });
-      this.failures.set(id, { error, at: Date.now() });
-      this.onLoaded({ id, label, count: 0, ms: Math.round(performance.now() - startedAt), error: error.summary });
+      if (controller.signal.aborted || isAbortError(e)) {
+        // Cancelled on purpose, not a failure: no error row, no Problems entry, no status bar error. The node
+        // goes back to how it was (unloaded, loaded or failed), unless a newer load has taken over.
+        if (this.loads.get(id) === controller) {
+          if (prior && prior.status !== "loading") this.children.set(id, prior);
+          else this.children.delete(id);
+        }
+      } else {
+        const error = toNodeError(e);
+        this.children.set(id, { status: "error", error });
+        this.failures.set(id, { error, at: Date.now() });
+        this.onLoaded({ id, label, count: 0, ms: Math.round(performance.now() - startedAt), error: error.summary });
+      }
+    } finally {
+      if (this.loads.get(id) === controller) this.loads.delete(id);
     }
     this.onChange();
   }

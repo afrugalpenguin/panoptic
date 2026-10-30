@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { RpcClient, RpcError } from "./rpc";
+import { isAbortError, RpcClient, RpcError } from "./rpc";
 
 function setup() {
   const sent: string[] = [];
@@ -73,6 +73,46 @@ describe("RpcClient", () => {
     const { client } = setup();
     expect(() => client.receive("garbage")).not.toThrow();
     expect(() => client.receive(JSON.stringify({ jsonrpc: "2.0", id: 999, result: 1 }))).not.toThrow();
+  });
+
+  it("on abort, rejects with an AbortError, sends $/cancelRequest for the id and ignores the late response", async () => {
+    const { client, sent, lastId } = setup();
+    const abort = new AbortController();
+    const p = client.request("tree.children", { nodeId: "x" }, 180_000, abort.signal);
+    await Promise.resolve();
+    const id = lastId();
+
+    abort.abort();
+    await expect(p).rejects.toMatchObject({ name: "AbortError" });
+    await expect(p).rejects.toSatisfy(isAbortError);
+    expect(JSON.parse(sent[1])).toEqual({ jsonrpc: "2.0", method: "$/cancelRequest", params: { id } });
+
+    expect(() => client.receive(JSON.stringify({ jsonrpc: "2.0", id, error: { code: -32800, message: "Request cancelled" } }))).not.toThrow();
+  });
+
+  it("rejects an already aborted request without sending it", async () => {
+    const { client, sent } = setup();
+    const abort = new AbortController();
+    abort.abort();
+    await expect(client.request("tree.children", undefined, 1000, abort.signal)).rejects.toSatisfy(isAbortError);
+    expect(sent).toEqual([]);
+  });
+
+  it("aborting after the response arrived does nothing", async () => {
+    const { client, sent, lastId } = setup();
+    const abort = new AbortController();
+    const p = client.request("tree.children", undefined, 1000, abort.signal);
+    await Promise.resolve();
+    client.receive(JSON.stringify({ jsonrpc: "2.0", id: lastId(), result: [] }));
+    await expect(p).resolves.toEqual([]);
+
+    abort.abort();
+    expect(sent).toHaveLength(1);
+  });
+
+  it("does not treat timeouts or server errors as aborts", () => {
+    expect(isAbortError(new Error("tree.children timed out after 10 ms"))).toBe(false);
+    expect(isAbortError(new RpcError(-32000, "Login failed"))).toBe(false);
   });
 
   it("passes server notifications to the notification handler", () => {

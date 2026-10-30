@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -16,6 +17,8 @@ public sealed class RpcException(int code, string message, NodeError? nodeError 
     public const int InvalidParams = -32602;
     /// <summary>Application error: the operation ran and failed (login failed, timeout, not found).</summary>
     public const int OperationFailed = -32000;
+    /// <summary>The client cancelled the request with $/cancelRequest (the same code as LSP's RequestCancelled).</summary>
+    public const int RequestCancelled = -32800;
 
     public int Code { get; } = code;
 
@@ -25,15 +28,29 @@ public sealed class RpcException(int code, string message, NodeError? nodeError 
 /// <summary>
 /// JSON-RPC 2.0 over newline-delimited JSON. One request line in, at most one response line out.
 /// Hand-rolled with Utf8JsonWriter so it stays reflection-free.
+/// A $/cancelRequest notification { id } cancels the token of the in-flight request with that id
+/// (docs/adr/0005-sidecar-protocol.md); unknown and finished ids are ignored.
 /// </summary>
 public sealed class JsonRpcDispatcher(IReadOnlyDictionary<string, RpcHandler> handlers)
 {
+    public const string CancelRequest = "$/cancelRequest";
+
     private const int ParseError = -32700;
     private const int InvalidRequest = -32600;
     private const int MethodNotFound = -32601;
     private const int InternalError = -32603;
 
-    /// <summary>Returns the response line, or null for a notification.</summary>
+    /// <summary>In-flight requests by their id's raw JSON, so 7 and "7" stay distinct.</summary>
+    private readonly ConcurrentDictionary<string, CancellationTokenSource> _inFlight = new();
+
+    /// <summary>Requests still registered for cancellation.</summary>
+    public int InFlightCount => _inFlight.Count;
+
+    /// <summary>
+    /// Returns the response line, or null for a notification. Everything before the handler runs (parsing,
+    /// registering the request for cancellation, applying a $/cancelRequest) completes synchronously, so a
+    /// caller that starts lines in the order it reads them never sees a cancel overtake its request.
+    /// </summary>
     public async Task<string?> HandleAsync(string line, CancellationToken cancellationToken = default)
     {
         JsonElement root;
@@ -59,12 +76,29 @@ public sealed class JsonRpcDispatcher(IReadOnlyDictionary<string, RpcHandler> ha
         var method = methodEl.GetString()!;
         JsonElement? parameters = root.TryGetProperty("params", out var p) ? p : null;
 
+        if (method == CancelRequest)
+        {
+            if (parameters is { ValueKind: JsonValueKind.Object } cancel && cancel.TryGetProperty("id", out var target)
+                && _inFlight.TryGetValue(target.GetRawText(), out var running))
+            {
+                try { running.Cancel(); }
+                catch (ObjectDisposedException) { /* it finished between the lookup and the cancel */ }
+            }
+            return null;
+        }
+
         if (!handlers.TryGetValue(method, out var handler))
             return id is null ? null : Error(id, MethodNotFound, $"Method not found: {method}");
 
+        // A notification has no id to cancel it by; a request reusing an in-flight id runs uncancellable.
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var key = id?.GetRawText();
+        var registered = key is not null && _inFlight.TryAdd(key, cts);
         try
         {
-            var result = await handler(parameters, cancellationToken);
+            // Off the caller's thread from here, so a handler that blocks never holds up the read loop.
+            await Task.Yield();
+            var result = await handler(parameters, cts.Token);
             if (id is null) return null;
             return Write(w =>
             {
@@ -73,6 +107,12 @@ public sealed class JsonRpcDispatcher(IReadOnlyDictionary<string, RpcHandler> ha
                 result(w);
             });
         }
+        catch (Exception) when (cts.IsCancellationRequested)
+        {
+            // Whatever the backend threw on the way out (OperationCanceledException, SqlException, a wrapped
+            // RpcException), the request was cancelled.
+            return id is null ? null : Error(id, RpcException.RequestCancelled, "Request cancelled");
+        }
         catch (RpcException ex)
         {
             return id is null ? null : Error(id, ex.Code, ex.Message, ex.NodeError);
@@ -80,6 +120,10 @@ public sealed class JsonRpcDispatcher(IReadOnlyDictionary<string, RpcHandler> ha
         catch (Exception ex)
         {
             return id is null ? null : Error(id, InternalError, ex.Message);
+        }
+        finally
+        {
+            if (registered) _inFlight.TryRemove(new KeyValuePair<string, CancellationTokenSource>(key!, cts));
         }
     }
 
