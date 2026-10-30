@@ -1,6 +1,6 @@
 # PostgreSQL connector
 
-Status: in progress. The design is in [docs/plans/2026-10-30-postgres-design.md](../plans/2026-10-30-postgres-design.md) (ADR 0015); this page describes the connector as it lands, pull request by pull request. The tree, sign-in and connection dialog are in (#116); queries, the read-only guard (#117), IntelliSense (#118) and the T-SQL habits warnings (#119) follow.
+Status: in progress. The design is in [docs/plans/2026-10-30-postgres-design.md](../plans/2026-10-30-postgres-design.md) (ADR 0015); this page describes the connector as it lands, pull request by pull request. The tree, sign-in and connection dialog (#116), and queries with the read-only guard (#117), are in; IntelliSense (#118) and the T-SQL habits warnings (#119) follow.
 
 Covers PostgreSQL and Azure Database for PostgreSQL Flexible Server. Backend: `apps/sidecar/Panoptic.Sidecar/Backends/PostgresBackend.cs`, using Npgsql.
 
@@ -51,9 +51,21 @@ Failures show on the node with the SQLSTATE as the code:
 | `network` | Server not found or not reachable (retryable) |
 | `tls` | The server's certificate could not be verified |
 
+## Queries
+
+New query on a connection or database, and Select top 1000 on a table, view or materialized view (`SELECT * FROM schema.name LIMIT 1000;`), open a tab in the Postgres language. The database picker lists the connection's databases.
+
+- **One statement at a time.** The script is split on semicolons (not inside strings, `"names"`, `$$` bodies, comments or a `BEGIN ATOMIC` body) and each statement runs on its own, so statements before an error stay done, as in psql and SSMS. The run stops at the first error. There is no `GO`.
+- **Results** show values as Postgres writes them: `interval '1 mon 2 days'`, arrays as `{1,2}`, ranges as `[1,5)`, `json` and `jsonb` as their text, `timestamptz` with its offset. `bytea` shows as `0x` hex. Numbers and booleans are numbers and booleans.
+- **Messages:** `RAISE NOTICE` output, `WARNING:` notices, and `(n rows affected)` for statements that return no rows.
+- **Errors** are marked at the exact line and column the server reports, with its `DETAIL:` and `HINT:` lines. An error inside a function names the function instead.
+- **Cancel** sends a cancel request to the server.
+
+IntelliSense for Postgres comes with #118; until then the status bar says "IntelliSense: not yet for Postgres".
+
 ## Read-only environments
 
-Lands with #117. On a read-only environment every query runs in a read-only transaction that is rolled back at the end. The server refuses any write (SQLSTATE 25006), so nothing is written even for a moment. If a script ends that transaction itself with COMMIT, Panoptic says so.
+On a read-only environment the session's `default_transaction_read_only` is on and the script runs inside a read-only transaction that is rolled back at the end. The server refuses any write (SQLSTATE 25006), so nothing is written even for a moment, and `SET TRANSACTION READ WRITE` is refused too (25001). If the script ends that transaction itself (COMMIT, ROLLBACK, END, ABORT), the run stops right after it, so nothing runs in a transaction the script could have made writable, and the result says the guard was bypassed.
 
 ## Coming from SQL Server
 
