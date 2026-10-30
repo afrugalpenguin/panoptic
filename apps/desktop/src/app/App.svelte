@@ -4,6 +4,7 @@
   import type { RpcClient } from "../rpc";
   import { connectSidecar, type PingResult, type SidecarStatus } from "../sidecar";
   import { finishBenchmark, firstPaintEpochMs, nowEpochMs, type StartupInfo } from "../startup";
+  import { sidecarView } from "../sidecar-status";
   import { scheduleUpdateChecks } from "../update-schedule";
   import { createUpdateChecker, currentVersion, type UpdateState } from "../updates";
   import { parseChangelog, sectionsSince, type ChangelogSection } from "../whats-new";
@@ -113,27 +114,22 @@
     if (runningBeforeConnected) await onRunning();
   }
 
-  /** The shell supervises the sidecar: it may take a while to start the first time, and restarts it if it exits. */
+  /**
+   * The shell supervises the sidecar: it may take a while to start the first time, and restarts it if it
+   * exits. Once it has gone, every connection shows disconnected until it answers ping again (ADR 0005).
+   */
   function onSidecarStatus(status: SidecarStatus) {
-    switch (status.state) {
-      case "starting":
-        sidecar = "connecting";
-        sidecarText = status.attempt > 1 ? `Restarting sidecar (attempt ${status.attempt})...` : "Starting...";
-        break;
-      case "running":
-        if (rpc) void onRunning();
-        else runningBeforeConnected = true;
-        break;
-      case "exited":
-        sidecar = "connecting";
-        sidecarText = `Sidecar exited (code ${status.code ?? "unknown"}), restarting...`;
-        break;
-      case "failed":
-        sidecar = "disconnected";
-        sidecarText = "Sidecar stopped";
-        lastLoad = { id: "", label: "Sidecar", count: 0, ms: 0, error: `${status.error}. Restart Panoptic.` };
-        break;
+    if (status.state === "running") {
+      if (rpc) void onRunning();
+      else runningBeforeConnected = true;
+      return;
     }
+    const view = sidecarView(sidecar, status)!;
+    sidecar = view.indicator;
+    sidecarText = view.text;
+    // Its caches went with the process: drop what was loaded below the connections.
+    if (view.lost) model.forgetConnections();
+    if (status.state === "failed") lastLoad = { id: "", label: "Sidecar", count: 0, ms: 0, error: `${status.error}. Restart Panoptic.` };
   }
 
   async function onRunning() {
@@ -147,7 +143,10 @@
     sidecar = "connected";
     sidecarText = "Ready";
     if (initialised) {
-      await configChanged(); // Restarted: refresh environments and connections, keep loaded subtrees.
+      // Restarted: requests in flight at the exit may have landed errors since, so forget again, then
+      // refresh environments and connections.
+      model.forgetConnections();
+      await configChanged();
       return;
     }
     initialised = true;
@@ -426,6 +425,7 @@
         onContextMenu={openMenu}
         onActivate={activate}
         onOpenProblem={openProblems}
+        disconnected={sidecar === "disconnected"}
         showKindBadge={settings.explorer.showKindBadge}
         rowFont={settings.explorer.rowFont}
       />

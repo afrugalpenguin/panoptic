@@ -60,6 +60,8 @@
     <button class="update" onclick={() => update.kind === "ready" && update.install()}>Restart to update to v{update.next}</button>
   {:else if update?.kind === "error"}
     <span class="item muted" title={update.message}>Update check failed</span>
+  {:else if update?.kind === "installFailed"}
+    <span class="item bad" title={update.message}>Update failed: {update.message}</span>
   {/if}
   {#if update}<span class="item muted">v{update.current}</span>{/if}
 </footer>

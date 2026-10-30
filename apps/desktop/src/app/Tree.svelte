@@ -16,6 +16,7 @@
     onContextMenu,
     onActivate,
     onOpenProblem,
+    disconnected = false,
     showKindBadge = true,
     rowFont = "mono",
   }: {
@@ -26,6 +27,8 @@
     onActivate: (row: Row) => void;
     /** Click on an error row: show its entry in the Problems tab. */
     onOpenProblem: (parentId: string) => void;
+    /** The sidecar is down (ADR 0005): every connection row says so until it answers ping again. */
+    disconnected?: boolean;
     /** explorer.showKindBadge and explorer.rowFont: CSS switches on the tree, no row recomputation. */
     showKindBadge?: boolean;
     rowFont?: "mono" | "ui";
@@ -223,7 +226,7 @@
               {#if row.type === "node" && row.rowKind === "header"}
                 <EnvHeaderRow {row} />
               {:else if row.type === "node" && row.rowKind === "connection"}
-                <ConnectionRow {row} />
+                <ConnectionRow {row} {disconnected} />
               {:else if row.type === "node" && row.rowKind === "folder"}
                 <FolderRow {row} />
               {:else}

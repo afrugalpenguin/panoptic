@@ -9,7 +9,9 @@ export type SidecarStatus =
   | { state: "starting"; attempt: number }
   | { state: "running"; pid: number }
   | { state: "exited"; code: number | null }
-  | { state: "failed"; error: string };
+  | { state: "failed"; error: string }
+  /** Stopped on purpose for an update; restarted only by sidecar_start. */
+  | { state: "stopped" };
 
 /**
  * Connects the RPC client to the Tauri-managed sidecar. Status changes are reported as they happen,
@@ -21,7 +23,7 @@ export async function connectSidecar(
 ): Promise<RpcClient> {
   const client = new RpcClient((line) => invoke("sidecar_send", { line }), onNotification);
   const handle = (status: SidecarStatus) => {
-    if (status.state === "exited" || status.state === "failed") client.disconnect("sidecar stopped");
+    if (status.state === "exited" || status.state === "failed" || status.state === "stopped") client.disconnect("sidecar stopped");
     onStatus(status);
   };
   await listen<string>("sidecar://message", (e) => client.receive(e.payload));

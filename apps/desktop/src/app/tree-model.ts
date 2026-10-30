@@ -227,6 +227,22 @@ export class TreeModel {
   }
 
   /**
+   * The sidecar went away (ADR 0005): drops everything loaded below the connection rows, and its
+   * Problems entries, and collapses those levels, since reopening them means new server calls.
+   * Environments, their connection lists and which environments are open are kept.
+   */
+  forgetConnections(): void {
+    const root = this.children.get("");
+    const envs = root?.status === "loaded" ? root.ids : [];
+    for (const env of envs) {
+      const state = this.children.get(env);
+      if (state?.status === "loaded") for (const id of state.ids) this.forgetBelow(id);
+    }
+    for (const id of this.expanded) if (this.nodes.get(id)?.kind !== "environment") this.expanded.delete(id);
+    this.onChange();
+  }
+
+  /**
    * One entry per node whose children failed to load, oldest first. A node that is reloading keeps its
    * entry until it succeeds; one no longer in the tree (connection removed, ancestor refreshed) drops it.
    */
