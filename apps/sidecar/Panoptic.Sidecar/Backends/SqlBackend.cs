@@ -86,11 +86,11 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
             "db/f:views/o" =>
             [
                 Nodes.Folder(path, "columns", "Columns"),
-                Definition(path),
+                Nodes.Leaf(path.Child("def", "definition"), "definition", "Definition", "definition"),
             ],
             "db/f:programmability/f:procs/o" or "db/f:programmability/f:functions/o" =>
             [
-                Definition(path),
+                Nodes.Leaf(path.Child("def", "definition"), "definition", "Definition", "definition"),
             ],
             "db/f:tables/o/f:columns" or "db/f:external/o/f:columns" or "db/f:views/o/f:columns" => await Columns(c, secret, db, path, rel[^2].Value, ct),
             "db/f:tables/o/f:keys" => await Keys(c, secret, db, path, rel[^2].Value, ct),
@@ -98,10 +98,6 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
             _ => throw new RpcException(RpcException.InvalidParams, $"No children for {path}"),
         };
     }
-
-    // Copy name copies its label, as it did before copy text came from the backend.
-    private static TreeNode Definition(NodePath path) =>
-        Nodes.Leaf(path.Child("def", "definition"), "definition", "Definition", "definition", new() { ["copyText"] = "Definition" });
 
     public async Task TestAsync(ConnectionConfig c, string? secret, CancellationToken ct)
     {
@@ -132,7 +128,8 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
     /// <summary>A T-SQL delimited identifier: [name], with ] doubled.</summary>
     public static string QuoteIdentifier(string identifier) => $"[{identifier.Replace("]", "]]")}]";
 
-    /// <summary>What Copy name copies for a schema object (node meta "copyText"): always bracketed, as SSMS copies it.</summary>
+    /// <summary>What Copy name copies for a schema object (node meta "copyText"): always bracketed, as SSMS copies it.
+    /// Databases, columns, keys and indexes copy their name alone, bracketed the same way (QuoteIdentifier).</summary>
     public static string CopyName(string schema, string name) => $"{QuoteIdentifier(schema)}.{QuoteIdentifier(name)}";
 
     private static readonly Regex RegularIdentifier = new(@"^[A-Za-z_][A-Za-z0-9_@$#]*\z");
@@ -334,7 +331,7 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
 
     private static TreeNode DatabaseNode(NodePath path, string name, bool system) =>
         Nodes.Branch(path.Child("db", name), "database", name, "database",
-            new() { ["system"] = system ? "true" : "false", ["dragText"] = DragName(name), ["copyText"] = name }, Nodes.Queryable);
+            new() { ["system"] = system ? "true" : "false", ["dragText"] = DragName(name), ["copyText"] = QuoteIdentifier(name) }, Nodes.Queryable);
 
     private async Task<TreeNode[]> Objects(ConnectionConfig c, string? secret, string db, NodePath path, string folder, CancellationToken ct)
     {
@@ -410,7 +407,7 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
             if (col.Computed) details.Add("computed");
             details.Add(col.Nullable ? "null" : "not null");
             return Nodes.Leaf(path.Child("col", col.Name), "column", $"{col.Name} ({string.Join(", ", details)})",
-                col.Pk ? "key" : "column", new() { ["name"] = col.Name, ["type"] = col.Type, ["dragText"] = DragName(col.Name), ["copyText"] = col.Name });
+                col.Pk ? "key" : "column", new() { ["name"] = col.Name, ["type"] = col.Type, ["dragText"] = DragName(col.Name), ["copyText"] = QuoteIdentifier(col.Name) });
         }).ToArray();
     }
 
@@ -431,7 +428,7 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
                 "UNIQUE_CONSTRAINT" => "unique",
                 _ => "foreign key",
             };
-            return Nodes.Leaf(path.Child("key", k.Name), "key", $"{k.Name} ({type})", "key");
+            return Nodes.Leaf(path.Child("key", k.Name), "key", $"{k.Name} ({type})", "key", new() { ["copyText"] = QuoteIdentifier(k.Name) });
         }).ToArray();
     }
 
@@ -446,7 +443,8 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
         var rows = await Query(c, secret, db, sql, ObjectParams(obj), r => (Name: r.GetString(0), Type: r.GetString(1), Unique: r.GetBoolean(2)), ct);
         return rows.Select(i =>
             Nodes.Leaf(path.Child("ix", i.Name), "index",
-                $"{i.Name} ({(i.Unique ? "unique, " : "")}{i.Type.ToLowerInvariant().Replace('_', ' ')})", "index")).ToArray();
+                $"{i.Name} ({(i.Unique ? "unique, " : "")}{i.Type.ToLowerInvariant().Replace('_', ' ')})", "index",
+                new() { ["copyText"] = QuoteIdentifier(i.Name) })).ToArray();
     }
 
     private static SqlParameter[] ObjectParams(string obj)

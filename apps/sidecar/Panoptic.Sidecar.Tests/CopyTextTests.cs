@@ -81,6 +81,7 @@ public sealed class CopyTextTests : IDisposable
         store.SaveEnvironment(new EnvironmentConfig("e", "Dev", "#000", false, []));
         store.SaveConnection("e", new ConnectionConfig("s", "sql", ConnectionKinds.Sql, "srv", AuthKinds.Sql, User: "sa"), "pw");
         store.SaveConnection("e", new ConnectionConfig("y", "syn", ConnectionKinds.Synapse, "srv", AuthKinds.Sql, User: "sa"), "pw");
+        store.SaveConnection("e", new ConnectionConfig("d", "one db", ConnectionKinds.Sql, "srv", AuthKinds.Sql, User: "sa", Database: "Odd]Db"), "pw");
         return new TreeService(store, BackendRegistry.Create(new Credentials(_ => { })));
     }
 
@@ -100,11 +101,21 @@ public sealed class CopyTextTests : IDisposable
     }
 
     [Fact]
-    public async Task Sql_definitions_and_connections_still_copy_their_label()
+    public async Task Sql_databases_are_bracketed_and_drag_text_is_unchanged()
     {
-        var view = await Tree().ChildrenAsync("env:e/conn:s/db:Orders/f:views/o:dbo%1Fv", default);
-        Assert.Equal("Definition", CopyText(Assert.Single(view, n => n.Kind == "definition")));
-        Assert.Equal("sql", CopyText((await Tree().ChildrenAsync("env:e", default)).Single(n => n.Id == "env:e/conn:s")));
+        // A connection with a fixed database lists it without connecting.
+        var db = Assert.Single(await Tree().ChildrenAsync("env:e/conn:d", default));
+        Assert.Equal("[Odd]]Db]", CopyText(db));
+        Assert.Equal(SqlBackend.DragName("Odd]Db"), db.Meta!["dragText"]);
+    }
+
+    [Fact]
+    public async Task Sql_definitions_have_no_copy_name_and_connections_copy_their_name()
+    {
+        var tree = Tree();
+        foreach (var nodeId in new[] { "env:e/conn:s/db:Orders/f:views/o:dbo%1Fv", "env:e/conn:s/db:Orders/f:programmability/f:procs/o:dbo%1Fp" })
+            NoCopyName(Assert.Single(await tree.ChildrenAsync(nodeId, default), n => n.Kind == "definition"));
+        Assert.Equal("sql", CopyText((await tree.ChildrenAsync("env:e", default)).Single(n => n.Id == "env:e/conn:s")));
     }
 
     [SqlFact(NeedsWindows = false), Trait("Category", "SqlIntegration")]
@@ -116,7 +127,7 @@ public sealed class CopyTextTests : IDisposable
         Task<TreeNode[]> Expand(NodePath path) => backend.ChildrenAsync(conn, SqlFactAttribute.Password, path, 2, default);
 
         var orders = (await Expand(root)).Single(n => n.Label == "Orders");
-        Assert.Equal("Orders", CopyText(orders)); // a database copies its bare name, as it always has
+        Assert.Equal("[Orders]", CopyText(orders));
         var dbPath = NodePath.Parse(orders.Id);
         Assert.All(await Expand(dbPath), NoCopyName);
 
@@ -125,9 +136,32 @@ public sealed class CopyTextTests : IDisposable
         var synonym = Assert.Single(await Expand(dbPath.Child("f", "synonyms")));
         Assert.Equal(SqlBackend.CopyName(synonym.Meta!["schema"], synonym.Meta!["name"]), CopyText(synonym));
 
-        var table = NodePath.Parse(tables.First().Id);
-        Assert.All(await Expand(table), NoCopyName);
-        var columns = await Expand(table.Child("f", "columns"));
-        Assert.All(columns, c => Assert.Equal(c.Meta!["name"], CopyText(c))); // columns copy their bare name, as they always have
+        // A scratch table, so a column, key and index with ] in their names exist: uniquely named, in tempdb so it
+        // cannot move the Orders catalog stamp another test checks, and dropped after.
+        var name = $"copytext_{Guid.NewGuid():N}"[..18];
+        await using (var create = await backend.OpenAsync(conn, SqlFactAttribute.Password, "tempdb", default))
+        {
+            await using var cmd = new Microsoft.Data.SqlClient.SqlCommand(
+                $"CREATE TABLE dbo.[{name}] ([odd]]col] int NOT NULL CONSTRAINT [pk]]{name}] PRIMARY KEY, x int NULL INDEX [ix]]{name}]);", create);
+            await cmd.ExecuteNonQueryAsync();
+        }
+        try
+        {
+            var table = root.Child("db", "tempdb").Child("f", "tables").Child("o", "dbo", name);
+            Assert.All(await Expand(table), NoCopyName);
+            var columns = await Expand(table.Child("f", "columns"));
+            Assert.Equal(["[odd]]col]", "[x]"], columns.Select(CopyText));
+            Assert.Equal("[odd]]col]", columns[0].Meta!["dragText"]); // drag text unchanged: odd]col needs brackets anyway
+            Assert.Equal("x", columns[1].Meta!["dragText"]);
+            Assert.Equal($"[pk]]{name}]", CopyText(Assert.Single(await Expand(table.Child("f", "keys")))));
+            var indexes = await Expand(table.Child("f", "indexes"));
+            Assert.Equal([$"[pk]]{name}]", $"[ix]]{name}]"], indexes.Select(CopyText));
+        }
+        finally
+        {
+            await using var drop = await backend.OpenAsync(conn, SqlFactAttribute.Password, "tempdb", default);
+            await using var cmd = new Microsoft.Data.SqlClient.SqlCommand($"DROP TABLE IF EXISTS dbo.[{name}];", drop);
+            await cmd.ExecuteNonQueryAsync();
+        }
     }
 }
