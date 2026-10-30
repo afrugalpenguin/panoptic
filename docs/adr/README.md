@@ -11,7 +11,7 @@ One ADR per decision in the plan's decisions table. Write the ADR before the cod
 | [0005](0005-sidecar-protocol.md) | JSON-RPC 2.0 over stdio to the sidecar | Accepted |
 | [0006](0006-query-editor.md) | Monaco for the query pane only | Accepted |
 | [0007](0007-auth.md) | Entra first, then SQL auth, then Cosmos keys | Accepted |
-| [0008](0008-connection-store.md) | Encrypted local connection store, secrets in the OS keychain | Accepted |
+| [0008](0008-connection-store.md) | Encrypted local connection store | Accepted (amended) |
 | [0009](0009-telemetry.md) | No telemetry | Accepted |
 | [0010](0010-distribution.md) | Per-user installer with auto-update from GitHub Releases | Accepted |
 | [0011](0011-code-signing.md) | Unsigned installer for M0 | Accepted |

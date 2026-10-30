@@ -8,4 +8,4 @@ drawing.
 | Connector | Connection kind | Page |
 | --- | --- | --- |
 | SQL Server, Azure SQL and Azure Synapse SQL | `sql`, `synapse` | [sql-server.md](sql-server.md) |
-| Cosmos DB for NoSQL | `cosmos` | To be written |
+| Cosmos DB for NoSQL | `cosmos` | [cosmos.md](cosmos.md) |

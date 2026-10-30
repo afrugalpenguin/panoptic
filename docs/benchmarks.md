@@ -9,7 +9,7 @@ the work laptop.
 
 | Name | Hardware | Notes |
 | --- | --- | --- |
-| Home (MAVERICK) | AMD Ryzen 9 7900X, 31 GB, Windows 11 build 26300, 60 Hz display | Dev machine |
+| Home | AMD Ryzen 9 7900X, 31 GB, Windows 11 build 26300, 60 Hz display | Dev machine |
 | Work laptop | TBD | Intune-managed, Defender for Endpoint |
 
 ## Cold start
@@ -18,7 +18,20 @@ the work laptop.
 "first paint" is the webview's first contentful paint; "sidecar ready" is when the UI gets its
 first `ping` response.
 
-### Home, 2026-10-29, v0.1.0 (repo release build, AOT sidecar)
+### TODO: JIT sidecar, both machines
+
+Not yet measured. Fill in from a `-Suite startup -Runs 10` run of a current release.
+
+| Machine | Date | Version | Launch to first paint (median ms) | Launch to sidecar ready (median ms) | Sidecar start to ready (median ms) |
+| --- | --- | --- | --- | --- | --- |
+| Home | TODO | TODO | TODO | TODO | TODO |
+| Work laptop | TODO | TODO | TODO | TODO | TODO |
+
+### Superseded: Home, 2026-10-29, v0.1.0 (repo release build, AOT sidecar)
+
+These numbers were measured on the Native AOT sidecar, which no longer ships: since M1 the sidecar
+is a self-contained JIT build (ADR 0001, and the last two sections of this page). They no longer
+describe a release; kept for history until the JIT run above replaces them.
 
 | Metric | Run 1 (coldest) | Median of 10 | Max |
 | --- | --- | --- | --- |
@@ -31,9 +44,15 @@ Inside the 500 ms budget, but WebView2 start-up dominates: Rust `main()` to firs
 in the plan is retired (Native AOT, 2.5 MB, about 20 ms). The webview is now the thing to watch on
 the slower work laptop.
 
-### Work laptop
+## Entra sign-in
 
-TBD.
+TODO: not yet measured. The M0 plan asks for sign-in time; `bench.ps1` has no suite for it, so
+record how each number was taken.
+
+| Machine | Date | Version | Path (WAM silent, WAM prompt, device code) | Expand of an Entra connection to children shown (ms) |
+| --- | --- | --- | --- | --- |
+| Home | TODO | TODO | TODO | TODO |
+| Work laptop | TODO | TODO | TODO | TODO |
 
 ## Tree and grid frame times
 

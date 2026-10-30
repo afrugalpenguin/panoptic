@@ -9,7 +9,7 @@ Every merge to main ships a release and the patch number is the workflow run num
 ## Source: change fragments
 
 - Folder `changes/` at the repo root. One markdown file per PR that changes behaviour, named after the change in kebab-case: `changes/explorer-env-groups.md`.
-- Content is user-facing prose, one line or a short paragraph. First word is a category prefix, one of `Added:`, `Changed:`, `Fixed:`, `Removed:`. Markdown subset only (see Rendering). No PR numbers, no commit hashes, no code paths unless the user would type them.
+- Content is user-facing prose, one line or a short paragraph. First word is a category prefix, one of `Added:`, `Changed:`, `Fixed:`, `Removed:`. Markdown subset only (see the `WhatsNewView.svelte` bullet under "UI: the What's new tab"). No PR numbers, no commit hashes, no code paths unless the user would type them.
 - Fragments are never edited, renamed, moved or deleted after merge. Git history is what assigns them to a release.
 - `changes/README.md` explains the rule in five lines and is itself ignored by the generator.
 - CI check (its own workflow, fragment.yml, so a retitle re-runs only this check; runs on pull_request only): if the PR title starts with `feat` or `fix` (conventional commit type, with or without scope and `!`), the diff against the base branch must add at least one file matching `changes/*.md` other than README.md. Otherwise fail with a message that says what to add. `chore`, `ci`, `docs`, `refactor`, `test`, `perf`, `build`, `style` are exempt. The check reads `github.event.pull_request.title`, not the commit messages.
