@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { bullets, compareVersions, inlineTokens, openLink, parseChangelog, sectionsSince } from "./whats-new";
+import { bullets, category, compareVersions, inlineTokens, openLink, parseChangelog, sectionsSince, shortDate, subtitle } from "./whats-new";
 
 const FIXTURE = `# Panoptic changelog
 
@@ -119,5 +119,55 @@ describe("openLink", () => {
     await openLink("https://example.com", () => Promise.reject("Not allowed to open url https://example.com"), onError);
     await openLink("https://example.com", () => Promise.reject(new Error("boom")), onError);
     expect(onError.mock.calls).toEqual([["Not allowed to open url https://example.com"], ["boom"]]);
+  });
+});
+
+describe("category", () => {
+  it("splits each of the four prefixes off the note", () => {
+    expect(category("Added: What's new tab")).toEqual({ category: "Added", text: "What's new tab" });
+    expect(category("Changed: x")).toEqual({ category: "Changed", text: "x" });
+    expect(category("Fixed: a\nsecond line")).toEqual({ category: "Fixed", text: "a\nsecond line" });
+    expect(category("Removed: y")).toEqual({ category: "Removed", text: "y" });
+  });
+
+  it("leaves a note without a recognised prefix whole", () => {
+    expect(category("Deprecated: z")).toEqual({ category: undefined, text: "Deprecated: z" });
+    expect(category("added: lower case")).toEqual({ category: undefined, text: "added: lower case" });
+    expect(category("Added:no space")).toEqual({ category: undefined, text: "Added:no space" });
+  });
+});
+
+describe("shortDate", () => {
+  it("formats a yyyy-mm-dd date as day and month", () => {
+    expect(shortDate("2026-10-30")).toBe("30 Oct");
+    expect(shortDate("2026-01-05")).toBe("5 Jan");
+  });
+
+  it("is empty when the generator had no date", () => {
+    expect(shortDate("")).toBe("");
+  });
+});
+
+describe("subtitle", () => {
+  const today = new Date(2026, 9, 30);
+  const at = (date: string) => [{ version: "0.2.44", date, body: "" }];
+
+  it("counts the unseen releases when opened on launch", () => {
+    expect(subtitle([...at("2026-10-30"), ...at("2026-10-29")], "launch", today)).toBe("Updated today. 2 releases since you last opened it.");
+    expect(subtitle(at("2026-10-30"), "launch", today)).toBe("Updated today. 1 release since you last opened it.");
+  });
+
+  it("says every release when opened from Settings", () => {
+    expect(subtitle(at("2026-10-30"), "settings", today)).toBe("Updated today. Every release.");
+  });
+
+  it("dates an older newest release", () => {
+    expect(subtitle(at("2026-10-29"), "settings", today)).toBe("Updated yesterday. Every release.");
+    expect(subtitle(at("2026-10-20"), "settings", today)).toBe("Updated 20 Oct. Every release.");
+  });
+
+  it("leaves out the update when the newest release has no date, and is empty with no releases", () => {
+    expect(subtitle(at(""), "settings", today)).toBe("Every release.");
+    expect(subtitle([], "settings", today)).toBe("");
   });
 });

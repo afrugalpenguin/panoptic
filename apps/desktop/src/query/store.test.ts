@@ -175,7 +175,7 @@ describe("QueryWorkspace", () => {
     it("is appended and made active without touching open query tabs", () => {
       const { ws } = setup();
       const query = ws.open(target, "SELECT 1");
-      const tab = ws.openWhatsNew(sections);
+      const tab = ws.openWhatsNew(sections, "launch");
       expect(ws.tabs.map((t) => t.kind)).toEqual(["query", "whats-new"]);
       expect(ws.active).toBe(tab);
       expect(tab.title).toBe("What's new in v0.2.13");
@@ -184,17 +184,23 @@ describe("QueryWorkspace", () => {
 
     it("is a singleton: opening again focuses it and updates its sections", () => {
       const { ws } = setup();
-      ws.openWhatsNew(sections.slice(0, 1));
+      ws.openWhatsNew(sections.slice(0, 1), "launch");
       ws.open(target, "");
-      const again = ws.openWhatsNew(sections);
+      const again = ws.openWhatsNew(sections, "launch");
       expect(ws.tabs.filter((t) => t.kind === "whats-new")).toHaveLength(1);
       expect(ws.active).toBe(again);
       expect(again.sections).toHaveLength(2);
     });
 
+    it("remembers whether it was opened on launch or from Settings", () => {
+      const { ws } = setup();
+      expect(ws.openWhatsNew(sections.slice(0, 1), "launch").opened).toBe("launch");
+      expect(ws.openWhatsNew(sections, "settings").opened).toBe("settings");
+    });
+
     it("closes like any tab", () => {
       const { ws } = setup();
-      const tab = ws.openWhatsNew(sections);
+      const tab = ws.openWhatsNew(sections, "launch");
       ws.close(tab.id);
       expect(ws.tabs).toHaveLength(0);
     });
@@ -202,7 +208,7 @@ describe("QueryWorkspace", () => {
     it("is never touched by query routing", async () => {
       const { ws, api, finish } = setup();
       const query = ws.open(target, "SELECT 1");
-      ws.openWhatsNew(sections);
+      ws.openWhatsNew(sections, "launch");
       const done = ws.run(query);
       const queryId = api.executeQuery.mock.calls[0][0].queryId;
       ws.handle("query.rows", { queryId, index: 0, columns: [{ name: "a", type: "int" }], rows: [[1]] });

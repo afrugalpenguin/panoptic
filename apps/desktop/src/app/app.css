@@ -15,6 +15,9 @@
   --ok: #1a7f37;
   --bad: #cf222e;
   --warn: #9a6700;
+  /* The two colours of the logo, the same in both themes (docs/changelog.md, visual spec v2). */
+  --brand-cyan: #26c6da;
+  --brand-amber: #ffc107;
 
   /* Explorer tree (docs/explorer-ux.md). The spec's colours are for the dark theme. */
   --tree-bright: #111418;
