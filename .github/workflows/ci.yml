@@ -146,6 +146,8 @@ jobs:
   sidecar-pg:
     # The Postgres integration tests against PostgreSQL 17 with TLS on (the image's self-signed
     # certificate), seeded the way scripts/dev-db.ps1 does. Linux, like sidecar-sql, for the container.
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
