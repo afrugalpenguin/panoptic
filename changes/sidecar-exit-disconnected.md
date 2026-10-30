@@ -1,0 +1,1 @@
+Fixed: when the background sidecar process stops, every connection now shows as disconnected until it is running again, and anything loaded under a connection is reloaded rather than shown out of date. A failed update install now says **Update failed** with the reason and Panoptic keeps working, instead of showing "restarting..." forever.

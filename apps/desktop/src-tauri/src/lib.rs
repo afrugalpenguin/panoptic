@@ -1,7 +1,7 @@
 //! The shell is a pipe: it owns the sidecar process and moves newline-delimited JSON-RPC
 //! between it and the UI. It never parses or holds connection data.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -71,6 +71,8 @@ struct Sidecar {
     status: Mutex<Option<SidecarStatus>>,
     /// Set when we kill the sidecar on purpose (update or exit), so the supervisor doesn't restart it.
     stopping: AtomicBool,
+    /// Bumped by sidecar_start, so a supervisor from before a stop exits instead of running alongside the new one.
+    generation: AtomicU32,
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -80,6 +82,8 @@ enum SidecarStatus {
     Running { pid: u32 },
     Exited { code: Option<i32> },
     Failed { error: String },
+    /// Stopped on purpose (sidecar_stop): not restarted until sidecar_start.
+    Stopped,
 }
 
 const MAX_CONSECUTIVE_FAILURES: u32 = 5;
@@ -100,11 +104,28 @@ fn sidecar_status(sidecar: State<Sidecar>) -> Option<SidecarStatus> {
     sidecar.status.lock().ok().and_then(|s| s.clone())
 }
 
-/// Stops the sidecar for good so the installer can replace its exe during an update.
+/// Stops the sidecar for good so the installer can replace its exe during an update. Reports a
+/// terminal status, since the supervisor exits without one.
 #[tauri::command]
-fn sidecar_stop(sidecar: State<Sidecar>) -> Result<(), String> {
+fn sidecar_stop(app: AppHandle, sidecar: State<Sidecar>) -> Result<(), String> {
     stop_sidecar(&sidecar);
+    set_status(&app, SidecarStatus::Stopped);
     Ok(())
+}
+
+/// Starts a supervisor again after sidecar_stop, e.g. when installing an update failed. Does nothing
+/// if the sidecar was not stopped.
+#[tauri::command]
+fn sidecar_start(app: AppHandle, sidecar: State<Sidecar>) -> Result<(), String> {
+    if sidecar.stopping.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+        return Ok(());
+    }
+    let generation = sidecar.generation.fetch_add(1, Ordering::SeqCst) + 1;
+    std::thread::Builder::new()
+        .name("sidecar-supervisor".into())
+        .spawn(move || supervise(app, generation))
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 fn stop_sidecar(sidecar: &Sidecar) {
@@ -125,11 +146,12 @@ fn set_status(app: &AppHandle, status: SidecarStatus) {
 /// (Defender scanning the new exe, the .NET bundle extracting native libraries), so it must never
 /// happen on the UI thread. Restarts the sidecar if it exits, with back-off, and gives up after
 /// repeated quick failures rather than looping forever.
-fn supervise(app: AppHandle) {
+fn supervise(app: AppHandle, generation: u32) {
     let sidecar = app.state::<Sidecar>();
+    let superseded = || sidecar.stopping.load(Ordering::SeqCst) || sidecar.generation.load(Ordering::SeqCst) != generation;
     let mut failures = 0u32;
     loop {
-        if sidecar.stopping.load(Ordering::SeqCst) {
+        if superseded() {
             return;
         }
         set_status(&app, SidecarStatus::Starting { attempt: failures + 1 });
@@ -140,9 +162,12 @@ fn supervise(app: AppHandle) {
                 set_status(&app, SidecarStatus::Running { pid });
                 let code = pump(&app, rx);
                 if let Ok(mut c) = sidecar.child.lock() {
-                    c.take();
+                    // A newer supervisor may already own the slot.
+                    if sidecar.generation.load(Ordering::SeqCst) == generation {
+                        c.take();
+                    }
                 }
-                if sidecar.stopping.load(Ordering::SeqCst) {
+                if superseded() {
                     return;
                 }
                 failures = if started.elapsed() >= HEALTHY_AFTER { 1 } else { failures + 1 };
@@ -212,10 +237,10 @@ pub fn run() {
         .manage(Sidecar::default())
         .setup(|app| {
             let handle = app.handle().clone();
-            std::thread::Builder::new().name("sidecar-supervisor".into()).spawn(move || supervise(handle))?;
+            std::thread::Builder::new().name("sidecar-supervisor".into()).spawn(move || supervise(handle, 0))?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![sidecar_send, sidecar_stop, sidecar_status, startup_info, bench_finish, is_installed, changelog_markdown])
+        .invoke_handler(tauri::generate_handler![sidecar_send, sidecar_stop, sidecar_start, sidecar_status, startup_info, bench_finish, is_installed, changelog_markdown])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {

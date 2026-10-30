@@ -137,6 +137,20 @@ describe("TreeModel", () => {
       await model.reload("env:dev");
       expect(model.problems()).toEqual([]);
     });
+
+    it("forgetConnections drops subtrees and their problems, keeps environments open, and reloads on expand", async () => {
+      const { model, fail } = failing();
+      await expandAll(model);
+      fail.delete("env:dev/conn:c1/db:app");
+      model.forgetConnections();
+      expect(labels(model)).toEqual(["dev", "  orders"]);
+      expect(model.rows()[1]).toMatchObject({ type: "node", expanded: false, loading: false });
+      expect(model.problems()).toEqual([]);
+
+      await model.expand("env:dev/conn:c1");
+      await model.expand("env:dev/conn:c1/db:app");
+      expect(labels(model)).toEqual(["dev", "  orders", "    app", "      <empty>"]);
+    });
   });
 
   it("shows an empty row for a node with no children", async () => {

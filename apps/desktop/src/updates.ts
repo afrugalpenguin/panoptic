@@ -15,6 +15,7 @@ export type UpdateState =
   | { kind: "available"; current: string; next: string }
   | { kind: "downloading"; current: string; next: string }
   | { kind: "ready"; current: string; next: string; install: () => Promise<void> }
+  | { kind: "installFailed"; current: string; next: string; message: string }
   | { kind: "error"; current: string; message: string };
 
 /**
@@ -52,8 +53,17 @@ export function createUpdateChecker(onState: (s: UpdateState) => void): () => Pr
         current,
         next: update.version,
         install: async () => {
+          // The installer replaces the sidecar's exe, so it is stopped first. If installing fails, the
+          // app carries on: start the sidecar again and allow a fresh check (and download) later.
           await invoke("sidecar_stop");
-          await update.install();
+          try {
+            await update.install();
+          } catch (e) {
+            ready = false;
+            await invoke("sidecar_start").catch(() => {});
+            onState({ kind: "installFailed", current, next: update.version, message: String(e) });
+            return;
+          }
           await relaunch();
         },
       });

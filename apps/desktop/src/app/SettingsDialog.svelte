@@ -60,6 +60,8 @@
         return `v${update.next} is ready; restart from the status bar`;
       case "error":
         return `Check failed: ${update.message}`;
+      case "installFailed":
+        return `Update failed: ${update.message}`;
       default:
         return update ? `v${update.current}, not checked yet this session` : "";
     }
