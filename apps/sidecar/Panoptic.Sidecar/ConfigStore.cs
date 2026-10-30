@@ -18,8 +18,14 @@ public sealed class ConfigStore
     public ConfigStore(string path)
     {
         _path = path;
-        _file = Load(path);
+        (_file, RecoveredFrom) = Load(path);
     }
+
+    /// <summary>
+    /// Where an unreadable store was moved aside at start-up, or null. The store then starts empty;
+    /// ping reports this so the UI can say so.
+    /// </summary>
+    public string? RecoveredFrom { get; }
 
     public static string DefaultPath =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Panoptic", "store.bin");
@@ -145,10 +151,29 @@ public sealed class ConfigStore
         _file = file;
     }
 
-    private static StoreFile Load(string path)
+    /// <summary>
+    /// A file that cannot be decrypted (another Windows profile, a truncated write) or does not deserialise to a
+    /// usable store is renamed aside, never deleted or overwritten, and the store starts empty. Read errors such as
+    /// a locked file are not corruption and still throw: moving a good store aside would lose it.
+    /// </summary>
+    private static (StoreFile File, string? RecoveredFrom) Load(string path)
     {
-        if (!File.Exists(path)) return new StoreFile(AppConfig.Empty, []);
-        var json = ProtectedData.Unprotect(File.ReadAllBytes(path), Entropy, DataProtectionScope.CurrentUser);
-        return JsonSerializer.Deserialize(json, SidecarJson.Default.StoreFile) ?? new StoreFile(AppConfig.Empty, []);
+        var empty = new StoreFile(AppConfig.Empty, []);
+        if (!File.Exists(path)) return (empty, null);
+        var bytes = File.ReadAllBytes(path);
+        try
+        {
+            var json = ProtectedData.Unprotect(bytes, Entropy, DataProtectionScope.CurrentUser);
+            var file = JsonSerializer.Deserialize(json, SidecarJson.Default.StoreFile);
+            // Missing required members deserialise as null rather than failing.
+            if (file is { Config.Environments: not null, Secrets: not null }) return (file, null);
+        }
+        catch (Exception ex) when (ex is CryptographicException or JsonException or NotSupportedException) { }
+
+        // No overwrite: if the name is somehow taken, fail rather than lose either copy.
+        var aside = $"{path}.corrupt-{DateTime.UtcNow:yyyyMMdd-HHmmss-fff}";
+        File.Move(path, aside, overwrite: false);
+        Console.Error.WriteLine($"Store could not be read; moved aside to {aside} and started empty.");
+        return (empty, aside);
     }
 }

@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import type { RpcClient } from "../rpc";
-  import { connectSidecar, type PingResult, type SidecarStatus } from "../sidecar";
+  import { connectSidecar, readyText, type PingResult, type SidecarStatus } from "../sidecar";
   import { finishBenchmark, firstPaintEpochMs, nowEpochMs, type StartupInfo } from "../startup";
   import { scheduleUpdateChecks } from "../update-schedule";
   import { createUpdateChecker, currentVersion, type UpdateState } from "../updates";
@@ -145,7 +145,7 @@
       return; // An exited/failed status follows and says what happened.
     }
     sidecar = "connected";
-    sidecarText = "Ready";
+    sidecarText = readyText(ping);
     if (initialised) {
       await configChanged(); // Restarted: refresh environments and connections, keep loaded subtrees.
       return;

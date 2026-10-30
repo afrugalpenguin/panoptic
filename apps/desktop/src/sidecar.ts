@@ -2,7 +2,21 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { RpcClient } from "./rpc";
 
-export type PingResult = { startupMs: number; version: string; mode: string; pid: number };
+export type PingResult = {
+  startupMs: number;
+  version: string;
+  mode: string;
+  pid: number;
+  /** Set when store.bin could not be read at start-up: where it was moved aside. The store started empty. */
+  storeRecoveredFrom?: string;
+};
+
+/** Status bar text once the sidecar answers ping. */
+export function readyText(ping: PingResult): string {
+  if (!ping.storeRecoveredFrom) return "Ready";
+  const name = ping.storeRecoveredFrom.split(/[\\/]/).pop();
+  return `Ready, but saved connections and settings could not be read and were reset (old file kept as ${name})`;
+}
 
 /** Mirrors SidecarStatus in src-tauri/src/lib.rs. The shell supervises and restarts the sidecar. */
 export type SidecarStatus =
