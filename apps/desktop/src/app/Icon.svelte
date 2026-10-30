@@ -3,10 +3,13 @@
   const GLYPHS: Record<string, [string, string]> = {
     sql: ["S", "#1971c2"],
     cosmos: ["C", "#7048e8"],
+    postgres: ["P", "#5f7a2e"],
     database: ["D", "#2f9e44"],
     folder: ["", "#868e96"],
     table: ["T", "#0c8599"],
     view: ["V", "#6741d9"],
+    matview: ["M", "#6741d9"],
+    sequence: ["#", "#868e96"],
     proc: ["P", "#e8590c"],
     function: ["f", "#d6336c"],
     synonym: ["=", "#868e96"],

@@ -1,0 +1,1 @@
+Added: PostgreSQL connections, including Azure Database for PostgreSQL with Microsoft Entra sign-in. The explorer lists databases, tables, views, materialized views, functions, procedures and sequences, with columns, keys and indexes. Running queries against them comes next.

@@ -34,3 +34,20 @@ public sealed class CosmosFactAttribute : FactAttribute
         set => base.Skip = value;
     }
 }
+
+/// <summary>
+/// A test against the dev PostgreSQL from scripts/dev-db.ps1. Reported as skipped, not passed, unless
+/// PANOPTIC_TEST_PG_PASSWORD is set. Tag it [Trait("Category", "PgIntegration")] so CI can run it alone.
+/// </summary>
+public sealed class PgFactAttribute : FactAttribute
+{
+    public static string? Password => Environment.GetEnvironmentVariable("PANOPTIC_TEST_PG_PASSWORD");
+
+    public override string? Skip
+    {
+        get => string.IsNullOrEmpty(Password)
+            ? "Set PANOPTIC_TEST_PG_PASSWORD to PANOPTIC_DEV_PG_PASSWORD from docker\\.env (start the DB with scripts\\dev-db.ps1)."
+            : base.Skip;
+        set => base.Skip = value;
+    }
+}

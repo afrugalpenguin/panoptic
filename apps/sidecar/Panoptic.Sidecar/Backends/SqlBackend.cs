@@ -111,6 +111,10 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
         // Pooled connections are keyed by connection string, so changed settings get a new pool.
     }
 
+    /// <summary>Windows auth reaches SQL Server only; Synapse is Entra or SQL logins.</summary>
+    public IReadOnlyList<string> AuthsFor(string kind) =>
+        kind == ConnectionKinds.Sql ? [AuthKinds.Entra, AuthKinds.Sql, AuthKinds.Windows] : [AuthKinds.Entra, AuthKinds.Sql];
+
     // --- Templates and names -----------------------------------------------------------------------------
 
     public string EditorLanguage => "sql";

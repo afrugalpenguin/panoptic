@@ -41,6 +41,7 @@ public static class NodeErrors
     {
         AuthKinds.Entra => string.IsNullOrWhiteSpace(c.TenantId) ? "Entra ID (default tenant)" : $"Entra ID (tenant {c.TenantId})",
         AuthKinds.Sql => $"SQL login {c.User}",
+        AuthKinds.Password => $"User {c.User}",
         AuthKinds.Key => "Account key",
         AuthKinds.Windows => $"Windows ({Environment.UserDomainName}\\{Environment.UserName})",
         _ => c.Auth,

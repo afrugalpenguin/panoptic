@@ -12,6 +12,18 @@ services:
     volumes:
       - sql-data:/var/opt/mssql
 
+  postgres:
+    image: postgres:17
+    # TLS with the image's self-signed snakeoil certificate, so "Trust server certificate" connections
+    # (encrypted, not validated) work as they do against a real server.
+    command: ["-c", "ssl=on", "-c", "ssl_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem", "-c", "ssl_key_file=/etc/ssl/private/ssl-cert-snakeoil.key"]
+    environment:
+      POSTGRES_PASSWORD: ${PANOPTIC_DEV_PG_PASSWORD:?run scripts/dev-db.ps1}
+    ports:
+      - "127.0.0.1:15432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+
   cosmos:
     image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview
     command: ["--protocol", "https"]
@@ -21,3 +33,4 @@ services:
 
 volumes:
   sql-data:
+  pg-data:

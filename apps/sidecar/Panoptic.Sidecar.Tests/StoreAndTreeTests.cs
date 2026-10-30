@@ -367,6 +367,8 @@ public sealed class TreeServiceTests : IDisposable
         public Task TestAsync(ConnectionConfig connection, string? secret, CancellationToken ct) => Task.CompletedTask;
 
         public void Forget(string connectionId) { }
+
+        public IReadOnlyList<string> AuthsFor(string kind) => [AuthKinds.Sql];
     }
 
     [Fact]

@@ -25,8 +25,8 @@ export interface NodeError {
   retryable: boolean;
 }
 
-export type ConnectionKind = "sql" | "synapse" | "cosmos";
-export type AuthKind = "entra" | "sql" | "key" | "windows";
+export type ConnectionKind = "sql" | "synapse" | "cosmos" | "postgres";
+export type AuthKind = "entra" | "sql" | "key" | "windows" | "password";
 
 export interface ConnectionConfig {
   id: string;

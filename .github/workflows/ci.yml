@@ -143,6 +143,44 @@ jobs:
           # Fail closed: a missing password would skip everything and still pass.
           if grep -q 'Set PANOPTIC_TEST_SQL_PASSWORD' test.log; then echo "::error::SQL tests were skipped for lack of a password"; exit 1; fi
 
+  sidecar-pg:
+    # The Postgres integration tests against PostgreSQL 17 with TLS on (the image's self-signed
+    # certificate), seeded the way scripts/dev-db.ps1 does. Linux, like sidecar-sql, for the container.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('apps/sidecar/**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+      # Random, masked password per run, as for SQL Server. Readiness is checked over TCP: on first start
+      # the image runs a temporary socket-only server while it initialises, which a socket check accepts.
+      - name: Start and seed PostgreSQL 17
+        run: |
+          password="Pn$(openssl rand -hex 16)"
+          echo "::add-mask::$password"
+          echo "PANOPTIC_TEST_PG_PASSWORD=$password" >> "$GITHUB_ENV"
+          docker run -d --name pg -e "POSTGRES_PASSWORD=$password" -p 127.0.0.1:15432:5432 postgres:17             -c ssl=on -c ssl_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem -c ssl_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
+          ready=
+          for _ in $(seq 1 30); do
+            if docker exec pg pg_isready -h 127.0.0.1 -U postgres > /dev/null 2>&1; then ready=1; break; fi
+            sleep 2
+          done
+          if [ -z "$ready" ]; then docker logs pg; echo "::error::PostgreSQL did not become ready"; exit 1; fi
+          docker cp docker/seed-postgres.sql pg:/tmp/seed-postgres.sql
+          docker exec pg psql -q -U postgres -d postgres -f /tmp/seed-postgres.sql
+      - name: Postgres integration tests
+        run: |
+          set -o pipefail
+          dotnet test apps/sidecar -p:EnableWindowsTargeting=true --filter "Category=PgIntegration" --logger "console;verbosity=detailed" | tee test.log
+          # Fail closed: a missing password would skip everything and still pass.
+          if grep -q 'Set PANOPTIC_TEST_PG_PASSWORD' test.log; then echo "::error::Postgres tests were skipped for lack of a password"; exit 1; fi
+
   shell:
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}

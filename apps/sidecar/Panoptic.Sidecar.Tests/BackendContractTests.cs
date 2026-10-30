@@ -29,6 +29,8 @@ public sealed class FakeBackend : IQueryBackend
 
     public void Forget(string connectionId) { }
 
+    public IReadOnlyList<string> AuthsFor(string kind) => [AuthKinds.Key];
+
     public IReadOnlyDictionary<string, string> ActionLabels { get; } = new Dictionary<string, string> { ["copyPath"] = "Copy path" };
 
     public Task<string?> InvokeAsync(ConnectionConfig connection, string? secret, NodePath path, int start, string actionId, CancellationToken ct) =>
@@ -81,6 +83,8 @@ public sealed class BrowseOnlyBackend : IBackend
     public Task TestAsync(ConnectionConfig connection, string? secret, CancellationToken ct) => Task.CompletedTask;
 
     public void Forget(string connectionId) { }
+
+    public IReadOnlyList<string> AuthsFor(string kind) => [AuthKinds.Key];
 }
 
 /// <summary>
@@ -261,7 +265,7 @@ public sealed class BackendContractTests : IDisposable
     {
         var backends = BackendRegistry.Create(new Credentials(_ => { }));
 
-        Assert.Equal([ConnectionKinds.Cosmos, ConnectionKinds.Sql, ConnectionKinds.Synapse], backends.Keys.Order());
+        Assert.Equal([ConnectionKinds.Cosmos, ConnectionKinds.Postgres, ConnectionKinds.Sql, ConnectionKinds.Synapse], backends.Keys.Order());
         Assert.Same(backends[ConnectionKinds.Sql], backends[ConnectionKinds.Synapse]);
     }
 }
