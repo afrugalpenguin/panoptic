@@ -137,6 +137,13 @@ public class ReadOnlyGuardTests
         Assert.True(held);
         Assert.Equal(["a", "b"], ran);
     }
+
+    [Fact]
+    public void Rollback_message_does_not_claim_changes_when_the_run_failed()
+    {
+        Assert.Equal("Prod is read-only: this query's database changes were rolled back.", SqlBackend.RolledBackMessage("Prod", failed: false));
+        Assert.Equal("Prod is read-only: nothing was committed.", SqlBackend.RolledBackMessage("Prod", failed: true));
+    }
 }
 
 public class QueryTemplateTests
@@ -272,6 +279,18 @@ public sealed class QueryIntegrationTests : IDisposable
 
         await service.ExecuteAsync(new QueryRequest("q5", "env:dev/conn:sql1/db:Orders", "SELECT Name FROM dbo.Customer WHERE CustomerId = 1"), default);
         Assert.NotEqual("changed", Notes("query.rows").Last().GetProperty("rows")[0][0].GetString());
+    }
+
+    [SqlFact(NeedsWindows = true), Trait("Category", "SqlIntegration")]
+    public async Task Read_only_failed_query_says_nothing_was_committed()
+    {
+        var summary = await Service(readOnly: true).ExecuteAsync(new QueryRequest("q6", "env:dev/conn:sql1/db:Orders", "SELECT * FROM dbo.NoSuchTable"), default);
+
+        Assert.NotNull(summary.Error);
+        Assert.True(summary.RolledBack);
+        var texts = Notes("query.message").Select(m => m.GetProperty("text").GetString()).ToList();
+        Assert.Contains("Dev is read-only: nothing was committed.", texts);
+        Assert.DoesNotContain(texts, t => t!.Contains("rolled back"));
     }
 
     /// <summary>Runs <paramref name="script"/> ({T} stands for a scratch table) in a read-only environment; returns the summary and the rows left in {T}.</summary>
