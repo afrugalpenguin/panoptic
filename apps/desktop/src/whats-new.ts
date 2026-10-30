@@ -82,3 +82,12 @@ export function inlineTokens(text: string): InlineToken[] {
   if (last < text.length) out.push({ type: "text", text: text.slice(last) });
   return out;
 }
+
+/** Opens a link through `open` (the opener plugin) and hands any failure, such as a scope denial, to `onError`. */
+export async function openLink(href: string, open: (url: string) => Promise<void>, onError: (message: string) => void): Promise<void> {
+  try {
+    await open(href);
+  } catch (e) {
+    onError(e instanceof Error ? e.message : String(e));
+  }
+}

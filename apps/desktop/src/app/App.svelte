@@ -436,7 +436,7 @@
 
   <main class="content">
     {#if workspace.tabs.length > 0}
-      <Workspace {workspace} />
+      <Workspace {workspace} onLinkError={(error) => (lastLoad = { id: "", label: "Open link", count: 0, ms: 0, error })} />
     {:else}
     <DetailPane row={selectedRow} onAddEnvironment={() => (dialog = { kind: "environment" })} onImport={() => (dialog = { kind: "import" })} />
     {/if}
