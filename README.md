@@ -22,6 +22,10 @@ scope; SSMS stays the tool for those.
 - **Query editor.** Monaco with T-SQL and Cosmos SQL. Results stream into a virtualised grid,
   with multiple result sets, messages, an elapsed timer and cancel. Export to CSV or JSON.
   Select top 1000 on any table, view or container.
+- **IntelliSense.** Completions and hover in the query editor, from a catalog of each database:
+  schemas, tables, views, columns, procedures and functions for SQL, and for Cosmos the
+  containers and the property paths seen in a sample of their documents. Catalogs are cached
+  encrypted on disk. See [docs/query-editor.md](docs/query-editor.md).
 - **Read-only environments.** Queries against an environment marked read-only run in a
   transaction that is always rolled back.
 - **Sign-in.** Microsoft Entra (Windows account broker or device code), SQL login, Windows

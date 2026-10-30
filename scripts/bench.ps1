@@ -63,12 +63,14 @@ $cpu = (Get-CimInstance Win32_Processor | Select-Object -First 1).Name.Trim()
 $ramGb = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB)
 $os = Get-CimInstance Win32_OperatingSystem
 $version = (Get-Item $Exe).VersionInfo.ProductVersion
-$machine = "$env:COMPUTERNAME, $cpu, $ramGb GB, Windows $($os.Version)"
+# Hardware only, and the exe path without the user name: this output is pasted into the public repo.
+$machine = "$cpu, $ramGb GB, Windows $($os.Version)"
+$exeShown = $Exe.Replace($env:LOCALAPPDATA, '%LOCALAPPDATA%').Replace($env:USERPROFILE, '%USERPROFILE%')
 
 Write-Host ""
 Write-Host "### $Suite, $(Get-Date -Format 'yyyy-MM-dd'), Panoptic $version"
 Write-Host ""
-Write-Host "Machine: $machine. Exe: $Exe"
+Write-Host "Machine: $machine. Exe: $exeShown"
 Write-Host ""
 
 function Get-Median($values) {

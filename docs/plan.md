@@ -32,7 +32,7 @@ Panoptic: seeing everything from one position. The Ctrl+P palette inside it is c
 | Sidecar protocol | JSON-RPC 2.0 over stdio, Tauri sidecar lifecycle | No ports, no CORS, no firewall prompts on the work laptop. Streaming result sets as batched notifications. |
 | Query editor | Monaco | Already does T-SQL highlighting; Cosmos SQL grammar added as a custom language. |
 | Auth | Entra (MSAL.NET) first, SQL auth second, key-based Cosmos third | Matches how the target Azure SQL and Cosmos are actually reached. Tokens cached per connection by the sidecar, never written to disk unencrypted. |
-| Connection store | Encrypted local file, OS keychain for secrets | Export and import as a single file so the dotfiles repo can carry it. |
+| Connection store | One DPAPI-encrypted local file (current user) for connections, secrets and settings | Secrets never leave the sidecar. Export and import as a single file, so the dotfiles repo can carry it, is M4 work (ADR 0008). |
 | Telemetry | None | Fail-closed on anything that phones home. |
 | Distribution | Per-user NSIS installer on GitHub Releases, Tauri updater plugin checks on launch | The work laptop is the real test bed; it must pick up every build without manual installs. The update check is the one outbound call and goes only to GitHub Releases. |
 | Code signing | Unsigned (Authenticode) in M0, updater payloads signed with a Tauri updater key | Prove SmartScreen and Intune behaviour first; buy a certificate or Azure Trusted Signing only if install is blocked or before v1. |
@@ -83,7 +83,7 @@ The two accented boxes are the whole design: the tree draws nodes, the node cont
 
 The UI holds no connection strings, tokens or SQL. It asks the sidecar for nodes, actions and result batches over JSON-RPC and renders what comes back. The sidecar owns connections, auth and the catalog queries. A crashed sidecar is restarted by Tauri and the UI shows every connection as disconnected until it answers `ping` again.
 
-Result sets stream as notifications of 500-row batches so the grid paints the first rows before the query finishes; the UI can cancel mid-stream and the sidecar cancels the command. The shared node model package is generated from the sidecar's C# records at build time so the two sides cannot drift.
+Result sets stream as notifications of 500-row batches so the grid paints the first rows before the query finishes; the UI can cancel mid-stream and the sidecar cancels the command. The UI's types for the node contract and the RPC payloads are written by hand in `apps/desktop/src/app/api.ts`, mirroring the sidecar's records in `apps/sidecar/Panoptic.Sidecar/Model.cs`; generating them from the C# records so the two sides cannot drift is still open.
 
 ## Milestones
 
@@ -94,7 +94,7 @@ Each milestone has one definition of done, and the next one does not start until
 - **M0 Measure.** Numbers in `docs/benchmarks.md` for cold start, tree and grid frame times, Entra sign-in, and a per-user installer on the work laptop that auto-updates from GitHub Releases. ADRs written for the UI framework choice.
 - **M1 Tree.** Two SQL Server connections and one Cosmos account under one environment node, lazy-loaded through the node contract, every expand under 300 ms, nothing else on screen. If this is not enjoyable to click around, stop here.
 - **M2 Query and grid.** Monaco query pane bound to the selected connection, streamed results, cancel, CSV and JSON export, Cosmos SQL as a Monaco language. Select top 1000 on any table or container.
-- **M3 Filters, actions.** Type-to-filter scoped to a subtree, saved filters, the Ctrl+P palette across every loaded node, Script as CREATE, Open definition, Copy name, read-only environment flag that disables writes.
+- **M3 Filters, actions.** Type-to-filter scoped to a subtree, saved filters, the Ctrl+P palette across every loaded node, Script as CREATE, Open definition, Copy name, read-only environment flag that disables writes. Also the Playwright smoke test in CI (see Repo setup), still open.
 - **M4 Agent, packaging.** Send to agent (schema plus sample rows to Claude Code or Copilot CLI via a configurable command), connection export and import, Authenticode-signed installer, README with screenshots, v1 tag. (Auto-update moved to M0.)
 
 ## Risks and the cheap tests that retire them
@@ -112,9 +112,9 @@ Each milestone has one definition of done, and the next one does not start until
 ## Repo setup and conventions
 
 - `afrugalpenguin/panoptic`, MIT, public from the first commit. Personal git identity, global commit-msg hook stays on, no attribution trailers.
-- Monorepo: `apps/desktop` (Tauri + TS), `apps/sidecar` (.NET), `packages/node-model` (shared TypeScript types for the node contract, generated from the .NET records so the two sides can't drift), `packages/backends-sql`, `packages/backends-cosmos`.
+- Monorepo: `apps/desktop` (Tauri + Svelte) and `apps/sidecar` (.NET). The pnpm workspace holds only `apps/desktop`; there is no `packages/` folder. Both backends live in the sidecar project (`Backends/SqlBackend.cs`, `Backends/CosmosBackend.cs`), next to its test project.
 - Conventional commits, `type(scope): description`, 72-char subject. Scopes: `tree`, `grid`, `editor`, `sidecar`, `sql`, `cosmos`, `auth`, `build`.
-- Feature branches and PRs from day one, even solo. CI on GitHub Actions: Windows build, sidecar unit tests, a Playwright smoke test that opens the window and expands a fixture tree.
+- Feature branches and PRs from day one, even solo. CI on GitHub Actions (ci.yml) is the only test gate: UI type-check, unit tests and build, a changelog generator run, sidecar tests on Windows, a `cargo check` of the shell, and npm, NuGet and Rust dependency audits. fragment.yml checks that feat and fix PRs add a change fragment. A Playwright smoke test that opens the window and expands a fixture tree is open M3 work.
 - Fail closed: every write action is off until the connection is marked writable; every network call has a timeout; the sidecar dying puts the UI into an obvious disconnected state rather than hanging.
 - Observable progress: every long operation reports through the status bar with an elapsed timer and a cancel.
 - PowerShell for all scripts under `scripts/`, Windows paths in docs.
@@ -130,7 +130,7 @@ The first session is M0 and nothing else. It produces measurements, not features
 - [ ] Render a synthetic 50k-node virtualised tree and a 100k-row grid from fixture data. Record frame times. Decide Svelte versus plain TS on these numbers and write the ADR.
 - [ ] Prove Entra sign-in from the sidecar on the work laptop (WAM broker, device-code fallback). Record which worked.
 - [ ] Connect to one real SQL Server and one real Cosmos account read-only, list databases through the node contract, and show them under one fake environment node.
-- [ ] Tag-triggered release workflow: per-user NSIS installer plus signed updater manifest on GitHub Releases. Install once on the work laptop, then confirm it updates itself to the next tag.
+- [ ] Release workflow: per-user NSIS installer plus signed updater manifest on GitHub Releases. Install once on the work laptop, then confirm it updates itself to the next release. As built there is no tag step: every merge to main that changes more than docs releases, versioned as major.minor from apps/desktop/package.json plus the workflow's run number (release.yml, README "Release").
 
 Prompt to paste:
 
