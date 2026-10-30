@@ -168,6 +168,7 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
 
         await using var tx = target.Environment.ReadOnly ? conn.BeginTransaction() : null;
         var committed = false;
+        var failed = false;
         try
         {
             var guardHeld = await RunBatches(BatchSplitter.Split(text), async batch =>
@@ -188,11 +189,12 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
         }
         catch (SqlException ex) when (!ct.IsCancellationRequested)
         {
+            failed = true;
             sink.Fail(ex.Errors.Count > 0 && ex.Errors[0].LineNumber > 0 ? $"Line {ex.Errors[0].LineNumber}: {ex.Message}" : ex.Message);
         }
         finally
         {
-            if (tx is not null) await EndReadOnly(sink, target, conn, tx, committed);
+            if (tx is not null) await EndReadOnly(sink, target, conn, tx, committed, failed);
         }
     }
 
@@ -224,7 +226,7 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
     }
 
     /// <summary>Rolls back the guard transaction, and says so only if it was still open and the rollback worked.</summary>
-    private static async Task EndReadOnly(IQuerySink sink, QueryTarget target, SqlConnection conn, SqlTransaction tx, bool committed)
+    private static async Task EndReadOnly(IQuerySink sink, QueryTarget target, SqlConnection conn, SqlTransaction tx, bool committed, bool failed)
     {
         // Zombied: the script (or an error that aborted the transaction) ended it on the server, and SqlClient's
         // Rollback is then a silent no-op, so it proves nothing.
@@ -247,13 +249,20 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
         {
             await tx.RollbackAsync(CancellationToken.None);
             sink.RolledBack();
-            sink.Message("info", $"{target.Environment.Name} is read-only: this query's database changes were rolled back.");
+            sink.Message("info", RolledBackMessage(target.Environment.Name, failed));
         }
         catch (Exception ex) when (ex is InvalidOperationException or SqlException)
         {
             sink.Message("error", $"{target.Environment.Name} is read-only, but the rollback failed: {ex.Message}. Changes may have been committed.");
         }
     }
+
+    /// <summary>
+    /// What a successful guard rollback reports. A failed run may have stopped before changing anything, and which
+    /// statements ran before the error is not known here, so it only says what is certain: nothing was committed.
+    /// </summary>
+    public static string RolledBackMessage(string environment, bool failed) =>
+        failed ? $"{environment} is read-only: nothing was committed." : $"{environment} is read-only: this query's database changes were rolled back.";
 
     private static async Task StreamSet(IQuerySink sink, SqlDataReader reader, CancellationToken ct)
     {
