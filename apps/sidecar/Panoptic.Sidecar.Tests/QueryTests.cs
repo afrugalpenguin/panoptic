@@ -169,11 +169,9 @@ public sealed class QueryIntegrationTests : IDisposable
     private List<JsonElement> Notes(string method) =>
         _notes.Where(n => n.Method == method).Select(n => JsonDocument.Parse(n.Params).RootElement).ToList();
 
-    [Fact]
+    [SqlFact(NeedsWindows = true), Trait("Category", "SqlIntegration")]
     public async Task Sql_streams_result_sets_in_batches_with_messages()
     {
-        if (string.IsNullOrEmpty(SqlPassword)) return;
-
         var summary = await Service().ExecuteAsync(new QueryRequest("q1", "env:dev/conn:sql1/db:Orders",
             "PRINT 'hello'\nSELECT TOP (1200) o.object_id FROM sys.all_objects o\nGO\nSELECT CAST(NULL AS int) AS n, CAST(1.5 AS decimal(10,2)) AS d"), default);
 
@@ -188,32 +186,27 @@ public sealed class QueryIntegrationTests : IDisposable
         Assert.Contains(Notes("query.message"), m => m.GetProperty("text").GetString() == "hello");
     }
 
-    [Fact]
+    [SqlFact(NeedsWindows = true), Trait("Category", "SqlIntegration")]
     public async Task Sql_error_keeps_earlier_results_and_reports_the_error()
     {
-        if (string.IsNullOrEmpty(SqlPassword)) return;
-
         var summary = await Service().ExecuteAsync(new QueryRequest("q2", "env:dev/conn:sql1/db:Orders", "SELECT 1 AS ok\nGO\nSELECT * FROM dbo.DoesNotExist"), default);
 
         Assert.Single(summary.ResultSets);
         Assert.Contains("DoesNotExist", summary.Error);
     }
 
-    [Fact]
+    [SqlFact(NeedsWindows = true), Trait("Category", "SqlIntegration")]
     public async Task Sql_reports_rows_affected()
     {
-        if (string.IsNullOrEmpty(SqlPassword)) return;
-
         await Service().ExecuteAsync(new QueryRequest("q3", "env:dev/conn:sql1/db:Orders",
             "DECLARE @t TABLE (x int); INSERT @t VALUES (1), (2), (3);"), default);
 
         Assert.Contains(Notes("query.message"), m => m.GetProperty("text").GetString() == "(3 rows affected)");
     }
 
-    [Fact]
+    [SqlFact(NeedsWindows = true), Trait("Category", "SqlIntegration")]
     public async Task Read_only_environment_rolls_back_changes()
     {
-        if (string.IsNullOrEmpty(SqlPassword)) return;
         var service = Service(readOnly: true);
 
         var summary = await service.ExecuteAsync(new QueryRequest("q4", "env:dev/conn:sql1/db:Orders",
@@ -242,11 +235,9 @@ public sealed class QueryIntegrationTests : IDisposable
         }
     }
 
-    [Fact]
+    [SqlFact(NeedsWindows = true), Trait("Category", "SqlIntegration")]
     public async Task Read_only_balanced_begin_commit_stays_inside_the_guard()
     {
-        if (string.IsNullOrEmpty(SqlPassword)) return;
-
         // The script's BEGIN TRAN nests (@@TRANCOUNT 2) and its COMMIT only takes it back to 1.
         var (summary, rows) = await RunReadOnly("BEGIN TRAN; INSERT {T} VALUES (1); COMMIT; INSERT {T} VALUES (2)");
 
@@ -256,11 +247,9 @@ public sealed class QueryIntegrationTests : IDisposable
         Assert.Empty(rows);
     }
 
-    [Fact]
+    [SqlFact(NeedsWindows = true), Trait("Category", "SqlIntegration")]
     public async Task Read_only_commit_is_reported_and_stops_later_batches()
     {
-        if (string.IsNullOrEmpty(SqlPassword)) return;
-
         var (summary, rows) = await RunReadOnly("INSERT {T} VALUES (1); COMMIT\nGO\nINSERT {T} VALUES (2)");
 
         Assert.Null(summary.Error);
@@ -270,11 +259,9 @@ public sealed class QueryIntegrationTests : IDisposable
         Assert.Contains(Notes("query.message"), m => m.GetProperty("kind").GetString() == "error" && m.GetProperty("text").GetString()!.Contains("ended the read-only guard"));
     }
 
-    [Fact]
+    [SqlFact(NeedsWindows = true), Trait("Category", "SqlIntegration")]
     public async Task Read_only_commit_then_begin_tran_is_still_caught()
     {
-        if (string.IsNullOrEmpty(SqlPassword)) return;
-
         // @@TRANCOUNT is back to 1 after this batch, but the open transaction is the script's.
         var (summary, rows) = await RunReadOnly("INSERT {T} VALUES (1); COMMIT; BEGIN TRAN; INSERT {T} VALUES (2)\nGO\nINSERT {T} VALUES (3)");
 
@@ -284,10 +271,9 @@ public sealed class QueryIntegrationTests : IDisposable
         Assert.Equal([1], rows);
     }
 
-    [Fact]
+    [SqlFact(NeedsWindows = true), Trait("Category", "SqlIntegration")]
     public async Task Cancel_stops_a_running_query()
     {
-        if (string.IsNullOrEmpty(SqlPassword)) return;
         var service = Service();
 
         var run = service.ExecuteAsync(new QueryRequest("q6", "env:dev/conn:sql1/db:Orders", "WAITFOR DELAY '00:00:30'; SELECT 1"), default);
@@ -298,11 +284,9 @@ public sealed class QueryIntegrationTests : IDisposable
         Assert.True(summary.Cancelled);
     }
 
-    [Fact]
+    [CosmosFact, Trait("Category", "CosmosIntegration")]
     public async Task Cosmos_flattens_documents_into_columns_and_reports_charge()
     {
-        if (Environment.GetEnvironmentVariable("PANOPTIC_TEST_COSMOS") != "1") return;
-
         var summary = await Service().ExecuteAsync(new QueryRequest("q7", "env:dev/conn:cos1/db:panoptic-dev/c:orders", "SELECT * FROM c"), default);
 
         Assert.Null(summary.Error);

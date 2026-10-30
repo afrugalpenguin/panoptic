@@ -6,7 +6,7 @@ namespace Panoptic.Sidecar.Tests;
 
 /// <summary>
 /// Walks real backends started by scripts/dev-db.ps1. Opt-in: set PANOPTIC_TEST_SQL_PASSWORD (the SA
-/// password from docker/.env) and/or PANOPTIC_TEST_COSMOS=1. Without them these tests return early.
+/// password from docker/.env) and/or PANOPTIC_TEST_COSMOS=1. Without them these tests are reported as skipped.
 /// </summary>
 public class BackendIntegrationTests(ITestOutputHelper output)
 {
@@ -16,11 +16,10 @@ public class BackendIntegrationTests(ITestOutputHelper output)
 
     private static ConnectionConfig DevSql => new("sql1", "dev sql", ConnectionKinds.Sql, "127.0.0.1,14333", AuthKinds.Sql, User: "sa", TrustServerCertificate: true);
 
-    [Fact]
+    [SqlFact, Trait("Category", "SqlIntegration")]
     public async Task Sql_tree_walks_from_databases_to_columns()
     {
-        var password = Environment.GetEnvironmentVariable("PANOPTIC_TEST_SQL_PASSWORD");
-        if (string.IsNullOrEmpty(password)) return;
+        var password = SqlFactAttribute.Password!;
 
         var backend = new SqlBackend(NoEntra);
         var root = NodePath.Parse("env:dev/conn:sql1");
@@ -51,11 +50,10 @@ public class BackendIntegrationTests(ITestOutputHelper output)
         Assert.Equal("[sales].[Order]", Assert.Single(synonyms).Meta!["baseObject"]);
     }
 
-    [Fact]
+    [SqlFact, Trait("Category", "SqlIntegration")]
     public async Task Sql_catalog_has_objects_columns_params_and_a_stable_stamp()
     {
-        var password = Environment.GetEnvironmentVariable("PANOPTIC_TEST_SQL_PASSWORD");
-        if (string.IsNullOrEmpty(password)) return;
+        var password = SqlFactAttribute.Password!;
 
         await using var conn = await new SqlBackend(NoEntra).OpenAsync(DevSql, password, "Orders", CancellationToken.None);
         var sw = Stopwatch.StartNew();
@@ -71,11 +69,10 @@ public class BackendIntegrationTests(ITestOutputHelper output)
         Assert.Equal(catalog.Stamp, await Catalog.SqlCatalog.StampAsync(conn, CancellationToken.None));
     }
 
-    [Fact]
+    [SqlFact, Trait("Category", "SqlIntegration")]
     public async Task Sql_lists_databases_the_login_cannot_reach_through_master()
     {
-        var password = Environment.GetEnvironmentVariable("PANOPTIC_TEST_SQL_PASSWORD");
-        if (string.IsNullOrEmpty(password)) return;
+        var password = SqlFactAttribute.Password!;
 
         // A login that is a user in Inventory only, like an Entra user who exists as a contained
         // user in one client database: SSMS still lists every database, and so must Panoptic.
@@ -98,21 +95,18 @@ public class BackendIntegrationTests(ITestOutputHelper output)
         Assert.Contains(dbs, d => d.Label == "Orders");
     }
 
-    [Fact]
+    [SqlFact, Trait("Category", "SqlIntegration")]
     public async Task Sql_login_failure_is_an_operation_error()
     {
-        if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("PANOPTIC_TEST_SQL_PASSWORD"))) return;
-
         var ex = await Assert.ThrowsAsync<RpcException>(() => new SqlBackend(NoEntra).TestAsync(DevSql, "wrong", default));
         Assert.Equal(RpcException.OperationFailed, ex.Code);
         Assert.Contains("Login failed", ex.Message);
     }
 
-    [Fact]
+    [SqlFact, Trait("Category", "SqlIntegration")]
     public async Task Synapse_kind_adds_external_tables_folder()
     {
-        var password = Environment.GetEnvironmentVariable("PANOPTIC_TEST_SQL_PASSWORD");
-        if (string.IsNullOrEmpty(password)) return;
+        var password = SqlFactAttribute.Password!;
 
         // No Synapse emulator exists; this checks the folder shape and the external-table filter
         // against plain SQL Server, where the External tables folder is simply empty.
@@ -126,11 +120,9 @@ public class BackendIntegrationTests(ITestOutputHelper output)
         Assert.True((await Expand(backend, synapse, password, db.Child("f", "tables"))).Length > 120);
     }
 
-    [Fact]
+    [CosmosFact, Trait("Category", "CosmosIntegration")]
     public async Task Cosmos_tree_walks_from_databases_to_items()
     {
-        if (Environment.GetEnvironmentVariable("PANOPTIC_TEST_COSMOS") != "1") return;
-
         var conn = new ConnectionConfig("cos1", "emulator", ConnectionKinds.Cosmos, "https://localhost:8081", AuthKinds.Key, TrustServerCertificate: true);
         var backend = new CosmosBackend(NoEntra);
         var root = NodePath.Parse("env:dev/conn:cos1");
@@ -153,11 +145,9 @@ public class BackendIntegrationTests(ITestOutputHelper output)
         Assert.Equal(25, items.Length);
     }
 
-    [Fact]
+    [CosmosFact, Trait("Category", "CosmosIntegration")]
     public async Task Cosmos_catalog_samples_property_paths()
     {
-        if (Environment.GetEnvironmentVariable("PANOPTIC_TEST_COSMOS") != "1") return;
-
         var conn = new ConnectionConfig("cos1", "emulator", ConnectionKinds.Cosmos, "https://localhost:8081", AuthKinds.Key, TrustServerCertificate: true);
         var client = new CosmosBackend(NoEntra).ClientFor(conn, CosmosEmulatorKey);
         var catalog = await Catalog.CosmosCatalog.BuildAsync(client, "panoptic-dev", 50, default);
