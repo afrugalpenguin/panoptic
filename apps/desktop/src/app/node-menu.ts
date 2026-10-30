@@ -8,7 +8,7 @@ interface MenuItem {
 
 /** The actions the UI performs itself, opening a query tab. refresh reloads the tree; every other id is node.invoke. */
 const TAB_ACTIONS = ["selectTop", "newQuery"] as const;
-type TabAction = (typeof TAB_ACTIONS)[number];
+export type TabAction = (typeof TAB_ACTIONS)[number];
 
 /** Keyboard shortcuts are the UI's, so their hints are added here rather than sent by the sidecar. */
 const SHORTCUTS: Record<string, string> = { newQuery: "Ctrl+N" };
@@ -18,6 +18,15 @@ export interface NodeActionHandlers {
   refresh: () => void;
   /** Runs the action in the sidecar (node.invoke); the app copies the text it returns. */
   invoke: (actionId: string) => void;
+}
+
+/**
+ * The query action a keyboard shortcut starts on the selected node (Ctrl+N: newQuery), or undefined when the node does
+ * not carry that action: a node whose backend cannot query never does.
+ */
+export function shortcutAction(e: Pick<KeyboardEvent, "ctrlKey" | "metaKey" | "key">, node: TreeNode | undefined): TabAction | undefined {
+  if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "n") return undefined;
+  return node?.actions.includes("newQuery") ? "newQuery" : undefined;
 }
 
 /** What an invoked action puts on the clipboard: the sidecar's text, else the node's label (copyName on most nodes). */

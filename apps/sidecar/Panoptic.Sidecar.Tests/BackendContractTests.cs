@@ -13,7 +13,7 @@ namespace Panoptic.Sidecar.Tests;
 /// other line it needs is its registration (see <see cref="BackendContractTests"/>). No service, RPC method or switch
 /// statement knows the kind "fake".
 /// </summary>
-public sealed class FakeBackend : IBackend
+public sealed class FakeBackend : IQueryBackend
 {
     public const string Kind = "fake";
 
@@ -62,17 +62,22 @@ public sealed class FakeBackend : IBackend
         return Task.CompletedTask;
     }
 
+    public Task<string?> CatalogStampAsync(QueryTarget target, string? secret, CancellationToken ct) => Task.FromResult<string?>(null);
+
     public Task<DatabaseCatalog> CatalogAsync(QueryTarget target, string? secret, EditorSettings editor, CancellationToken ct) =>
         Task.FromResult(new DatabaseCatalog("", ["public"], [new CatalogObject("widgets", "public", ObjectKinds.Table, [new ColumnRef("n", "int", false)], null)], ["int"], null));
 
     private static string Quote(string identifier) => $"\"{identifier.Replace("\"", "\"\"")}\"";
 }
 
-/// <summary>A backend that only browses: every other member keeps its default.</summary>
+/// <summary>
+/// A backend that only browses (no <see cref="IQueryBackend"/>). It claims query actions anyway, to prove the sidecar
+/// strips them centrally.
+/// </summary>
 public sealed class BrowseOnlyBackend : IBackend
 {
     public Task<TreeNode[]> ChildrenAsync(ConnectionConfig connection, string? secret, NodePath path, int start, CancellationToken ct) =>
-        Task.FromResult<TreeNode[]>([Nodes.Leaf(path.Child("x", "thing"), "thing", "Thing", "thing")]);
+        Task.FromResult<TreeNode[]>([Nodes.Branch(path.Child("x", "thing"), "thing", "Thing", "thing", actions: Nodes.Selectable)]);
 
     public Task TestAsync(ConnectionConfig connection, string? secret, CancellationToken ct) => Task.CompletedTask;
 
@@ -217,17 +222,32 @@ public sealed class BackendContractTests : IDisposable
         Assert.Equal("widgets", Assert.Single(notice.Catalog!.Objects).Name);
     }
 
+    private async Task<JsonElement> Error(JsonRpcDispatcher sidecar, string method, object parameters)
+    {
+        var request = JsonSerializer.Serialize(new { jsonrpc = "2.0", id = ++_id, method, @params = parameters });
+        return JsonDocument.Parse((await sidecar.HandleAsync(request))!).RootElement.GetProperty("error").Clone();
+    }
+
+    private static string[] ActionsOf(JsonElement node) => node.GetProperty("actions").EnumerateArray().Select(a => a.GetString()!).ToArray();
+
     [Fact]
-    public async Task A_browse_only_backend_reports_the_rest_as_not_supported()
+    public async Task A_browse_only_backend_offers_no_query_actions_and_queries_are_refused()
     {
         var sidecar = Sidecar();
 
-        Assert.Equal("thing", Assert.Single((await Call(sidecar, "tree.children", new { nodeId = "env:e/conn:b" })).EnumerateArray()).GetProperty("kind").GetString());
+        var connection = (await Call(sidecar, "tree.children", new { nodeId = "env:e" })).EnumerateArray().First(n => n.GetProperty("id").GetString() == "env:e/conn:b");
+        Assert.Equal(["refresh", "copyName"], ActionsOf(connection));
+        var thing = Assert.Single((await Call(sidecar, "tree.children", new { nodeId = "env:e/conn:b" })).EnumerateArray());
+        Assert.Equal(["refresh", "copyName"], ActionsOf(thing));
+        // A query backend's connection and nodes keep theirs.
+        var fake = (await Call(sidecar, "tree.children", new { nodeId = "env:e" })).EnumerateArray().First(n => n.GetProperty("id").GetString() == "env:e/conn:f");
+        Assert.Equal(["newQuery", "refresh", "copyName"], ActionsOf(fake));
+
         var summary = await Call(sidecar, "query.execute", new { queryId = "q3", nodeId = "env:e/conn:b", text = "x" });
         Assert.Equal("browse connections cannot run queries.", summary.GetProperty("error").GetString());
-        var template = await Call(sidecar, "query.template", new { nodeId = "env:e/conn:b", action = "selectTop" });
-        Assert.False(template.TryGetProperty("text", out _));
-        Assert.Equal("plaintext", template.GetProperty("language").GetString());
+        var template = await Error(sidecar, "query.template", new { nodeId = "env:e/conn:b/x:thing", action = "selectTop" });
+        Assert.Equal(RpcException.InvalidParams, template.GetProperty("code").GetInt32());
+        Assert.Equal("browse connections cannot run queries.", template.GetProperty("message").GetString());
 
         await Call(sidecar, "catalog.get", new { nodeId = "env:e/conn:b" });
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));

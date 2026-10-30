@@ -19,7 +19,7 @@ public sealed class TreeService(ConfigStore store, IReadOnlyDictionary<string, I
         var env = store.FindEnvironment(path[0].Value) ?? throw new RpcException(RpcException.OperationFailed, "Environment no longer exists");
 
         if (path.Count == 1)
-            return env.Connections.Select(c => ConnectionNode(path, c)).ToArray();
+            return env.Connections.Select(c => ConnectionNode(path, c, backends.GetValueOrDefault(c.Kind) is IQueryBackend)).ToArray();
 
         if (path[1].Type != "conn") throw new RpcException(RpcException.InvalidParams, $"Unknown node: {nodeId}");
         var connection = env.Connections.FirstOrDefault(c => c.Id == path[1].Value)
@@ -28,7 +28,9 @@ public sealed class TreeService(ConfigStore store, IReadOnlyDictionary<string, I
         var backend = BackendFor(connection);
         try
         {
-            return await backend.ChildrenAsync(connection, store.GetSecret(connection.Id), path, 2, cancellationToken);
+            var nodes = await backend.ChildrenAsync(connection, store.GetSecret(connection.Id), path, 2, cancellationToken);
+            // Checked here, not left to each backend: only a query backend's nodes may offer query tabs.
+            return backend is IQueryBackend ? nodes : nodes.Select(WithoutQueryActions).ToArray();
         }
         catch (Exception ex) when (ex is not OperationCanceledException and not RpcException { NodeError: not null })
         {
@@ -95,6 +97,10 @@ public sealed class TreeService(ConfigStore store, IReadOnlyDictionary<string, I
         return labels;
     }
 
+    /// <summary>The connection's backend as a query backend, or a clean refusal: "&lt;kind&gt; connections &lt;refusal&gt;."</summary>
+    public IQueryBackend QueryBackendFor(ConnectionConfig connection, string refusal) =>
+        BackendFor(connection) as IQueryBackend ?? throw new RpcException(RpcException.InvalidParams, $"{connection.Kind} connections {refusal}.");
+
     public IBackend BackendFor(ConnectionConfig connection) =>
         backends.TryGetValue(connection.Kind, out var backend)
             ? backend
@@ -121,12 +127,15 @@ public sealed class TreeService(ConfigStore store, IReadOnlyDictionary<string, I
             ["connectionCount"] = env.Connections.Count.ToString(System.Globalization.CultureInfo.InvariantCulture),
         });
 
-    private static TreeNode ConnectionNode(NodePath envPath, ConnectionConfig c) => new(
+    private static TreeNode WithoutQueryActions(TreeNode node) =>
+        node.Actions.Any(Nodes.QueryActions.Contains) ? node with { Actions = node.Actions.Except(Nodes.QueryActions).ToArray() } : node;
+
+    private static TreeNode ConnectionNode(NodePath envPath, ConnectionConfig c, bool queryable) => new(
         envPath.Child("conn", c.Id).Id,
         "connection",
         c.Name,
         c.Kind,
         true,
-        Nodes.Queryable,
+        queryable ? Nodes.Queryable : Nodes.Browse,
         new() { ["connectionKind"] = c.Kind, ["endpoint"] = c.Endpoint, ["connectionId"] = c.Id });
 }

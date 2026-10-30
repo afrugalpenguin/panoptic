@@ -4,9 +4,9 @@ using Panoptic.Sidecar.Query;
 namespace Panoptic.Sidecar.Backends;
 
 /// <summary>
-/// One data source kind (SQL Server, Cosmos). Everything backend-specific lives behind this: the services and RPC
-/// methods only ever reach a backend through <see cref="BackendRegistry"/>, never by type or connection kind.
-/// Members with a default body are optional: a backend that only browses gets "not supported" for the rest.
+/// One data source kind (SQL Server, Cosmos). Everything backend-specific lives behind this and
+/// <see cref="IQueryBackend"/>: the services and RPC methods only ever reach a backend through
+/// <see cref="BackendRegistry"/>, never by type or connection kind.
 /// </summary>
 public interface IBackend
 {
@@ -21,8 +21,9 @@ public interface IBackend
     /// <summary>Drops any cached client for a connection whose settings changed or was removed.</summary>
     void Forget(string connectionId);
 
-    // --- Node actions --------------------------------------------------------------------------------
+    // --- Node actions (optional) ---------------------------------------------------------------------
     // A node's action ids come with it from ChildrenAsync. Labels for the shared ones are in Nodes.ActionLabels.
+    // Node meta may carry ready-made text for the UI: "dragText", what dragging the node into an editor inserts.
 
     /// <summary>Labels for any action ids this backend adds beyond <see cref="Nodes.ActionLabels"/>.</summary>
     IReadOnlyDictionary<string, string> ActionLabels => Nodes.NoLabels;
@@ -33,36 +34,38 @@ public interface IBackend
     /// </summary>
     Task<string?> InvokeAsync(ConnectionConfig connection, string? secret, NodePath path, int start, string actionId, CancellationToken cancellationToken) =>
         Task.FromResult(Nodes.InvokeDefault(actionId));
+}
 
-    // --- Query editor --------------------------------------------------------------------------------
-
+/// <summary>
+/// A backend that can run queries: the query editor, its templates and its IntelliSense catalog. All or nothing, so a
+/// backend that opts in implements every member. For a backend without it, TreeService strips newQuery and selectTop
+/// from its nodes and the query and catalog methods refuse.
+/// </summary>
+public interface IQueryBackend : IBackend
+{
     /// <summary>The editor language the UI opens this backend's query tabs in: "sql" (T-SQL) or "cosmos" today.</summary>
-    string EditorLanguage => "plaintext";
+    string EditorLanguage { get; }
 
     /// <summary>Text for a query tab opened by a node action: selectTop on a table, view or container (null on any
     /// other node), or empty for newQuery and anything else.</summary>
-    string? TemplateFor(NodePath path, string action) => action == "selectTop" ? null : "";
+    string? TemplateFor(NodePath path, string action);
 
     /// <summary>
     /// Runs query text, streaming results into <paramref name="sink"/>. The target carries the environment, so the
     /// backend applies the read-only policy its own way (or refuses). Errors the backend reports itself go through
     /// <see cref="IQuerySink.Fail"/>; anything thrown becomes the run's error. Cancellation throws.
     /// </summary>
-    Task ExecuteAsync(QueryTarget target, string? secret, string text, IQuerySink sink, CancellationToken cancellationToken) =>
-        throw new RpcException(RpcException.InvalidParams, $"{target.Connection.Kind} connections cannot run queries.");
-
-    // --- IntelliSense catalog ------------------------------------------------------------------------
+    Task ExecuteAsync(QueryTarget target, string? secret, string text, IQuerySink sink, CancellationToken cancellationToken);
 
     /// <summary>A cheap value that changes when the database's objects change. Null when there is no cheap check:
     /// the catalog is then rebuilt once per session.</summary>
-    Task<string?> CatalogStampAsync(QueryTarget target, string? secret, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
+    Task<string?> CatalogStampAsync(QueryTarget target, string? secret, CancellationToken cancellationToken);
 
-    Task<DatabaseCatalog> CatalogAsync(QueryTarget target, string? secret, EditorSettings editor, CancellationToken cancellationToken) =>
-        throw new RpcException(RpcException.InvalidParams, $"{target.Connection.Kind} connections have no IntelliSense catalog.");
+    Task<DatabaseCatalog> CatalogAsync(QueryTarget target, string? secret, EditorSettings editor, CancellationToken cancellationToken);
 }
 
 /// <summary>
-/// Where a backend streams a query's results (<see cref="IBackend.ExecuteAsync"/>). The query service behind it owns
+/// Where a backend streams a query's results (<see cref="IQueryBackend.ExecuteAsync"/>). The query service behind it owns
 /// the run: notifications, row counts, timing, cancellation and the summary.
 /// </summary>
 public interface IQuerySink
@@ -106,6 +109,8 @@ public static class Nodes
     /// <summary>Tables, views, containers: can also select their first rows.</summary>
     public static readonly string[] Selectable = ["selectTop", "newQuery", "refresh", "copyName"];
     public static readonly string[] LeafActions = ["copyName"];
+    /// <summary>The actions that open a query tab: only offered by an <see cref="IQueryBackend"/>.</summary>
+    public static readonly string[] QueryActions = ["selectTop", "newQuery"];
 
     /// <summary>Menu labels for the actions every backend shares (node.actionLabels).</summary>
     public static readonly IReadOnlyDictionary<string, string> ActionLabels = new Dictionary<string, string>

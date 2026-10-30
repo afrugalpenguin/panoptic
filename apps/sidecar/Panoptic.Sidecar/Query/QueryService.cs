@@ -53,7 +53,7 @@ public sealed class QueryService
         try
         {
             var target = _tree.ResolveTarget(request.NodeId, request.Database);
-            var backend = _tree.BackendFor(target.Connection);
+            var backend = _tree.QueryBackendFor(target.Connection, "cannot run queries");
             await backend.ExecuteAsync(target, _store.GetSecret(target.Connection.Id), request.Text, run, cts.Token);
         }
         catch (Exception) when (cts.IsCancellationRequested)

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { TreeNode } from "./api";
-import { actionItems, actionLabel, copiedText, queryItems, type NodeActionHandlers } from "./node-menu";
+import { actionItems, actionLabel, copiedText, queryItems, shortcutAction, type NodeActionHandlers } from "./node-menu";
 
 type MenuItem = { label: string; run: () => void };
 
@@ -59,6 +59,26 @@ describe("node context menu", () => {
     expect(on.openQuery.mock.calls).toEqual([["selectTop"], ["newQuery"]]);
     expect(on.refresh).toHaveBeenCalledTimes(1);
     expect(on.invoke).not.toHaveBeenCalled();
+  });
+
+  it("offers no query entry point on a node without query actions (a backend that cannot query)", () => {
+    const browseOnly = node(["refresh", "copyName"]);
+    const on = handlers();
+    const items = [...queryItems(browseOnly, labels, on), ...actionItems(browseOnly, labels, on)];
+    expect(text(items)).not.toContain("New query (Ctrl+N)");
+    expect(text(items)).not.toContain("Select top 1000");
+    for (const item of items) if (item !== "separator") item.run();
+    expect(on.openQuery).not.toHaveBeenCalled();
+    expect(shortcutAction({ ctrlKey: true, metaKey: false, key: "n" }, browseOnly)).toBeUndefined();
+  });
+
+  it("Ctrl+N (or Cmd+N) starts newQuery only on a node that carries it", () => {
+    const queryable = node(["newQuery", "refresh", "copyName"]);
+    expect(shortcutAction({ ctrlKey: true, metaKey: false, key: "n" }, queryable)).toBe("newQuery");
+    expect(shortcutAction({ ctrlKey: false, metaKey: true, key: "N" }, queryable)).toBe("newQuery");
+    expect(shortcutAction({ ctrlKey: false, metaKey: false, key: "n" }, queryable)).toBeUndefined();
+    expect(shortcutAction({ ctrlKey: true, metaKey: false, key: "m" }, queryable)).toBeUndefined();
+    expect(shortcutAction({ ctrlKey: true, metaKey: false, key: "n" }, undefined)).toBeUndefined();
   });
 
   it("falls back to the action id before the labels arrive", () => {

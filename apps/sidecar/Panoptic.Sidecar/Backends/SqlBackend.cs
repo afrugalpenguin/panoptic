@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.RegularExpressions;
 using Azure.Core;
 using Microsoft.Data.SqlClient;
 using Panoptic.Sidecar.Catalog;
@@ -10,7 +11,7 @@ namespace Panoptic.Sidecar.Backends;
 /// SQL Server, Azure SQL and Synapse SQL pools. One catalog query per expand, never one per child. Each expand opens
 /// a pooled connection in the target database (no USE, so it works on Azure SQL).
 /// </summary>
-public sealed class SqlBackend(Credentials credentials) : IBackend
+public sealed class SqlBackend(Credentials credentials) : IQueryBackend
 {
     private static readonly string[] SqlScope = ["https://database.windows.net/.default"];
 
@@ -144,6 +145,16 @@ public sealed class SqlBackend(Credentials credentials) : IBackend
 
     /// <summary>A T-SQL delimited identifier: [name], with ] doubled.</summary>
     public static string QuoteIdentifier(string identifier) => $"[{identifier.Replace("]", "]]")}]";
+
+    private static readonly Regex RegularIdentifier = new(@"^[A-Za-z_][A-Za-z0-9_@$#]*\z");
+    private static readonly HashSet<string> Keywords = [.. TsqlKeywords.All];
+
+    /// <summary>
+    /// A name as dragging it into the editor inserts it (node meta "dragText"): bracketed only when it is not a regular
+    /// identifier or is a keyword. The rule drag-text.ts in the UI used before this moved here.
+    /// </summary>
+    public static string DragName(string name) =>
+        RegularIdentifier.IsMatch(name) && !Keywords.Contains(name.ToUpperInvariant()) ? name : QuoteIdentifier(name);
 
     // --- Queries ----------------------------------------------------------------------------------------
 
@@ -333,7 +344,8 @@ public sealed class SqlBackend(Credentials credentials) : IBackend
     }
 
     private static TreeNode DatabaseNode(NodePath path, string name, bool system) =>
-        Nodes.Branch(path.Child("db", name), "database", name, "database", new() { ["system"] = system ? "true" : "false" }, Nodes.Queryable);
+        Nodes.Branch(path.Child("db", name), "database", name, "database",
+            new() { ["system"] = system ? "true" : "false", ["dragText"] = DragName(name) }, Nodes.Queryable);
 
     private async Task<TreeNode[]> Objects(ConnectionConfig c, string? secret, string db, NodePath path, string folder, CancellationToken ct)
     {
@@ -358,7 +370,7 @@ public sealed class SqlBackend(Credentials credentials) : IBackend
         return rows.Select(o =>
         {
             var id = path.Child("o", o.Schema, o.Name);
-            var meta = new Dictionary<string, string> { ["schema"] = o.Schema, ["name"] = o.Name };
+            var meta = new Dictionary<string, string> { ["schema"] = o.Schema, ["name"] = o.Name, ["dragText"] = $"{DragName(o.Schema)}.{DragName(o.Name)}" };
             if (kind == "synonym")
             {
                 meta["baseObject"] = o.Base;
@@ -403,7 +415,7 @@ public sealed class SqlBackend(Credentials credentials) : IBackend
             if (col.Computed) details.Add("computed");
             details.Add(col.Nullable ? "null" : "not null");
             return Nodes.Leaf(path.Child("col", col.Name), "column", $"{col.Name} ({string.Join(", ", details)})",
-                col.Pk ? "key" : "column", new() { ["name"] = col.Name, ["type"] = col.Type });
+                col.Pk ? "key" : "column", new() { ["name"] = col.Name, ["type"] = col.Type, ["dragText"] = DragName(col.Name) });
         }).ToArray();
     }
 

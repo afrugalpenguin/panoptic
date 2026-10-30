@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.Azure.Cosmos;
 using Panoptic.Sidecar.Catalog;
 using Panoptic.Sidecar.Query;
@@ -12,10 +13,25 @@ namespace Panoptic.Sidecar.Backends;
 /// Cosmos DB for NoSQL. Clients are expensive, so one is cached per connection and dropped when the
 /// connection's settings change. Metadata comes from the SDK's feed iterators.
 /// </summary>
-public sealed class CosmosBackend(Credentials credentials) : IBackend
+public sealed class CosmosBackend(Credentials credentials) : IQueryBackend
 {
     private const int ItemSample = 100;
     private static readonly HashSet<string> SystemProperties = ["_rid", "_self", "_etag", "_attachments"];
+    private static readonly Regex Insertable = new(@"^[A-Za-z_][A-Za-z0-9_.]*\z");
+
+    /// <summary>
+    /// What dragging a container (its name) or a UDF (udf.name) into the editor inserts (node meta "dragText"). Cosmos SQL
+    /// has no identifier quoting, so null when the text would not parse. The rule drag-text.ts in the UI used before.
+    /// </summary>
+    public static string? DragText(string text) => Insertable.IsMatch(text) ? text : null;
+
+    private static Dictionary<string, string>? WithDragText(string text, Dictionary<string, string>? meta = null)
+    {
+        if (DragText(text) is not { } drag) return meta;
+        meta ??= [];
+        meta["dragText"] = drag;
+        return meta;
+    }
 
     private readonly ConcurrentDictionary<string, (string Fingerprint, CosmosClient Client)> _clients = new();
 
@@ -146,6 +162,8 @@ public sealed class CosmosBackend(Credentials credentials) : IBackend
     }
 
     /// <summary>Cosmos has no cheap change stamp, so the catalog is rebuilt (re-sampled) once per session.</summary>
+    public Task<string?> CatalogStampAsync(QueryTarget target, string? secret, CancellationToken ct) => Task.FromResult<string?>(null);
+
     public Task<DatabaseCatalog> CatalogAsync(QueryTarget target, string? secret, EditorSettings editor, CancellationToken ct)
     {
         if (target.Database is null) throw new RpcException(RpcException.InvalidParams, "Select a Cosmos database or container for IntelliSense.");
@@ -171,7 +189,7 @@ public sealed class CosmosBackend(Credentials credentials) : IBackend
             .Select(d => (Id: d.GetProperty("id").GetString()!, Pk: PartitionKeyPaths(d)))
             .OrderBy(x => x.Id, StringComparer.OrdinalIgnoreCase)
             .Select(x => Nodes.Branch(path.Child("c", x.Id), "container", x.Id, "container",
-                new() { ["partitionKey"] = string.Join(", ", x.Pk) }, Nodes.Selectable))
+                WithDragText(x.Id, new() { ["partitionKey"] = string.Join(", ", x.Pk) }), Nodes.Selectable))
             .ToArray();
     }
 
@@ -268,7 +286,7 @@ public sealed class CosmosBackend(Credentials credentials) : IBackend
         return docs
             .Select(d => d.GetProperty("id").GetString()!)
             .Order(StringComparer.OrdinalIgnoreCase)
-            .Select(id => Nodes.Leaf(path.Child(kind, id), kind, id, kind))
+            .Select(id => Nodes.Leaf(path.Child(kind, id), kind, id, kind, kind == "udf" ? WithDragText($"udf.{id}") : null))
             .ToArray();
     }
 

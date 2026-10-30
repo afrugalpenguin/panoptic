@@ -88,9 +88,11 @@ public sealed class CatalogService(Func<CatalogParams, QueryTarget> resolve, Cat
 /// <summary>Catalog builds against the real backends: whichever one serves the target's connection kind.</summary>
 public sealed class CatalogSources(ConfigStore store, TreeService tree) : ICatalogSource
 {
+    private const string NoCatalog = "have no IntelliSense catalog";
+
     public Task<string?> StampAsync(QueryTarget target, CancellationToken ct) =>
-        tree.BackendFor(target.Connection).CatalogStampAsync(target, store.GetSecret(target.Connection.Id), ct);
+        tree.QueryBackendFor(target.Connection, NoCatalog).CatalogStampAsync(target, store.GetSecret(target.Connection.Id), ct);
 
     public Task<DatabaseCatalog> BuildAsync(QueryTarget target, CancellationToken ct) =>
-        tree.BackendFor(target.Connection).CatalogAsync(target, store.GetSecret(target.Connection.Id), store.Settings.Editor, ct);
+        tree.QueryBackendFor(target.Connection, NoCatalog).CatalogAsync(target, store.GetSecret(target.Connection.Id), store.Settings.Editor, ct);
 }

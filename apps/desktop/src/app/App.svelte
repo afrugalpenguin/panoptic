@@ -16,7 +16,7 @@
   import ImportDialog from "./ImportDialog.svelte";
   import IconButton from "./IconButton.svelte";
   import KindChips from "./KindChips.svelte";
-  import { actionItems, actionLabel, copiedText, queryItems, type NodeActionHandlers } from "./node-menu";
+  import { actionItems, actionLabel, copiedText, queryItems, shortcutAction, type NodeActionHandlers } from "./node-menu";
   import Workspace from "../query/Workspace.svelte";
   import { preloadMonaco } from "../query/preload";
   import { QueryWorkspace } from "../query/store.svelte";
@@ -319,7 +319,8 @@
 
   /** Opens a query tab against a node: New query, or Select top 1000 which also runs it. */
   async function openQuery(row: Row, action: "newQuery" | "selectTop") {
-    if (row.type !== "node" || !api) return;
+    // Only nodes that carry the action open a tab: the sidecar never offers it on a backend that cannot query.
+    if (row.type !== "node" || !api || !row.node.actions.includes(action)) return;
     const n = row.node;
     try {
       // The sidecar resolves the tab's scope (connection, database, container) and names from the node id.
@@ -344,9 +345,10 @@
   }
 
   function onGlobalKeydown(e: KeyboardEvent) {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "n" && selectedRow?.type === "node" && selectedRow.node.actions.includes("newQuery")) {
+    const action = selectedRow?.type === "node" ? shortcutAction(e, selectedRow.node) : undefined;
+    if (action && selectedRow) {
       e.preventDefault();
-      void openQuery(selectedRow, "newQuery");
+      void openQuery(selectedRow, action);
     }
   }
 
