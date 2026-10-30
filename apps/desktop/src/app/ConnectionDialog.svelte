@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from "svelte";
   import type { Api, AuthKind, ConnectionConfig, ConnectionKind, EnvironmentConfig, TestConnectionResult } from "./api";
   import Dialog from "./Dialog.svelte";
 
@@ -49,6 +50,9 @@
   let busy = $state<"" | "testing" | "saving">("");
   let test = $state<TestConnectionResult | null>(null);
   let error = $state("");
+  /** Closing the dialog mid-test cancels the test in the sidecar instead of leaving it to run out. */
+  const testAbort = new AbortController();
+  onDestroy(() => testAbort.abort());
 
   const authOptions = $derived<{ value: AuthKind; label: string }[]>(
     kind === "cosmos"
@@ -104,7 +108,7 @@
     busy = "testing";
     test = null;
     try {
-      test = await api.testConnection(config(), secretArg());
+      test = await api.testConnection(config(), secretArg(), testAbort.signal);
     } catch (e) {
       test = { ok: false, elapsedMs: 0, error: String(e instanceof Error ? e.message : e) };
     } finally {

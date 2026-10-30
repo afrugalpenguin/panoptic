@@ -13,10 +13,22 @@ export class RpcError extends Error {
   }
 }
 
+/** A request its caller aborted. Callers that abort on purpose (collapsing a node) treat it as not an error. */
+export class AbortError extends Error {
+  constructor(method: string) {
+    super(`${method} was cancelled`);
+    this.name = "AbortError";
+  }
+}
+
+export const isAbortError = (e: unknown): boolean => e instanceof Error && e.name === "AbortError";
+
 type Pending = {
   resolve: (value: unknown) => void;
   reject: (reason: Error) => void;
   timer: ReturnType<typeof setTimeout>;
+  /** Detaches the abort listener. */
+  release: () => void;
 };
 
 export const DEFAULT_TIMEOUT_MS = 10_000;
@@ -30,14 +42,25 @@ export class RpcClient {
     private readonly onNotification: (method: string, params: unknown) => void = () => {},
   ) {}
 
-  request<T = unknown>(method: string, params?: unknown, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> {
+  /**
+   * Aborting `signal` rejects at once with an AbortError and sends $/cancelRequest so the sidecar stops
+   * the work; its late response, if any, is ignored.
+   */
+  request<T = unknown>(method: string, params?: unknown, timeoutMs = DEFAULT_TIMEOUT_MS, signal?: AbortSignal): Promise<T> {
+    if (signal?.aborted) return Promise.reject(new AbortError(method));
     const id = this.nextId++;
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
-        this.pending.delete(id);
-        reject(new Error(`${method} timed out after ${timeoutMs} ms`));
+        this.settle(id, undefined, new Error(`${method} timed out after ${timeoutMs} ms`));
       }, timeoutMs);
-      this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject, timer });
+      const onAbort = () => {
+        if (!this.pending.has(id)) return;
+        this.settle(id, undefined, new AbortError(method));
+        this.send(JSON.stringify({ jsonrpc: "2.0", method: "$/cancelRequest", params: { id } })).catch(() => {});
+      };
+      signal?.addEventListener("abort", onAbort, { once: true });
+      const release = () => signal?.removeEventListener("abort", onAbort);
+      this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject, timer, release });
 
       const message = params === undefined ? { jsonrpc: "2.0", id, method } : { jsonrpc: "2.0", id, method, params };
       this.send(JSON.stringify(message)).catch((err) => this.settle(id, undefined, err instanceof Error ? err : new Error(String(err))));
@@ -68,6 +91,7 @@ export class RpcClient {
     if (!p) return;
     this.pending.delete(id);
     clearTimeout(p.timer);
+    p.release();
     if (error) p.reject(error);
     else p.resolve(result);
   }

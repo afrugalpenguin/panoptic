@@ -82,7 +82,8 @@ public static class Methods
                 await backend.TestAsync(args.Connection, secret, ct);
                 result = new TestConnectionResult(true, Math.Round(sw.Elapsed.TotalMilliseconds), null);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            // Cancelled: let it reach the dispatcher, which answers RequestCancelled, rather than report a failed test.
+            catch (Exception ex) when (!ct.IsCancellationRequested)
             {
                 result = new TestConnectionResult(false, Math.Round(sw.Elapsed.TotalMilliseconds), ex.Message);
             }

@@ -1,0 +1,1 @@
+Added: a slow explorer load can be stopped with **Cancel** next to the status bar's timer, and collapsing a node that is still loading stops its load. Closing the connection dialog stops a connection test that is still running.

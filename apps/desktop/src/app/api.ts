@@ -121,9 +121,9 @@ export function createApi(rpc: RpcClient) {
     saveConnection: (environmentId: string, connection: ConnectionConfig, secret?: string) =>
       rpc.request<AppConfig>("config.saveConnection", { environmentId, connection, secret: secret ?? null }),
     deleteConnection: (id: string) => rpc.request<AppConfig>("config.deleteConnection", { id }),
-    testConnection: (connection: ConnectionConfig, secret?: string) =>
+    testConnection: (connection: ConnectionConfig, secret?: string, signal?: AbortSignal) =>
       // Sign-in can include an interactive Entra prompt, so allow longer than a normal call.
-      rpc.request<TestConnectionResult>("connection.test", { connection, secret: secret ?? null }, 180_000),
+      rpc.request<TestConnectionResult>("connection.test", { connection, secret: secret ?? null }, 180_000, signal),
     scanImports: () => rpc.request<ImportSource[]>("import.scan", undefined, 30_000),
     // A query can legitimately run for a long time; the user cancels it, so no RPC timeout applies.
     executeQuery: (request: { queryId: string; nodeId: string; text: string; database?: string }) =>
@@ -131,7 +131,8 @@ export function createApi(rpc: RpcClient) {
     cancelQuery: (queryId: string) => rpc.request<boolean>("query.cancel", { queryId }),
     queryTemplate: (nodeId: string, action: "selectTop" | "newQuery") =>
       rpc.request<{ text?: string | null; language: "sql" | "cosmos" }>("query.template", { nodeId, action }),
-    children: (nodeId: string) => rpc.request<TreeNode[]>("tree.children", { nodeId }, 180_000),
+    /** Aborting `signal` cancels the expand in the sidecar ($/cancelRequest) and rejects with an AbortError. */
+    children: (nodeId: string, signal?: AbortSignal) => rpc.request<TreeNode[]>("tree.children", { nodeId }, 180_000, signal),
     /** Answers at once from memory or disk; a fresher catalog arrives as a catalog.updated notification. */
     catalogGet: (nodeId: string, database?: string) =>
       rpc.request<import("../query/catalog.svelte").CatalogNotice>("catalog.get", { nodeId, database: database ?? null }),
