@@ -5,7 +5,7 @@ One ADR per decision in the plan's decisions table. Write the ADR before the cod
 | ADR | Decision | Status |
 | --- | --- | --- |
 | [0001](0001-stack.md) | Tauri 2 shell, TypeScript UI, .NET 10 sidecar | Accepted |
-| [0002](0002-v1-scope.md) | v1 covers SQL Server, Cosmos DB and Synapse under one tree | Accepted |
+| [0002](0002-v1-scope.md) | v1 covers SQL Server, Cosmos DB and Synapse under one tree | Accepted (amended by 0015) |
 | [0003](0003-repo.md) | Public MIT repo on a personal account | Accepted |
 | [0004](0004-ui-framework.md) | UI framework: Svelte 5, with hand-written virtualisation | Accepted |
 | [0005](0005-sidecar-protocol.md) | JSON-RPC 2.0 over stdio to the sidecar | Accepted |
@@ -18,3 +18,4 @@ One ADR per decision in the plan's decisions table. Write the ADR before the cod
 | [0012](0012-no-diff.md) | Cross-environment diff is not core; a plugin later at most | Accepted |
 | [0013](0013-changelog.md) | Changelog generated from change fragments, shown as a What's new tab | Accepted |
 | [0014](0014-code-signing.md) | Sign release builds before the next daily-use trial (will supersede 0011) | Proposed |
+| [0015](0015-postgres-in-v1.md) | v1 adds PostgreSQL | Accepted |

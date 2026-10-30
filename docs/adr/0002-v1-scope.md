@@ -1,6 +1,6 @@
 # 0002. v1 covers SQL Server, Cosmos DB and Synapse under one tree
 
-- Status: Accepted
+- Status: Accepted (amended by 0015: PostgreSQL is also in v1)
 - Date: 2026-10-29
 
 ## Context
