@@ -1,8 +1,8 @@
 name: CI
 
-# Four parallel jobs, each as fast as it can be. This is the only test gate: merges to main release
-# straight away (release.yml), so everything a release needs to be correct is checked here, including
-# a vulnerability audit of each ecosystem's dependencies.
+# Four parallel build jobs, each as fast as it can be, after a quick docs-only check. This is the only
+# test gate: merges to main release straight away (release.yml), so everything a release needs to be
+# correct is checked here, including a vulnerability audit of each ecosystem's dependencies.
 on:
   pull_request:
   push:
@@ -13,7 +13,40 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Docs-only pull requests (every changed file under docs/ or a .md file) skip the four build jobs:
+  # a skipped required check counts as passing, so they merge without a full run. Fails closed: the
+  # build jobs run unless this job positively says "false", so a failure here runs everything. Pushes
+  # to main always run everything. Nothing in the build reads docs/ or .md files (the What's new
+  # changelog is generated from changes/*.md by the ui job's own steps, and fragment.yml still checks
+  # every PR).
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The PR's test merge commit and its first parent, the base it merges into.
+          fetch-depth: 2
+      - id: diff
+        run: |
+          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then echo "code=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          files=$(git diff --name-only HEAD^1 HEAD) || { echo "code=true" >> "$GITHUB_OUTPUT"; exit 0; }
+          code=false
+          [ -z "$files" ] && code=true
+          while IFS= read -r f; do
+            case "$f" in
+              docs/*|*.md) ;;
+              *) code=true ;;
+            esac
+          done <<< "$files"
+          echo "Changed files:"; echo "$files"; echo "code=$code"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
   ui:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -43,6 +76,8 @@ jobs:
         run: pnpm audit --audit-level=high
 
   sidecar:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     # Windows: the store uses DPAPI.
     runs-on: windows-latest
     timeout-minutes: 15
@@ -70,6 +105,8 @@ jobs:
     # Linux, because Windows runners cannot run the SQL Server Linux image. The sidecar targets
     # net10.0-windows, so it builds here with EnableWindowsTargeting, and the tests that go through the
     # DPAPI config store report as skipped. Cosmos stays opt-in (no emulator here).
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -107,6 +144,8 @@ jobs:
           if grep -q 'Set PANOPTIC_TEST_SQL_PASSWORD' test.log; then echo "::error::SQL tests were skipped for lack of a password"; exit 1; fi
 
   shell:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
