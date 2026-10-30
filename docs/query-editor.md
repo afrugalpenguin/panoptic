@@ -31,7 +31,7 @@ The sidecar owns a metadata catalog per server and per database. It is the only 
 
 ### Cosmos DB
 
-- Catalog is the container list with partition key paths, the fixed system function and keyword list, and property paths inferred from a document sample per container: `SELECT TOP n * FROM c` with `n = editor.catalogSampleDocs`, paths flattened to dotted form with array indices collapsed to `[]`, each path carrying the set of JSON types seen. Sampling runs once per container per session, in the background, after the container is first expanded or a tab is bound to it. Stamp is the sample time; manual refresh re-samples.
+- Catalog is the container list with partition key paths, the fixed system function and keyword list, and property paths inferred from a document sample per container: `SELECT TOP n * FROM c` with `n = editor.catalogSampleDocs`, paths flattened to dotted form with array indices collapsed to `[]`, each path carrying the set of JSON types seen. The catalog is per database: one build samples every container in it (up to four at a time), in the background. It is first requested when a query tab is bound to the database (opening the tab or picking the database), not when the explorer expands a container. Cosmos has no cheap stamp check, so the first request in a session serves the disk-cached copy, if any, and re-samples; later requests that session use the in-memory result. Saving or removing a connection, or removing an environment, clears all in-memory results, so the next request re-samples. Stamp is the sample time; manual refresh re-samples.
 
 ### Shape handed to the UI
 
