@@ -23,6 +23,7 @@
     { value: "sql", label: "SQL Server / Azure SQL", placeholder: "myserver.database.windows.net" },
     { value: "synapse", label: "Azure Synapse SQL", placeholder: "myworkspace.sql.azuresynapse.net or ...-ondemand..." },
     { value: "cosmos", label: "Cosmos DB (NoSQL)", placeholder: "https://myaccount.documents.azure.com:443/" },
+    { value: "postgres", label: "PostgreSQL / Azure Database for PostgreSQL", placeholder: "myserver.postgres.database.azure.com or host:5432" },
   ];
 
   // svelte-ignore state_referenced_locally
@@ -66,12 +67,20 @@
             { value: "sql", label: "SQL login" },
             { value: "windows", label: "Windows" },
           ]
-        : [
-            { value: "entra", label: "Microsoft Entra ID" },
-            { value: "sql", label: "SQL login" },
-          ],
+        : kind === "postgres"
+          ? [
+              { value: "entra", label: "Microsoft Entra ID" },
+              { value: "password", label: "Username and password" },
+            ]
+          : [
+              { value: "entra", label: "Microsoft Entra ID" },
+              { value: "sql", label: "SQL login" },
+            ],
   );
-  const needsSecret = $derived(auth === "sql" || auth === "key");
+  const login = $derived(auth === "sql" || auth === "password");
+  const needsSecret = $derived(login || auth === "key");
+  /** Postgres signs Entra users in under their Entra name; blank means the name from the sign-in. */
+  const entraUser = $derived(kind === "postgres" && auth === "entra");
   const placeholder = $derived(KINDS.find((k) => k.value === kind)!.placeholder);
 
   $effect(() => {
@@ -85,7 +94,7 @@
       kind,
       endpoint: endpoint.trim(),
       auth,
-      user: auth === "sql" ? user.trim() : null,
+      user: login || (entraUser && user.trim()) ? user.trim() : null,
       database: kind !== "cosmos" && database.trim() ? database.trim() : null,
       tenantId: auth === "entra" && tenantId.trim() ? tenantId.trim() : null,
       trustServerCertificate: trust,
@@ -97,7 +106,7 @@
 
   function validate(): string {
     if (!endpoint.trim()) return kind === "cosmos" ? "Account URI is required" : "Server is required";
-    if (auth === "sql" && !user.trim()) return "User is required";
+    if (login && !user.trim()) return "User is required";
     if (needsSecret && !secret && !editing) return auth === "key" ? "Account key is required" : "Password is required";
     return "";
   }
@@ -151,9 +160,12 @@
     {#each authOptions as o}<option value={o.value}>{o.label}</option>{/each}
   </select>
 
-  {#if auth === "sql"}
+  {#if login}
     <label for="c-user">User</label>
     <input id="c-user" bind:value={user} spellcheck="false" autocomplete="off" />
+  {:else if entraUser}
+    <label for="c-user">User <span class="muted">(optional)</span></label>
+    <input id="c-user" bind:value={user} placeholder="Defaults to the account you sign in with" spellcheck="false" autocomplete="off" />
   {/if}
 
   {#if needsSecret}
