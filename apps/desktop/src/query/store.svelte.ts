@@ -109,7 +109,7 @@ export class QueryTab {
 export class WhatsNewTab {
   readonly kind = "whats-new" as const;
   readonly id = "whats-new";
-  title = $state("");
+  readonly title = "What's new";
   sections = $state.raw<ChangelogSection[]>([]);
   opened = $state<WhatsNewSource>("launch");
 
@@ -120,7 +120,6 @@ export class WhatsNewTab {
   show(sections: ChangelogSection[], opened: WhatsNewSource): void {
     this.sections = sections;
     this.opened = opened;
-    this.title = sections.length ? `What's new in v${sections[0].version}` : "What's new";
   }
 }
 

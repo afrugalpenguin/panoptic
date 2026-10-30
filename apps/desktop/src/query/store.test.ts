@@ -178,7 +178,7 @@ describe("QueryWorkspace", () => {
       const tab = ws.openWhatsNew(sections, "launch");
       expect(ws.tabs.map((t) => t.kind)).toEqual(["query", "whats-new"]);
       expect(ws.active).toBe(tab);
-      expect(tab.title).toBe("What's new in v0.2.13");
+      expect(tab.title).toBe("What's new");
       expect(query.text).toBe("SELECT 1");
     });
 
