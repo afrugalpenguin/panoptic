@@ -18,7 +18,8 @@ permissions:
   contents: write
 
 # A newer merge cancels an in-progress release: it contains everything the older one would have
-# shipped, so finishing the older one only delays the latest. Version numbers may skip.
+# shipped, so finishing the older one only delays the latest. Version numbers may skip. A cancelled
+# or failed run leaves at most an untagged draft, which the updater never sees (see Publish release).
 concurrency:
   group: release
   cancel-in-progress: true
@@ -94,7 +95,9 @@ jobs:
             ${{ steps.changelog.outputs.notes }}
 
             Two ways to run it. The setup.exe installer is per-user (no elevation) and updates itself on launch. The portable zip needs no install, so unzip it anywhere and run panoptic.exe; it tells you when a new version exists. Builds are unsigned, so SmartScreen may warn.
-          releaseDraft: false
+          # Draft until every asset is attached: releases/latest skips drafts, and the tag is only
+          # created at releaseCommitish when the release is published.
+          releaseDraft: true
           prerelease: false
           includeUpdaterJson: true
 
@@ -109,3 +112,13 @@ jobs:
           $zip = "Panoptic_${env:VERSION}_x64-portable.zip"
           Compress-Archive -Path $dir -DestinationPath $zip
           gh release upload "v${env:VERSION}" $zip --clobber
+
+      # Last step: publish only once the installer, its .sig, latest.json and the portable zip are all
+      # on the draft. If any is missing the check throws, the job fails and the release stays a draft.
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ./scripts/check-release-assets.ps1 -Version $env:VERSION
+          gh release edit "v${env:VERSION}" --draft=false
