@@ -1,5 +1,5 @@
 // Context at the cursor for completions and hover (docs/query-editor.md, "Context resolution"). A scanner, not a
-// parser: it tokenizes, finds the statement around the cursor and reads the nearest significant keyword. Pure, so
+// parser: it finds the statement around the cursor, tokenizes it and reads the nearest significant keyword. Pure, so
 // it runs in the IntelliSense worker, which cannot load Monaco.
 
 export type Language = "tsql" | "cosmos-sql";
@@ -51,23 +51,51 @@ export interface CursorContext {
 const WORD_START = /[A-Za-z_#\u0080-￿]/;
 const WORD_PART = /[\w#$@\u0080-￿]/;
 
-export function tokenize(text: string, language: Language): Token[] {
+/** Tokens of text[from, to). from and to must not fall inside a token: 0, the end, or a statement boundary. */
+export function tokenize(text: string, language: Language, from = 0, to = text.length): Token[] {
   const tokens: Token[] = [];
-  const n = text.length;
-  let i = 0;
-  const push = (type: Token["type"], start: number, end: number, closed: boolean, value?: string) =>
-    tokens.push({ type, text: text.slice(start, end), value: value ?? text.slice(start, end), start, end, closed });
+  lex(text, language, from, to, (type, start, end, closed) => void tokens.push(token(text, type, start, end, closed)));
+  return tokens;
+}
 
-  while (i < n) {
+function token(text: string, type: Token["type"], start: number, end: number, closed: boolean): Token {
+  const raw = text.slice(start, end);
+  let value = raw;
+  if (type === "quoted") {
+    const close = raw[0] === "[" ? "]" : '"';
+    value = raw.slice(1, closed ? -1 : undefined).replaceAll(close + close, close);
+  }
+  return { type, text: raw, value, start, end, closed };
+}
+
+/**
+ * Walks the tokens of text[from, to) without building them, so finding statement boundaries in a long script stays
+ * cheap. emit returns true to stop.
+ */
+function lex(
+  text: string,
+  language: Language,
+  from: number,
+  to: number,
+  emit: (type: Token["type"], start: number, end: number, closed: boolean) => boolean | void,
+): void {
+  const n = to;
+  let i = from;
+  let stop = false;
+  const push = (type: Token["type"], start: number, end: number, closed: boolean) => {
+    if (emit(type, start, end, closed)) stop = true;
+  };
+
+  while (i < n && !stop) {
     const c = text[i];
     const next = text[i + 1];
     if (c === " " || c === "\t" || c === "\r" || c === "\n") {
       i++;
     } else if (c === "-" && next === "-") {
       const end = text.indexOf("\n", i);
-      const stop = end < 0 ? n : end;
-      push("comment", i, stop, false);
-      i = stop;
+      const lineEnd = end < 0 || end > n ? n : end;
+      push("comment", i, lineEnd, false);
+      i = lineEnd;
     } else if (c === "/" && next === "*") {
       // T-SQL block comments nest.
       let depth = 0;
@@ -104,21 +132,18 @@ export function tokenize(text: string, language: Language): Token[] {
     } else if ((c === "[" || c === '"') && language === "tsql") {
       const close = c === "[" ? "]" : '"';
       let j = i + 1;
-      let value = "";
       let closed = false;
       while (j < n) {
         if (text[j] === close) {
-          if (text[j + 1] === close) {
-            value += close;
-            j += 2;
-          } else {
+          if (text[j + 1] === close) j += 2;
+          else {
             j++;
             closed = true;
             break;
           }
-        } else value += text[j++];
+        } else j++;
       }
-      push("quoted", i, j, closed, value);
+      push("quoted", i, Math.min(j, n), closed);
       i = j;
     } else if (c === "@") {
       let j = i + 1;
@@ -140,17 +165,16 @@ export function tokenize(text: string, language: Language): Token[] {
       i++;
     }
   }
-  return tokens;
 }
 
 const lower = (t: Token | undefined) => (t?.type === "word" ? t.text.toLowerCase() : "");
 
 /** A GO batch separator: the word GO alone on its line. */
-function isGo(t: Token, text: string): boolean {
-  if (lower(t) !== "go") return false;
-  const lineStart = text.lastIndexOf("\n", t.start - 1) + 1;
-  const lineEnd = text.indexOf("\n", t.end);
-  return text.slice(lineStart, t.start).trim() === "" && text.slice(t.end, lineEnd < 0 ? text.length : lineEnd).trim() === "";
+function isGo(text: string, start: number, end: number): boolean {
+  if (end - start !== 2 || text.slice(start, end).toLowerCase() !== "go") return false;
+  const lineStart = text.lastIndexOf("\n", start - 1) + 1;
+  const lineEnd = text.indexOf("\n", end);
+  return text.slice(lineStart, start).trim() === "" && text.slice(end, lineEnd < 0 ? text.length : lineEnd).trim() === "";
 }
 
 interface Segment {
@@ -158,47 +182,99 @@ interface Segment {
   end: number;
 }
 
-/** Splits text into statements (at GO lines, semicolons and blank lines) or, with batchesOnly, into GO batches. */
-function segments(text: string, tokens: Token[], batchesOnly: boolean): Segment[] {
-  const result: Segment[] = [];
-  let start = 0;
-  let previousEnd = 0;
-  const blankLineIn = (from: number, to: number): number => {
-    const match = /\n[ \t\r]*\n/.exec(text.slice(from, to));
-    return match ? from + match.index : -1;
-  };
-  for (const t of tokens) {
-    if (!batchesOnly) {
-      const blank = blankLineIn(previousEnd, t.start);
-      if (blank >= 0) {
-        result.push({ start, end: blank });
-        start = blank + 1;
-      }
-    }
-    if (isGo(t, text) || (!batchesOnly && t.text === ";" && t.type === "punct")) {
-      result.push({ start, end: t.start });
-      start = t.end;
-    }
-    previousEnd = t.end;
-  }
-  if (!batchesOnly) {
-    const blank = blankLineIn(previousEnd, text.length);
-    if (blank >= 0) {
-      result.push({ start, end: blank });
-      start = blank + 1;
-    }
-  }
-  result.push({ start, end: text.length });
-  return result;
+interface Bounds {
+  /** Split at GO lines, semicolons and blank lines. Each ends where the separator after it starts. */
+  statements: Segment[];
+  /** Split at GO lines only. */
+  batches: Segment[];
+  /** Every USE keyword. */
+  uses: Segment[];
 }
 
-function containing(list: Segment[], offset: number): Segment {
-  return list.find((s) => s.start <= offset && offset <= s.end) ?? list[list.length - 1];
+/** First index of a blank line (a newline, then only spaces, then another) in the whitespace text[from, to), or -1. */
+function blankLineIn(text: string, from: number, to: number): number {
+  for (let k = text.indexOf("\n", from); k >= 0 && k < to; k = text.indexOf("\n", k + 1)) {
+    let j = k + 1;
+    while (j < to && (text[j] === " " || text[j] === "\t" || text[j] === "\r")) j++;
+    if (j < to && text[j] === "\n") return k;
+  }
+  return -1;
+}
+
+/**
+ * Statement and batch boundaries for the whole text: one lexing pass that builds no tokens, so a request only
+ * tokenizes the statement around the cursor (docs/query-editor.md, "Context resolution"). It reads strings,
+ * comments and quoted names exactly as tokenize does, so a semicolon, blank line or GO inside them never splits.
+ */
+function bounds(text: string, language: Language): Bounds {
+  const statements: Segment[] = [];
+  const batches: Segment[] = [];
+  const uses: Segment[] = [];
+  let start = 0;
+  let batchStart = 0;
+  let previousEnd = 0;
+  const blank = (to: number) => {
+    const at = blankLineIn(text, previousEnd, to);
+    if (at < 0) return;
+    statements.push({ start, end: at });
+    start = at + 1;
+  };
+  lex(text, language, 0, text.length, (type, s, e) => {
+    blank(s);
+    if (type === "word" && isGo(text, s, e)) {
+      statements.push({ start, end: s });
+      batches.push({ start: batchStart, end: s });
+      start = batchStart = e;
+    } else if (type === "punct" && text[s] === ";") {
+      statements.push({ start, end: s });
+      start = e;
+    } else if (type === "word" && e - s === 3 && text.slice(s, e).toLowerCase() === "use") uses.push({ start: s, end: e });
+    previousEnd = e;
+  });
+  blank(text.length);
+  statements.push({ start, end: text.length });
+  batches.push({ start: batchStart, end: text.length });
+  return { statements, batches, uses };
+}
+
+/** Index of the segment around offset. An offset inside a GO separator belongs to the statement after it. */
+function containing(list: Segment[], offset: number): number {
+  const at = list.findIndex((s) => s.start <= offset && offset <= s.end);
+  if (at >= 0) return at;
+  const after = list.findIndex((s) => offset < s.start);
+  return after >= 0 ? after : list.length - 1;
 }
 
 /** The statement around offset: bounded by the nearest GO line, semicolon or blank line on each side. */
 export function statementAt(text: string, offset: number, language: Language = "tsql"): Segment {
-  return containing(segments(text, tokenize(text, language), false), offset);
+  const { statements } = bounds(text, language);
+  return statements[containing(statements, offset)];
+}
+
+/**
+ * The statement around offset and its tokens. The tokens start at the separator before the statement, so a GO
+ * typed at the cursor is still seen; filter on statement.start to drop it.
+ */
+function around(text: string, offset: number, language: Language, b = bounds(text, language)): { statement: Segment; tokens: Token[] } {
+  const at = containing(b.statements, offset);
+  const statement = b.statements[at];
+  return { statement, tokens: tokenize(text, language, at > 0 ? b.statements[at - 1].end : 0, statement.end) };
+}
+
+/** The tokens of the statement around offset (for hover), the separator before it included. */
+export function statementTokens(text: string, offset: number, language: Language): Token[] {
+  return around(text, offset, language).tokens;
+}
+
+/** The first token at or after from that is not a comment. */
+function nextSignificant(text: string, language: Language, from: number): Token | undefined {
+  let found: Token | undefined;
+  lex(text, language, from, text.length, (type, start, end, closed) => {
+    if (type === "comment") return false;
+    found = token(text, type, start, end, closed);
+    return true;
+  });
+  return found;
 }
 
 /** True when the text runs DDL (CREATE, ALTER or DROP as keywords, not in strings, comments or quoted names). */
@@ -365,14 +441,15 @@ function nearestClause(tokens: Token[]): { kind: ClauseKind; index: number } | u
 
 /** The tables named in the statement around offset (for hover). */
 export function tablesAt(text: string, offset: number, language: Language): TableRef[] {
-  const all = tokenize(text, language);
-  const statement = containing(segments(text, all, false), offset);
-  const stmt = all.filter((t) => t.type !== "comment" && t.start >= statement.start && t.end <= statement.end);
+  const { statement, tokens } = around(text, offset, language);
+  const stmt = tokens.filter((t) => t.type !== "comment" && t.start >= statement.start);
   return tableRefs(stmt, 0, stmt.length);
 }
 
 export function contextAt(text: string, offset: number, language: Language): CursorContext {
-  const all = tokenize(text, language);
+  // Only the statement around the cursor is tokenized; USE and DECLARE are looked up beyond it.
+  const b = bounds(text, language);
+  const { statement, tokens: all } = around(text, offset, language, b);
   const inside = all.find((t) => t.start < offset && (offset < t.end || (offset === t.end && !t.closed)));
   if (inside && (inside.type === "string" || inside.type === "comment")) return { context: { kind: "none" }, prefix: "", start: offset };
 
@@ -387,19 +464,22 @@ export function contextAt(text: string, offset: number, language: Language): Cur
 
   const significant = all.filter((t) => t.type !== "comment");
   let useDatabase: string | undefined;
-  for (let i = 0; i < significant.length && significant[i].end <= prefixStart; i++)
-    if (lower(significant[i]) === "use" && isName(significant[i + 1]) && significant[i + 1].end <= prefixStart) useDatabase = significant[i + 1].value;
+  for (let u = b.uses.length - 1; u >= 0 && useDatabase === undefined; u--) {
+    if (b.uses[u].end > prefixStart) continue;
+    const name = nextSignificant(text, language, b.uses[u].end);
+    if (name && isName(name) && name.end <= prefixStart) useDatabase = name.value;
+  }
   const done = (context: Context): CursorContext =>
     useDatabase ? { context, prefix, start: prefixStart, useDatabase } : { context, prefix, start: prefixStart };
 
-  const statement = containing(segments(text, all, false), offset);
-  const stmt = significant.filter((t) => t.start >= statement.start && t.end <= statement.end && t.start !== prefixStart);
+  const stmt = significant.filter((t) => t.start >= statement.start && t.start !== prefixStart);
   const before = stmt.filter((t) => t.end <= prefixStart);
   const last = before[before.length - 1];
 
   if (prefix.startsWith("@")) {
-    const batch = containing(segments(text, all, true), offset);
-    return done({ kind: "variables", names: declaredVariables(significant.filter((t) => t.start >= batch.start && t.end <= batch.end)) });
+    const batch = b.batches[containing(b.batches, offset)];
+    const declared = tokenize(text, language, batch.start, batch.end).filter((t) => t.type !== "comment");
+    return done({ kind: "variables", names: declaredVariables(declared) });
   }
 
   // alias. / schema. / database.schema.

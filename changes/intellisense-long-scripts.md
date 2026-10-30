@@ -1,0 +1,1 @@
+Fixed: IntelliSense stays quick in long scripts, because it now reads only the statement at the cursor, and a name it could not find as a database is looked up again after you refresh its connection in the explorer or run DDL.

@@ -3,7 +3,7 @@
 
 import type { CatalogObject, ContainerRef, DatabaseCatalog, PathRef } from "../catalog.svelte";
 import { COSMOS_FUNCTIONS, COSMOS_KEYWORDS } from "./cosmos-words";
-import { tablesAt, tokenize, type Context, type Language, type TableRef, type Token } from "./scanner";
+import { statementTokens, tablesAt, type Context, type Language, type TableRef, type Token } from "./scanner";
 import { TSQL_FUNCTIONS, TSQL_KEYWORDS, TSQL_TYPES } from "./tsql-words";
 
 export type ItemKind =
@@ -246,7 +246,7 @@ function objectMarkdown(o: CatalogObject): string {
 
 /** Markdown for the name under the cursor: an object, a column, or a Cosmos path. Null when there is nothing to say. */
 export function hover(lookup: Lookup, text: string, offset: number, options: Pick<Options, "language" | "container">): string | null {
-  const tokens = tokenize(text, options.language).filter((t) => t.type !== "comment");
+  const tokens = statementTokens(text, offset, options.language).filter((t) => t.type !== "comment");
   const at = tokens.findIndex((t) => isName(t) && t.start <= offset && offset <= t.end);
   if (at < 0) return null;
   const parts = [tokens[at].value];

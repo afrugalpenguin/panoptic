@@ -244,6 +244,51 @@ describe("QueryWorkspace: IntelliSense", () => {
     expect(ws.intellisense(tab)()!.keys.databases).toEqual({ orders: "key:node", sales: "key:Sales" });
   });
 
+  it("a name that is not a database is asked for once, and again after a refresh or DDL on its connection", async () => {
+    const { ws, api } = setupCatalog();
+    const tab = ws.open(target, "");
+    await settle();
+    const typo = () => api.catalogGet.mock.calls.filter((c) => c[1] === "Typo").length;
+    const info = ws.intellisense(tab)()!;
+    info.onMissing("Typo");
+    await settle();
+    // The sidecar answers "building" at once; opening the database then fails in the background.
+    ws.handle("catalog.state", { key: "key:Typo", state: "error", message: "Cannot open database" });
+    for (let i = 0; i < 5; i++) info.onMissing("Typo");
+    await settle();
+    expect(typo()).toBe(1);
+
+    ws.refreshForNode("env:dev/conn:c1/db:Sales");
+    info.onMissing("Typo");
+    await settle();
+    expect(typo()).toBe(1);
+    ws.refreshForNode("env:dev/conn:c1");
+    info.onMissing("Typo");
+    await settle();
+    expect(typo()).toBe(2);
+
+    ws.handle("catalog.state", { key: "key:Typo", state: "error", message: "Cannot open database" });
+    await ws.run(tab, "create database Typo");
+    info.onMissing("Typo");
+    await settle();
+    expect(typo()).toBe(3);
+    expect(ws.intellisense(tab)()!.keys.databases).toEqual({ orders: "key:node", typo: "key:Typo" });
+  });
+
+  it("a failed request is not remembered, so a timeout does not hide a database", async () => {
+    const { ws, api } = setupCatalog();
+    const tab = ws.open(target, "");
+    await settle();
+    api.catalogGet.mockRejectedValueOnce(new Error("Request timed out"));
+    const info = ws.intellisense(tab)()!;
+    info.onMissing("Sales");
+    await settle();
+    info.onMissing("Sales");
+    await settle();
+    expect(api.catalogGet.mock.calls.filter((c) => c[1] === "Sales")).toHaveLength(2);
+    expect(ws.intellisense(tab)()!.keys.databases).toEqual({ orders: "key:node", sales: "key:Sales" });
+  });
+
   it("turned off: no model info and no catalog requests", async () => {
     const { ws, api } = setupCatalog();
     ws.editor = { ...ws.editor, intellisense: false };
