@@ -26,6 +26,18 @@ public sealed class SqlBackend(Credentials credentials) : IBackend
     public async Task<TreeNode[]> ChildrenAsync(ConnectionConfig c, string? secret, NodePath path, int start, CancellationToken ct)
     {
         var rel = path.From(start);
+        try
+        {
+            return await Children(c, secret, path, rel, ct);
+        }
+        catch (SqlException ex)
+        {
+            throw SqlErrors.ToRpc(ex, c, rel.Count > 0 ? rel[0].Value : c.Database);
+        }
+    }
+
+    private async Task<TreeNode[]> Children(ConnectionConfig c, string? secret, NodePath path, IReadOnlyList<NodePath.Segment> rel, CancellationToken ct)
+    {
         var shape = Nodes.Shape(rel);
 
         if (shape == "") return await Databases(c, secret, path, ct);
@@ -301,7 +313,7 @@ public sealed class SqlBackend(Credentials credentials) : IBackend
         catch (SqlException ex)
         {
             await conn.DisposeAsync();
-            throw new RpcException(RpcException.OperationFailed, ex.Message);
+            throw SqlErrors.ToRpc(ex, c, database);
         }
     }
 }

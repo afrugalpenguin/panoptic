@@ -36,7 +36,8 @@
     </div>
   {:else if row.type === "error"}
     <h2 class="error">Could not load</h2>
-    <pre class="message">{row.message}</pre>
+    <p>{row.error.summary}{#if row.error.code} <span class="muted">({row.error.code})</span>{/if}</p>
+    <pre class="message">{row.error.detail}</pre>
     <p class="muted">Press F5 on the parent to retry.</p>
   {:else if node}
     <header>

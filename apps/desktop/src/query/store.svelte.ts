@@ -1,4 +1,5 @@
 import type { EditorSettings } from "../app/api";
+import type { Problem } from "../app/problems";
 import type { ChangelogSection } from "../whats-new";
 import { CatalogStore, type CatalogNotice } from "./catalog.svelte";
 import type { Options } from "./intellisense/engine";
@@ -86,7 +87,17 @@ export class WhatsNewTab {
   }
 }
 
-export type WorkspaceTab = QueryTab | WhatsNewTab;
+/** Explorer errors in full (docs/explorer-errors.md). A singleton like What's new. */
+export class ProblemsTab {
+  readonly kind = "problems" as const;
+  readonly id = "problems";
+  entries = $state.raw<Problem[]>([]);
+  /** The entry to scroll to, and a counter so asking for the same one again scrolls again. */
+  focus = $state<{ nodeId: string; seq: number }>();
+  readonly title = $derived(`Problems (${this.entries.length})`);
+}
+
+export type WorkspaceTab = QueryTab | WhatsNewTab | ProblemsTab;
 
 /**
  * Open workspace tabs, the one in front, and routing of streamed results to whichever query tab asked
@@ -232,6 +243,25 @@ export class QueryWorkspace {
       this.tabs.push(new WhatsNewTab(sections));
       tab = this.tabs[this.tabs.length - 1] as WhatsNewTab;
     }
+    this.activeId = tab.id;
+    return tab;
+  }
+
+  /** Updates the Problems tab's entries if it is open; closing it loses nothing, the tree holds the errors. */
+  setProblems(entries: Problem[]): void {
+    const tab = this.tabs.find((t): t is ProblemsTab => t.kind === "problems");
+    if (tab) tab.entries = entries;
+  }
+
+  /** Opens or focuses the Problems tab, scrolled to one node's entry when given. */
+  openProblems(entries: Problem[], nodeId?: string): ProblemsTab {
+    let tab = this.tabs.find((t): t is ProblemsTab => t.kind === "problems");
+    if (!tab) {
+      this.tabs.push(new ProblemsTab());
+      tab = this.tabs[this.tabs.length - 1] as ProblemsTab;
+    }
+    tab.entries = entries;
+    if (nodeId !== undefined) tab.focus = { nodeId, seq: (tab.focus?.seq ?? 0) + 1 };
     this.activeId = tab.id;
     return tab;
   }

@@ -15,6 +15,7 @@
     selectedKey = $bindable(),
     onContextMenu,
     onActivate,
+    onOpenProblem,
     showKindBadge = true,
     rowFont = "mono",
   }: {
@@ -23,6 +24,8 @@
     selectedKey: string | undefined;
     onContextMenu: (row: Row, x: number, y: number) => void;
     onActivate: (row: Row) => void;
+    /** Click on an error row: show its entry in the Problems tab. */
+    onOpenProblem: (parentId: string) => void;
     /** explorer.showKindBadge and explorer.rowFont: CSS switches on the tree, no row recomputation. */
     showKindBadge?: boolean;
     rowFont?: "mono" | "ui";
@@ -194,6 +197,8 @@
       {#each groups as group (group.envId)}
         <div class="env-group" style:--env={group.color ?? "var(--text-muted)"}>
           {#each group.rows as row (row.key)}
+            <!-- Keys are handled once on the tree (Enter on an error row opens Problems). -->
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
             <div
               class="tree-row {row.rowKind}"
               class:selected={row.key === selectedKey}
@@ -207,6 +212,7 @@
               draggable={row.type === "node"}
               ondragstart={(e) => onRowDragStart(e, row)}
               onmousedown={(e) => onRowMouseDown(e, row)}
+              onclick={() => row.type === "error" && onOpenProblem(row.parentId)}
               ondblclick={() => onActivate(row)}
               oncontextmenu={(e) => {
                 e.preventDefault();

@@ -25,7 +25,18 @@ public sealed class TreeService(ConfigStore store, IReadOnlyDictionary<string, I
         var connection = env.Connections.FirstOrDefault(c => c.Id == path[1].Value)
             ?? throw new RpcException(RpcException.OperationFailed, "Connection no longer exists");
 
-        return await BackendFor(connection).ChildrenAsync(connection, store.GetSecret(connection.Id), path, 2, cancellationToken);
+        var backend = BackendFor(connection);
+        try
+        {
+            return await backend.ChildrenAsync(connection, store.GetSecret(connection.Id), path, 2, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException and not RpcException { NodeError: not null })
+        {
+            // Unmapped failures (sign-in, network, bad settings) still reach the tree as a structured error.
+            var detail = NodeErrors.Lines(("Endpoint", connection.Endpoint), ("Identity", NodeErrors.Identity(connection)));
+            throw new RpcException(ex is RpcException rpc ? rpc.Code : RpcException.OperationFailed, ex.Message,
+                NodeErrors.Fallback(ex.Message, extra: detail));
+        }
     }
 
     /// <summary>The environment, connection and database (and Cosmos container) a node belongs to.</summary>

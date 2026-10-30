@@ -5,6 +5,8 @@ export class RpcError extends Error {
   constructor(
     readonly code: number,
     message: string,
+    /** The error's `data` member, when the sidecar sent one (a NodeError for tree loads). */
+    readonly data?: unknown,
   ) {
     super(message);
     this.name = "RpcError";
@@ -43,7 +45,7 @@ export class RpcClient {
   }
 
   receive(line: string): void {
-    let msg: { id?: unknown; method?: unknown; params?: unknown; result?: unknown; error?: { code: number; message: string } };
+    let msg: { id?: unknown; method?: unknown; params?: unknown; result?: unknown; error?: { code: number; message: string; data?: unknown } };
     try {
       msg = JSON.parse(line);
     } catch {
@@ -54,7 +56,7 @@ export class RpcClient {
       return;
     }
     if (typeof msg?.id !== "number") return;
-    this.settle(msg.id, msg.result, msg.error ? new RpcError(msg.error.code, msg.error.message) : undefined);
+    this.settle(msg.id, msg.result, msg.error ? new RpcError(msg.error.code, msg.error.message, msg.error.data) : undefined);
   }
 
   disconnect(reason: string): void {

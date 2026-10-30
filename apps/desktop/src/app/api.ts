@@ -13,6 +13,17 @@ export interface TreeNode {
   meta?: Record<string, string>;
 }
 
+/** Mirrors NodeError: why a node's children failed to load (docs/explorer-errors.md). */
+export interface NodeError {
+  /** One short sentence with no identifiers, for the tree row. */
+  summary: string;
+  /** The full original message plus status, ids, endpoint and identity. */
+  detail: string;
+  /** Provider status, e.g. "403/5300" or a SQL error number. */
+  code?: string | null;
+  retryable: boolean;
+}
+
 export type ConnectionKind = "sql" | "synapse" | "cosmos";
 export type AuthKind = "entra" | "sql" | "key" | "windows";
 

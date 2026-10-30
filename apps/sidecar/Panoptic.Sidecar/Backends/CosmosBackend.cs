@@ -36,7 +36,7 @@ public sealed class CosmosBackend(Credentials credentials) : IBackend
         }
         catch (CosmosException ex)
         {
-            throw new RpcException(RpcException.OperationFailed, Describe(ex));
+            throw CosmosErrors.ToRpc(ex, c);
         }
     }
 
@@ -46,11 +46,11 @@ public sealed class CosmosBackend(Credentials credentials) : IBackend
         {
             using var iterator = ClientFor(c, secret).GetDatabaseQueryStreamIterator(new QueryDefinition("SELECT TOP 1 * FROM c"));
             using var response = await iterator.ReadNextAsync(ct);
-            if (!response.IsSuccessStatusCode) throw new RpcException(RpcException.OperationFailed, $"{(int)response.StatusCode} {response.ErrorMessage}");
+            response.EnsureSuccessStatusCode();
         }
         catch (CosmosException ex)
         {
-            throw new RpcException(RpcException.OperationFailed, Describe(ex));
+            throw CosmosErrors.ToRpc(ex, c);
         }
     }
 
@@ -87,8 +87,7 @@ public sealed class CosmosBackend(Credentials credentials) : IBackend
         var throughputTask = Throughput(db, container, ct);
 
         using var propsResponse = await propsTask;
-        if (!propsResponse.IsSuccessStatusCode)
-            throw new RpcException(RpcException.OperationFailed, $"{(int)propsResponse.StatusCode} {propsResponse.ErrorMessage}");
+        propsResponse.EnsureSuccessStatusCode();
         using var props = await JsonDocument.ParseAsync(propsResponse.Content, cancellationToken: ct);
         var root = props.RootElement;
 
@@ -174,8 +173,8 @@ public sealed class CosmosBackend(Credentials credentials) : IBackend
             while (iterator.HasMoreResults && results.Count < limit)
             {
                 using var response = await iterator.ReadNextAsync(ct);
-                if (!response.IsSuccessStatusCode)
-                    throw new RpcException(RpcException.OperationFailed, $"{(int)response.StatusCode} {response.ErrorMessage}");
+                // Throws a CosmosException, which callers map with status, substatus and ActivityId.
+                response.EnsureSuccessStatusCode();
                 using var doc = await JsonDocument.ParseAsync(response.Content, cancellationToken: ct);
                 if (doc.RootElement.TryGetProperty(arrayName, out var items))
                     foreach (var item in items.EnumerateArray()) results.Add(item.Clone());
@@ -228,9 +227,4 @@ public sealed class CosmosBackend(Credentials credentials) : IBackend
             _ => throw new RpcException(RpcException.InvalidParams, $"Cosmos does not support auth '{c.Auth}'"),
         };
     }
-
-    private static string Describe(CosmosException ex) =>
-        ex.StatusCode == HttpStatusCode.Forbidden
-            ? $"Forbidden: your identity needs a Cosmos DB data-plane role (e.g. Built-in Data Reader). {ex.Message.Split('\n')[0]}"
-            : $"{(int)ex.StatusCode} {ex.StatusCode}: {ex.Message.Split('\n')[0]}";
 }

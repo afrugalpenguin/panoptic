@@ -22,6 +22,7 @@
   import StatusBar from "./StatusBar.svelte";
   import Tree from "./Tree.svelte";
   import { environmentOrder, moveEnvironment, TreeModel, type KindSummary, type LoadReport, type Row } from "./tree-model";
+  import { errorText, type Problem } from "./problems";
 
   let { info }: { info: StartupInfo } = $props();
 
@@ -30,6 +31,7 @@
   let sidecarText = $state("Starting...");
   let config = $state<AppConfig>({ environments: [] });
   let rows = $state.raw<Row[]>([]);
+  let problems = $state.raw<Problem[]>([]);
   let kinds = $state.raw<KindSummary[]>([]);
   let kindFilter = $state<string>();
   let selectedKey = $state<string>();
@@ -60,6 +62,8 @@
     (id) => api!.children(id),
     () => {
       rows = model.rows();
+      problems = model.problems();
+      workspace.setProblems(problems);
       kinds = model.kinds();
       kindFilter = model.activeKind();
       const loading = model.inFlight()[0];
@@ -242,7 +246,11 @@
 
   function openMenu(row: Row, x: number, y: number) {
     const items: (MenuItem | "separator")[] = [];
-    if (row.type !== "node") {
+    if (row.type === "error") {
+      items.push({ label: "Copy error", run: () => navigator.clipboard.writeText(errorText(row.error)).catch(() => {}) });
+      if (row.error.retryable) items.push({ label: "Retry", run: () => model.refresh(row.parentId) });
+      items.push({ label: "Open Problems", run: () => openProblems(row.parentId) });
+    } else if (row.type !== "node") {
       items.push({ label: "Retry", run: () => model.refresh(row.parentId) });
     } else {
       const n = row.node;
@@ -335,6 +343,11 @@
 
   function activate(row: Row) {
     if (row.type === "node" && row.node.hasChildren) model.toggle(row.node.id);
+    else if (row.type === "error") openProblems(row.parentId);
+  }
+
+  function openProblems(nodeId?: string) {
+    workspace.openProblems(problems, nodeId);
   }
 
   /** Expand or collapse all from the toolbar; a selection that gets hidden moves up to its nearest shown ancestor. */
@@ -412,6 +425,7 @@
         bind:selectedKey
         onContextMenu={openMenu}
         onActivate={activate}
+        onOpenProblem={openProblems}
         showKindBadge={settings.explorer.showKindBadge}
         rowFont={settings.explorer.rowFont}
       />
@@ -429,7 +443,7 @@
   </main>
 
   <div class="status-host">
-    <StatusBar {sidecar} {sidecarText} {inFlight} {lastLoad} {startup} {update} />
+    <StatusBar {sidecar} {sidecarText} {inFlight} {lastLoad} {startup} {update} problems={problems.length} onOpenProblems={() => openProblems()} />
   </div>
 </div>
 

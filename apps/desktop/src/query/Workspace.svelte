@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ProblemsView from "./ProblemsView.svelte";
   import QueryView from "./QueryView.svelte";
   import WhatsNewView from "./WhatsNewView.svelte";
   import type { QueryWorkspace } from "./store.svelte";
@@ -32,6 +33,8 @@
     <div class="body" hidden={tab.id !== workspace.activeId}>
       {#if tab.kind === "query"}
         <QueryView {tab} {workspace} />
+      {:else if tab.kind === "problems"}
+        <ProblemsView {tab} />
       {:else}
         <WhatsNewView {tab} />
       {/if}
