@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import type { DatabaseCatalog } from "../catalog.svelte";
 import { complete, hover, Index } from "./engine";
+import { unknownNames } from "./lint";
 import { contextAt } from "./scanner";
 
 // docs/query-editor.md budgets: index in under 100 ms and complete in under 16 ms for 5,000 objects and 100,000
@@ -78,11 +79,14 @@ it("meets the completion budget in a 5,000 line script", () => {
   const endMs = p95(() => complete(() => index, contextAt(source, end, "tsql").context, options));
   const hoverAt = source.indexOf("Column1", offset);
   const hoverMs = p95(() => hover(() => index, source, hoverAt, options));
+  const lintMs = p95(() => unknownNames(() => index, source, offset));
 
   expect(complete(() => index, contextAt(source, offset, "tsql").context, options).items).toHaveLength(20);
   expect(hover(() => index, source, hoverAt, options)).toContain("Column1");
-  console.log(`IntelliSense perf, 5,000 line script: middle p95 ${middleMs.toFixed(2)} ms, end p95 ${endMs.toFixed(2)} ms, hover p95 ${hoverMs.toFixed(2)} ms`);
+  expect(unknownNames(() => index, source, offset)).toEqual([]);
+  console.log(`IntelliSense perf, 5,000 line script: middle p95 ${middleMs.toFixed(2)} ms, end p95 ${endMs.toFixed(2)} ms, hover p95 ${hoverMs.toFixed(2)} ms, unknown names p95 ${lintMs.toFixed(2)} ms`);
   expect(middleMs).toBeLessThan(COMPLETE_MS);
   expect(endMs).toBeLessThan(COMPLETE_MS);
   expect(hoverMs).toBeLessThan(COMPLETE_MS);
+  expect(lintMs).toBeLessThan(COMPLETE_MS);
 });

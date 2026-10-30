@@ -144,10 +144,19 @@ public sealed class ConfigStoreTests : IDisposable
         Assert.Null(store.Settings.Editor.KeywordCase);
         Assert.Equal(50, store.Settings.Editor.CatalogSampleDocs);
         Assert.True(store.Settings.Editor.AutoRefreshOnDdl);
+        Assert.True(store.Settings.Editor.WarnUnknownNames);
 
-        store.SaveSettings(store.Settings with { Editor = new EditorSettings(false, KeywordCases.Upper, 200, false) });
+        store.SaveSettings(store.Settings with { Editor = new EditorSettings(false, KeywordCases.Upper, 200, false, false) });
 
-        Assert.Equal(new EditorSettings(false, KeywordCases.Upper, 200, false), new ConfigStore(_path).Settings.Editor);
+        Assert.Equal(new EditorSettings(false, KeywordCases.Upper, 200, false, false), new ConfigStore(_path).Settings.Editor);
+    }
+
+    [Fact]
+    public void Editor_settings_saved_before_a_setting_existed_get_its_default()
+    {
+        var settings = System.Text.Json.JsonSerializer.Deserialize("""{"editor":{"intellisense":false}}""", SidecarJson.Default.AppSettings)!;
+        Assert.False(settings.Editor.Intellisense);
+        Assert.True(settings.Editor.WarnUnknownNames);
     }
 
     [Theory]

@@ -68,6 +68,8 @@ export interface EditorSettings {
   /** Documents sampled per Cosmos container for property paths, 10 to 500. */
   catalogSampleDocs: number;
   autoRefreshOnDdl: boolean;
+  /** Underline tables and columns the catalog does not know, before the query runs. */
+  warnUnknownNames: boolean;
 }
 
 export interface AppSettings {

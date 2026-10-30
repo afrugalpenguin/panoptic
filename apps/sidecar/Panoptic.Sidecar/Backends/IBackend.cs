@@ -89,8 +89,11 @@ public interface IQuerySink
     /// <summary>A query.message: "info" (PRINT output, rows affected) or "error".</summary>
     void Message(string kind, string text);
 
-    /// <summary>Records the run's error and reports it as an error message.</summary>
-    void Fail(string error);
+    /// <summary>
+    /// Records the run's error and reports it as an error message, or as one message per server error when
+    /// <paramref name="errors"/> is given.
+    /// </summary>
+    void Fail(string error, IReadOnlyList<QueryError>? errors = null);
 
     /// <summary>Read-only guard: the changes were rolled back.</summary>
     void RolledBack();

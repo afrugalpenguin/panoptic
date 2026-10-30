@@ -1,10 +1,12 @@
 // The IntelliSense worker's message handling (docs/query-editor.md, "Completion engine"). It holds its own copy of
-// each catalog, indexed once on arrival, and answers completion and hover requests from them. worker-entry.ts wires
-// this to the worker's message port.
+// each catalog, indexed once on arrival, and answers completion and hover requests from them, plus the "did you mean"
+// and unknown-name lookups of "Error location". worker-entry.ts wires this to the worker's message port.
 
 import type { DatabaseCatalog } from "../catalog.svelte";
 import { complete, hover, Index, type Item, type Lookup, type Options } from "./engine";
-import { contextAt } from "./scanner";
+import { unknownNames, type Warning } from "./lint";
+import { contextAt, type TableRef } from "./scanner";
+import { suggestColumn, suggestObject, type Suggestion } from "./suggest";
 
 /** Which catalogs a request reads: the tab's own, and any other databases on its connection known so far. */
 export interface Keys {
@@ -13,14 +15,31 @@ export interface Keys {
   databases: Record<string, string>;
 }
 
+/** A name error to suggest a fix for: the error number and what the statement says around the name. */
+export interface SuggestRequest {
+  number: number;
+  /** The name's parts as written ([schema, name] or [name]; a column's name alone). */
+  parts: string[];
+  /** A column's alias or table qualifier. */
+  qualifier?: string;
+  /** The statement's FROM and JOIN tables, for columns. */
+  tables: TableRef[];
+  /** The database named by the last USE before the statement. */
+  useDatabase?: string;
+}
+
 export type Request =
   | { type: "catalog"; key: string; catalog: DatabaseCatalog }
   | { type: "complete"; id: number; text: string; offset: number; options: Options; keys: Keys }
-  | { type: "hover"; id: number; text: string; offset: number; options: Options; keys: Keys };
+  | { type: "hover"; id: number; text: string; offset: number; options: Options; keys: Keys }
+  | ({ type: "suggest"; id: number; keys: Keys } & SuggestRequest)
+  | { type: "lint"; id: number; text: string; offset: number; keys: Keys };
 
 export type CompleteResponse = { id: number; items: Item[]; start: number; missing?: string };
 export type HoverResponse = { id: number; markdown: string | null };
-export type Response = CompleteResponse | HoverResponse;
+export type SuggestResponse = { id: number; suggestion?: Suggestion };
+export type LintResponse = { id: number; warnings: Warning[] };
+export type Response = CompleteResponse | HoverResponse | SuggestResponse | LintResponse;
 
 const indexes = new Map<string, Index>();
 
@@ -34,6 +53,16 @@ function lookup(keys: Keys, useDatabase?: string): Lookup {
     if (useDatabase) return byName(useDatabase);
     return keys.current ? indexes.get(keys.current) : undefined;
   };
+}
+
+function suggest(message: SuggestRequest & { keys: Keys }): Suggestion | undefined {
+  const find = lookup(message.keys, message.useDatabase);
+  if (message.number === 207) return suggestColumn(find, message.tables, message.parts[message.parts.length - 1], message.qualifier);
+  const index = find();
+  if (!index) return undefined;
+  if (message.number === 208) return suggestObject(index, message.parts, "objects");
+  if (message.number === 2812) return suggestObject(index, message.parts, "procs");
+  return undefined;
 }
 
 export function handle(message: Request): Response | undefined {
@@ -52,5 +81,11 @@ export function handle(message: Request): Response | undefined {
       const ctx = contextAt(message.text, message.offset, message.options.language);
       return { id: message.id, markdown: hover(lookup(message.keys, ctx.useDatabase), message.text, message.offset, message.options) };
     }
+    case "suggest": {
+      const suggestion = suggest(message);
+      return suggestion ? { id: message.id, suggestion } : { id: message.id };
+    }
+    case "lint":
+      return { id: message.id, warnings: unknownNames(lookup(message.keys), message.text, message.offset) };
   }
 }

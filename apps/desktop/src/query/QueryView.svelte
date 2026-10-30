@@ -114,7 +114,15 @@
   </div>
 
   <div class="editor-host">
-    <QueryEditor bind:text={tab.text} language={tab.target.language} {intellisense} onRun={(selection) => workspace.run(tab, selection)} />
+    <QueryEditor
+      bind:text={tab.text}
+      language={tab.target.language}
+      {intellisense}
+      onRun={(selection, offset) => workspace.run(tab, selection, offset)}
+      messages={tab.messages}
+      reveal={tab.reveal}
+      warnUnknownNames={workspace.editor.intellisense && workspace.editor.warnUnknownNames}
+    />
   </div>
 
   <div class="splitter" role="separator" aria-orientation="horizontal" onpointerdown={startResize}></div>
@@ -146,8 +154,14 @@
         {/if}
       {:else if tab.view === -1}
         <div class="messages">
-          {#each tab.messages as m}
-            <div class:error={m.kind === "error"}><span class="muted time">{(m.elapsedMs / 1000).toFixed(2)} s</span>{m.text}</div>
+          {#each tab.messages as m (m.id)}
+            {#if m.at}
+              <button class="row error" title="Show in the editor" onclick={() => workspace.reveal(tab, m)}
+                ><span class="muted time">{(m.elapsedMs / 1000).toFixed(2)} s</span>{m.text}</button
+              >
+            {:else}
+              <div class:error={m.kind === "error"}><span class="muted time">{(m.elapsedMs / 1000).toFixed(2)} s</span>{m.text}</div>
+            {/if}
           {/each}
           {#if tab.error && !tab.messages.some((m) => m.kind === "error")}<div class="error">{tab.error}</div>{/if}
           {#if !tab.messages.length && !tab.error}<p class="muted">{tab.running ? "Running..." : "No messages."}</p>{/if}
@@ -272,6 +286,21 @@
   }
   .error {
     color: var(--bad);
+  }
+  /* A Messages row that moves the editor's cursor to its error: still reads as a line of text. */
+  .row {
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: none;
+    background: none;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    user-select: text;
+  }
+  .row:hover {
+    background: var(--bg-hover);
   }
   .banner {
     margin: 0;

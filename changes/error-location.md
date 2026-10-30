@@ -1,0 +1,1 @@
+Fixed: errors like invalid object name now point at the bad name instead of the start of the statement, suggest the closest name from the database, and unknown names are underlined before you run the query.

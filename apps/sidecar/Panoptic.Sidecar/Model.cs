@@ -92,6 +92,12 @@ public sealed record NodeInvokeParams(string NodeId, string ActionId);
 public sealed record NodeInvokeResult(string? Text);
 /// <summary>What a node id resolves to for running a query: its environment, connection and the database or container under it.</summary>
 public sealed record QueryTarget(EnvironmentConfig Environment, ConnectionConfig Connection, string? Database, string? Container);
+
+/// <summary>One server error in a failed query, sent with its query.message so the UI can place it in the editor.</summary>
+/// <param name="Number">The server's error number (208 invalid object name, 207 invalid column name, ...).</param>
+/// <param name="Line">1-based line in the text that was sent. Null when the error is inside another module (a procedure,
+/// a trigger), whose own line it would be.</param>
+public sealed record QueryError(int Number, int? Line, string Text);
 public sealed record DeviceCodePrompt(string Message, string UserCode, string VerificationUri);
 
 public static class UpdateCheckModes
@@ -127,7 +133,9 @@ public static class KeywordCases
 /// <summary>Query editor settings (docs/query-editor.md, "Settings").</summary>
 /// <param name="KeywordCase">Null: the language default (lower for T-SQL, upper for Cosmos).</param>
 /// <param name="CatalogSampleDocs">Documents sampled per Cosmos container for property path completion, 10 to 500.</param>
-public sealed record EditorSettings(bool Intellisense = true, string? KeywordCase = null, int CatalogSampleDocs = 50, bool AutoRefreshOnDdl = true);
+/// <param name="WarnUnknownNames">Underline tables and columns the catalog does not know, before the query runs.</param>
+public sealed record EditorSettings(bool Intellisense = true, string? KeywordCase = null, int CatalogSampleDocs = 50, bool AutoRefreshOnDdl = true,
+    bool WarnUnknownNames = true);
 
 /// <param name="LastSeenVersion">The app version whose changes the user has been shown (ADR 0013). Null means never
 /// recorded: a fresh install, or a store written before this setting existed.</param>

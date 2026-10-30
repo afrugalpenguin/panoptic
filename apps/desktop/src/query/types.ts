@@ -34,6 +34,10 @@ export interface MessageNotification {
   kind: "info" | "error";
   text: string;
   elapsedMs: number;
+  /** A server error's number (SQL Server: 208 invalid object name, ...). */
+  number?: number;
+  /** 1-based line of a server error in the text that was sent; absent when it is in another module or unknown. */
+  line?: number;
 }
 
 export type QueryLanguage = "sql" | "cosmos";

@@ -29,6 +29,35 @@ public class BatchSplitterTests
     {
         Assert.Equal(["SELECT 1;\nSELECT 2;"], BatchSplitter.Split("SELECT 1;\nSELECT 2;"));
     }
+
+    [Fact]
+    public void Reports_the_script_line_each_batch_starts_on()
+    {
+        // Leading blank lines are trimmed from a batch, so its line is that of its first text.
+        var batches = BatchSplitter.SplitWithLines("SELECT 1\r\nGO\r\n\r\n  \r\nSELECT 2\nGO\n-- note\nSELECT 3");
+        Assert.Equal([("SELECT 1", 1), ("SELECT 2", 5), ("-- note\nSELECT 3", 7)], batches.Select(b => (b.Text, b.Line)));
+    }
+}
+
+public class QueryErrorTests
+{
+    [Fact]
+    public void Batch_line_is_added_to_the_server_line()
+    {
+        Assert.Equal(new QueryError(208, 41, "Line 41: Invalid object name 'x'."), SqlBackend.ToQueryError(208, 2, "", "Invalid object name 'x'.", 40));
+    }
+
+    [Fact]
+    public void Error_inside_a_procedure_names_it_and_has_no_script_line()
+    {
+        Assert.Equal(new QueryError(208, null, "Procedure p, line 3: Invalid object name 'x'."), SqlBackend.ToQueryError(208, 3, "p", "Invalid object name 'x'.", 40));
+    }
+
+    [Fact]
+    public void Error_without_a_line_keeps_its_text()
+    {
+        Assert.Equal(new QueryError(18456, null, "Login failed."), SqlBackend.ToQueryError(18456, 0, null, "Login failed.", 1));
+    }
 }
 
 public class SqlValueTests
@@ -200,6 +229,34 @@ public sealed class QueryIntegrationTests : IDisposable
 
         Assert.Single(summary.ResultSets);
         Assert.Contains("DoesNotExist", summary.Error);
+    }
+
+    [SqlFact(NeedsWindows = true), Trait("Category", "SqlIntegration")]
+    public async Task Sql_errors_carry_their_number_and_script_line()
+    {
+        // 207 is reported at the column's own line, 208 at the statement's first line; both counted from the script's
+        // start, not the GO batch's. Each error is its own message.
+        var summary = await Service().ExecuteAsync(new QueryRequest("q7", "env:dev/conn:sql1/db:Orders",
+            "SELECT 1 AS ok\nGO\n\nSELECT o.OrderId,\n  o.Nmae, o.Nmbr\nFROM sales.[Order] o"), default);
+
+        Assert.Equal("Line 5: Invalid column name 'Nmae'.", summary.Error?.ReplaceLineEndings("\n").Split('\n')[0]);
+        var errors = Notes("query.message").Where(m => m.GetProperty("kind").GetString() == "error").ToList();
+        Assert.Equal([(207, 5, "Line 5: Invalid column name 'Nmae'."), (207, 5, "Line 5: Invalid column name 'Nmbr'.")],
+            errors.Select(e => (e.GetProperty("number").GetInt32(), e.GetProperty("line").GetInt32(), e.GetProperty("text").GetString())));
+    }
+
+    [SqlFact(NeedsWindows = true), Trait("Category", "SqlIntegration")]
+    public async Task Sql_error_inside_a_procedure_has_no_script_line()
+    {
+        var service = Service();
+        await service.ExecuteAsync(new QueryRequest("q8", "env:dev/conn:sql1/db:Orders",
+            "CREATE OR ALTER PROCEDURE dbo.PanopticTestMissing AS\n\nSELECT * FROM dbo.NoSuchTable"), default);
+        await service.ExecuteAsync(new QueryRequest("q9", "env:dev/conn:sql1/db:Orders", "\n\nEXEC dbo.PanopticTestMissing"), default);
+
+        var error = Notes("query.message").Last(m => m.GetProperty("kind").GetString() == "error");
+        Assert.Equal(208, error.GetProperty("number").GetInt32());
+        Assert.False(error.TryGetProperty("line", out _));
+        Assert.Equal("Procedure dbo.PanopticTestMissing, line 3: Invalid object name 'dbo.NoSuchTable'.", error.GetProperty("text").GetString());
     }
 
     [SqlFact(NeedsWindows = true), Trait("Category", "SqlIntegration")]

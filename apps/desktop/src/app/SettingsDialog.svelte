@@ -133,6 +133,11 @@
     ><input type="checkbox" bind:checked={editor.autoRefreshOnDdl} disabled={!editor.intellisense} /> Refresh IntelliSense after running CREATE, ALTER or DROP</label
   >
 
+  <span></span>
+  <label class="check"
+    ><input type="checkbox" bind:checked={editor.warnUnknownNames} disabled={!editor.intellisense} /> Warn about unknown names before running</label
+  >
+
   <label for="s-sample">Cosmos sample size</label>
   <input id="s-sample" type="number" min="10" max="500" step="10" bind:value={editor.catalogSampleDocs} disabled={!editor.intellisense} />
 
