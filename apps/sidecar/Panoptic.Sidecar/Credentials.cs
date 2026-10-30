@@ -10,14 +10,14 @@ namespace Panoptic.Sidecar;
 /// One Entra credential per tenant, shared by SQL and Cosmos connections (ADR 0007).
 /// Tries the WAM broker first, which can reuse the account signed in to Windows silently, and
 /// falls back to device-code flow if the broker is unavailable. Tokens are cached by MSAL in the
-/// user profile, encrypted with DPAPI.
+/// user profile, encrypted with DPAPI. Tests pass <c>create</c> to supply their own credentials.
 /// </summary>
-public sealed class Credentials(Action<DeviceCodePrompt> onDeviceCode)
+public sealed class Credentials(Action<DeviceCodePrompt> onDeviceCode, Func<string, TokenCredential>? create = null)
 {
     private readonly ConcurrentDictionary<string, TokenCredential> _byTenant = new();
 
     public TokenCredential For(string? tenantId) =>
-        _byTenant.GetOrAdd(string.IsNullOrWhiteSpace(tenantId) ? "" : tenantId.Trim(), Create);
+        _byTenant.GetOrAdd(string.IsNullOrWhiteSpace(tenantId) ? "" : tenantId.Trim(), create ?? Create);
 
     private TokenCredential Create(string tenantId)
     {
