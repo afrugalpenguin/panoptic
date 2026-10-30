@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Azure.Core;
 using Microsoft.Data.SqlClient;
 
@@ -22,6 +23,8 @@ public sealed class SqlBackend(Credentials credentials) : IBackend
     };
 
     private static readonly HashSet<string> SystemDatabases = ["master", "model", "msdb", "tempdb"];
+
+    private readonly ConcurrentDictionary<TokenCredential, Func<SqlAuthenticationParameters, CancellationToken, Task<SqlAuthenticationToken>>> _tokenCallbacks = new();
 
     public async Task<TreeNode[]> ChildrenAsync(ConnectionConfig c, string? secret, NodePath path, int start, CancellationToken ct)
     {
@@ -291,15 +294,7 @@ public sealed class SqlBackend(Credentials credentials) : IBackend
                 conn = new SqlConnection(builder.ConnectionString);
                 break;
             case AuthKinds.Entra:
-                var credential = credentials.For(c.TenantId);
-                conn = new SqlConnection(builder.ConnectionString)
-                {
-                    AccessTokenCallback = async (_, token) =>
-                    {
-                        var t = await credential.GetTokenAsync(new TokenRequestContext(SqlScope), token);
-                        return new SqlAuthenticationToken(t.Token, t.ExpiresOn);
-                    },
-                };
+                conn = new SqlConnection(builder.ConnectionString) { AccessTokenCallback = TokenCallbackFor(c.TenantId) };
                 break;
             default:
                 throw new RpcException(RpcException.InvalidParams, $"SQL Server does not support auth '{c.Auth}'");
@@ -316,4 +311,29 @@ public sealed class SqlBackend(Credentials credentials) : IBackend
             throw SqlErrors.ToRpc(ex, c, database);
         }
     }
+
+    /// <summary>
+    /// One callback per tenant credential. SqlClient keys its pool on the callback instance as well as the connection
+    /// string, so a new lambda per open meant a new pool, and a fresh TCP, TLS and Entra login, on every expand.
+    /// </summary>
+    public Func<SqlAuthenticationParameters, CancellationToken, Task<SqlAuthenticationToken>> TokenCallbackFor(string? tenantId) =>
+        _tokenCallbacks.GetOrAdd(credentials.For(tenantId), TokenCallback);
+
+    /// <summary>
+    /// SqlClient cancels <c>token</c> when the connect timeout runs out. WaitAsync stops waiting then even if the
+    /// credential does not observe it (a WAM dialog or device-code poll), so OpenAsync cannot hang on sign-in.
+    /// </summary>
+    public static Func<SqlAuthenticationParameters, CancellationToken, Task<SqlAuthenticationToken>> TokenCallback(TokenCredential credential) =>
+        async (_, token) =>
+        {
+            try
+            {
+                var t = await credential.GetTokenAsync(new TokenRequestContext(SqlScope), token).AsTask().WaitAsync(token);
+                return new SqlAuthenticationToken(t.Token, t.ExpiresOn);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                throw new TimeoutException("Entra sign-in did not finish within the connection timeout. Complete any sign-in prompt, then retry.");
+            }
+        };
 }
