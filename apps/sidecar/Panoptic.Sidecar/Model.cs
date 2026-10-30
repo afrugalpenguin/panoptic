@@ -76,8 +76,20 @@ public sealed record ResultSetSummary(int RowCount);
 /// <param name="Committed">Read-only environment, but the guard transaction ended before the rollback (a COMMIT or ROLLBACK in the script, or an error that aborted it): changes may have been committed.</param>
 public sealed record QuerySummary(string QueryId, ResultSetSummary[] ResultSets, double ElapsedMs, bool RolledBack, bool Committed, bool Cancelled, string? Error, double? RequestCharge);
 public sealed record QueryTemplateParams(string NodeId, string Action);
-/// <param name="Language">"sql" or "cosmos".</param>
-public sealed record QueryTemplateResult(string? Text, string Language);
+/// <param name="Language">The backend's editor language: "sql" or "cosmos" today.</param>
+/// <param name="Scope">What the tab runs against, so the UI never parses the node id.</param>
+public sealed record QueryTemplateResult(string? Text, string Language, QueryScope? Scope = null);
+/// <summary>A node's query scope for the UI (added 2026-10-30, ADR 0005).</summary>
+/// <param name="Connection">The connection's node id.</param>
+/// <param name="Database">The node's own database, if it is at or below one; null means the connection default.</param>
+/// <param name="Container">The node's Cosmos container, if it is at or below one.</param>
+/// <param name="Label">The nearest container, database or connection name, for a new query tab.</param>
+/// <param name="ConnectionLabel">The connection's name.</param>
+public sealed record QueryScope(string Connection, string? Database, string? Container, string Label, string ConnectionLabel);
+public sealed record NodeScopeParams(string NodeId);
+public sealed record NodeInvokeParams(string NodeId, string ActionId);
+/// <param name="Text">What the action produced (copyName: the name to copy). Null: nothing beyond the node's label.</param>
+public sealed record NodeInvokeResult(string? Text);
 /// <summary>What a node id resolves to for running a query: its environment, connection and the database or container under it.</summary>
 public sealed record QueryTarget(EnvironmentConfig Environment, ConnectionConfig Connection, string? Database, string? Container);
 public sealed record DeviceCodePrompt(string Message, string UserCode, string VerificationUri);
@@ -153,6 +165,11 @@ public sealed record StoreFile(AppConfig Config, Dictionary<string, string> Secr
 [JsonSerializable(typeof(QuerySummary))]
 [JsonSerializable(typeof(QueryTemplateParams))]
 [JsonSerializable(typeof(QueryTemplateResult))]
+[JsonSerializable(typeof(QueryScope))]
+[JsonSerializable(typeof(NodeScopeParams))]
+[JsonSerializable(typeof(NodeInvokeParams))]
+[JsonSerializable(typeof(NodeInvokeResult))]
+[JsonSerializable(typeof(Dictionary<string, string>))]
 [JsonSerializable(typeof(Catalog.DatabaseCatalog))]
 [JsonSerializable(typeof(Catalog.CatalogParams))]
 [JsonSerializable(typeof(Catalog.CatalogResult))]

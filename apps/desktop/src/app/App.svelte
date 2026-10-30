@@ -8,7 +8,7 @@
   import { scheduleUpdateChecks } from "../update-schedule";
   import { createUpdateChecker, currentVersion, type UpdateState } from "../updates";
   import { parseChangelog, sectionsSince, type ChangelogSection } from "../whats-new";
-  import { createApi, type Api, type AppConfig, type AppSettings, type ConnectionConfig, type DeviceCodePrompt, type EnvironmentConfig } from "./api";
+  import { createApi, type Api, type AppConfig, type AppSettings, type ConnectionConfig, type DeviceCodePrompt, type EnvironmentConfig, type TreeNode } from "./api";
   import ConnectionDialog from "./ConnectionDialog.svelte";
   import ContextMenu, { type MenuItem } from "./ContextMenu.svelte";
   import DetailPane from "./DetailPane.svelte";
@@ -16,6 +16,7 @@
   import ImportDialog from "./ImportDialog.svelte";
   import IconButton from "./IconButton.svelte";
   import KindChips from "./KindChips.svelte";
+  import { actionItems, actionLabel, copiedText, queryItems, shortcutAction, type NodeActionHandlers } from "./node-menu";
   import Workspace from "../query/Workspace.svelte";
   import { preloadMonaco } from "../query/preload";
   import { QueryWorkspace } from "../query/store.svelte";
@@ -42,6 +43,8 @@
   let update = $state<UpdateState>();
   let deviceCode = $state<DeviceCodePrompt>();
   let menu = $state<{ x: number; y: number; items: (MenuItem | "separator")[] }>();
+  /** Context menu labels for node action ids, from the sidecar (node.actionLabels). */
+  let actionLabels = $state.raw<Record<string, string>>({});
   let dialog = $state<
     | { kind: "environment"; initial?: EnvironmentConfig }
     | { kind: "connection"; environmentId: string; initial?: ConnectionConfig }
@@ -92,9 +95,10 @@
     workspace.editor = settings.editor;
   });
 
-  // Fetch Monaco once a connection, or anything below one, is selected, ahead of the first query tab.
+  // Fetch Monaco once a connection, or anything below one (any node but an environment), is selected, ahead of the
+  // first query tab.
   $effect(() => {
-    if (selectedRow?.type === "node" && selectedRow.node.id.includes("/conn:")) preloadMonaco();
+    if (selectedRow?.type === "node" && selectedRow.node.kind !== "environment") preloadMonaco();
   });
 
   onMount(() => {
@@ -142,6 +146,10 @@
     }
     sidecar = "connected";
     sidecarText = readyText(ping);
+    api!.actionLabels().then(
+      (labels) => (actionLabels = labels),
+      () => {},
+    );
     if (initialised) {
       // Restarted: requests in flight at the exit may have landed errors since, so forget again, then
       // refresh environments and connections.
@@ -157,7 +165,7 @@
     const sidecarReadyEpochMs = nowEpochMs();
     config = await api!.config();
     await model.loadRoot();
-    await model.preload(envNodeIds());
+    await model.preload(model.childIds(""));
 
     const fcp = await firstPaintEpochMs();
     const timings = {
@@ -212,14 +220,11 @@
   }
 
   /** Re-reads environments and connections after a config change without losing expanded subtrees. */
-  /** Node ids of every environment, matching the sidecar's node paths. */
-  const envNodeIds = () => config.environments.map((e) => `env:${encodeURIComponent(e.id)}`);
-
   async function configChanged(next?: AppConfig) {
     config = next ?? (await api!.config());
     await model.reload("");
-    for (const env of config.environments) await model.reload(`env:${encodeURIComponent(env.id)}`);
-    await model.preload(envNodeIds());
+    for (const id of model.childIds("")) await model.reload(id);
+    await model.preload(model.childIds(""));
   }
 
   const envOf = (id: string) => config.environments.find((e) => e.id === id);
@@ -230,11 +235,22 @@
     }
   };
 
-  function copyName(row: Row) {
-    if (row.type !== "node") return;
-    const m = row.node.meta;
-    const text = m?.schema && m?.name ? `[${m.schema}].[${m.name}]` : (m?.name ?? row.node.label);
-    navigator.clipboard.writeText(text).catch(() => {});
+  /** Runs an action in the sidecar (copyName, or one a backend adds) and copies its text, else the node's label. */
+  async function invokeAction(node: TreeNode, actionId: string) {
+    try {
+      const result = await api!.invokeNode(node.id, actionId);
+      navigator.clipboard.writeText(copiedText(node, result)).catch(() => {});
+    } catch (e) {
+      lastLoad = { id: node.id, label: node.label, count: 0, ms: 0, error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
+  /** Explorer refresh on a connection or database also rebuilds the catalogs of query tabs open against it. */
+  function refreshQueryTabs(nodeId: string) {
+    api!.queryScope(nodeId).then(
+      (scope) => workspace.refreshForScope(scope),
+      () => {},
+    );
   }
 
   function addConnection(environmentId?: string) {
@@ -253,9 +269,13 @@
       items.push({ label: "Retry", run: () => model.refresh(row.parentId) });
     } else {
       const n = row.node;
-      if (n.actions.includes("selectTop")) items.push({ label: "Select top 1000", run: () => openQuery(row, "selectTop") });
-      if (n.actions.includes("newQuery")) items.push({ label: "New query (Ctrl+N)", run: () => openQuery(row, "newQuery") });
-      if (n.actions.includes("selectTop") || n.actions.includes("newQuery")) items.push("separator");
+      const on: NodeActionHandlers = {
+        openQuery: (action) => openQuery(row, action),
+        refresh: () => (model.refresh(n.id), n.kind === "database" && refreshQueryTabs(n.id)),
+        invoke: (actionId) => invokeAction(n, actionId),
+      };
+      items.push(...queryItems(n, actionLabels, on));
+      // Environments and connections are Panoptic's own config, so their menus also edit, move and delete them.
       if (n.kind === "environment") {
         const env = envOf(n.meta!.environmentId);
         items.push({ label: "New connection...", run: () => addConnection(env?.id) });
@@ -264,7 +284,7 @@
         const position = env ? order.indexOf(env.id) : -1;
         items.push({ label: "Move up", disabled: position <= 0, run: () => env && moveEnv(env.id, -1) });
         items.push({ label: "Move down", disabled: position < 0 || position >= order.length - 1, run: () => env && moveEnv(env.id, 1) });
-        items.push({ label: "Refresh", run: () => model.refresh(n.id) });
+        items.push({ label: actionLabel("refresh", actionLabels), run: () => model.refresh(n.id) });
         items.push("separator");
         items.push({
           label: "Delete environment",
@@ -280,8 +300,7 @@
           label: "Edit connection...",
           run: () => found && (dialog = { kind: "connection", environmentId: found.env.id, initial: found.connection }),
         });
-        items.push({ label: "Refresh", run: () => (model.refresh(n.id), workspace.refreshForNode(n.id)) });
-        items.push({ label: "Copy name", run: () => copyName(row) });
+        items.push(...actionItems(n, actionLabels, { ...on, refresh: () => (model.refresh(n.id), refreshQueryTabs(n.id)) }));
         items.push("separator");
         items.push({
           label: "Remove connection",
@@ -292,38 +311,30 @@
           },
         });
       } else {
-        if (n.actions.includes("refresh"))
-          items.push({ label: "Refresh", run: () => (model.refresh(n.id), n.kind === "database" && workspace.refreshForNode(n.id)) });
-        if (n.actions.includes("copyName")) items.push({ label: "Copy name", run: () => copyName(row) });
+        items.push(...actionItems(n, actionLabels, on));
       }
     }
     if (items.length) menu = { x, y, items };
   }
 
-  /** Nearest ancestor (or the node itself) of one of the given kinds. */
-  function ancestor(id: string, kinds: string[]) {
-    for (let cur: string | undefined = id; cur; cur = model.parentOf(cur)) {
-      const n = model.node(cur);
-      if (n && kinds.includes(n.kind)) return n;
-    }
-  }
-
   /** Opens a query tab against a node: New query, or Select top 1000 which also runs it. */
   async function openQuery(row: Row, action: "newQuery" | "selectTop") {
-    if (row.type !== "node" || !api) return;
+    // Only nodes that carry the action open a tab: the sidecar never offers it on a backend that cannot query.
+    if (row.type !== "node" || !api || !row.node.actions.includes(action)) return;
     const n = row.node;
     try {
+      // The sidecar resolves the tab's scope (connection, database, container) and names from the node id.
       const template = await api.queryTemplate(n.id, action);
-      const scope = ancestor(n.id, ["container", "database"]) ?? ancestor(n.id, ["connection"]);
-      const connection = ancestor(n.id, ["connection"]);
+      const scope = template.scope;
       const tab = workspace.open(
         {
           nodeId: n.id,
           label: action === "selectTop" ? n.label : (scope?.label ?? n.label),
-          connection: connection?.label ?? "",
+          connection: scope?.connectionLabel ?? "",
           envColor: row.envColor,
           readOnly: row.readOnly,
           language: template.language,
+          scope,
         },
         template.text ?? "",
       );
@@ -334,9 +345,10 @@
   }
 
   function onGlobalKeydown(e: KeyboardEvent) {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "n" && selectedRow?.type === "node" && selectedRow.node.actions.includes("newQuery")) {
+    const action = selectedRow?.type === "node" ? shortcutAction(e, selectedRow.node) : undefined;
+    if (action && selectedRow) {
       e.preventDefault();
-      void openQuery(selectedRow, "newQuery");
+      void openQuery(selectedRow, action);
     }
   }
 

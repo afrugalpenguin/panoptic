@@ -10,6 +10,10 @@ function quote(name: string): string {
 }
 
 /**
+ * The reference for the drag rule, no longer used by the app: the sidecar's backends now put this text in node
+ * meta "dragText" (SqlBackend.DragName, CosmosBackend.DragText), with the same cases pinned in DragTextTests.cs. Kept
+ * so drag-text.test.ts keeps passing unchanged until a follow-up removes both.
+ *
  * The text a tree node inserts when dragged into the query editor, or undefined when it has no name worth inserting.
  * `connectionKind` is the kind of the connection the node sits under.
  */

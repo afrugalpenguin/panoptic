@@ -4,7 +4,7 @@
 
   let { row, onAddEnvironment, onImport }: { row: Row | undefined; onAddEnvironment: () => void; onImport: () => void } = $props();
 
-  const HIDDEN_META = new Set(["json", "environmentId", "connectionId"]);
+  const HIDDEN_META = new Set(["json", "environmentId", "connectionId", "dragText"]);
 
   const node = $derived(row?.type === "node" ? row.node : undefined);
   const meta = $derived(Object.entries(node?.meta ?? {}).filter(([k]) => !HIDDEN_META.has(k)));

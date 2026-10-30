@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { dragText } from "./drag-text";
   import type { Row, TreeModel } from "./tree-model";
   import ConnectionRow from "./rows/ConnectionRow.svelte";
   import EnvHeaderRow from "./rows/EnvHeaderRow.svelte";
@@ -164,11 +163,9 @@
     }
   }
 
-  /** Dragging a row into the query editor inserts its name; Monaco's drop handler places the text. */
+  /** Dragging a row into the query editor inserts the text its backend gave it (meta.dragText); Monaco's drop handler places it. */
   function onRowDragStart(e: DragEvent, row: Row) {
-    let connection = row.type === "node" ? row.node : undefined;
-    while (connection && connection.kind !== "connection") connection = model.node(model.parentOf(connection.id) ?? "");
-    const text = row.type === "node" ? dragText(row.node, connection?.meta?.connectionKind ?? connection?.icon) : undefined;
+    const text = row.type === "node" ? row.node.meta?.dragText : undefined;
     if (!text || !e.dataTransfer) return e.preventDefault();
     e.dataTransfer.setData("text/plain", text);
     e.dataTransfer.effectAllowed = "copy";

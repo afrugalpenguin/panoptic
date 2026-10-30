@@ -1,3 +1,4 @@
+import type { QueryLanguage, QueryScope } from "../query/types";
 import type { RpcClient } from "../rpc";
 
 // Mirrors the sidecar's records in apps/sidecar/Panoptic.Sidecar/Model.cs.
@@ -130,7 +131,13 @@ export function createApi(rpc: RpcClient) {
       rpc.request<import("../query/types").QuerySummary>("query.execute", request, 2_147_483_647),
     cancelQuery: (queryId: string) => rpc.request<boolean>("query.cancel", { queryId }),
     queryTemplate: (nodeId: string, action: "selectTop" | "newQuery") =>
-      rpc.request<{ text?: string | null; language: "sql" | "cosmos" }>("query.template", { nodeId, action }),
+      rpc.request<{ text?: string | null; language: QueryLanguage; scope?: QueryScope }>("query.template", { nodeId, action }),
+    /** The connection, database and container a node's query tabs belong to, and their names. */
+    queryScope: (nodeId: string) => rpc.request<QueryScope>("query.scope", { nodeId }),
+    /** Context menu labels for every action id a node can carry. */
+    actionLabels: () => rpc.request<Record<string, string>>("node.actionLabels"),
+    /** Runs a node action in the sidecar (copyName and any a backend adds); null text means "use the label". */
+    invokeNode: (nodeId: string, actionId: string) => rpc.request<{ text?: string | null }>("node.invoke", { nodeId, actionId }),
     /** Aborting `signal` cancels the expand in the sidecar ($/cancelRequest) and rejects with an AbortError. */
     children: (nodeId: string, signal?: AbortSignal) => rpc.request<TreeNode[]>("tree.children", { nodeId }, 180_000, signal),
     /** Answers at once from memory or disk; a fresher catalog arrives as a catalog.updated notification. */

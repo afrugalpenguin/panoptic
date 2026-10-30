@@ -132,10 +132,15 @@ public static class Methods
             {
                 var args = Rpc.Params(p, SidecarJson.Default.QueryTemplateParams);
                 var target = tree.ResolveTarget(args.NodeId);
-                var language = target.Connection.Kind == ConnectionKinds.Cosmos ? "cosmos" : "sql";
-                var text = args.Action == "selectTop" ? Query.QueryTemplates.SelectTop(target.Connection.Kind, NodePath.Parse(args.NodeId)) : "";
-                return Task.FromResult(Rpc.Result(new QueryTemplateResult(text, language), SidecarJson.Default.QueryTemplateResult));
+                var backend = tree.QueryBackendFor(target.Connection, "cannot run queries");
+                var text = backend.TemplateFor(NodePath.Parse(args.NodeId), args.Action);
+                return Task.FromResult(Rpc.Result(new QueryTemplateResult(text, backend.EditorLanguage, tree.ScopeOf(args.NodeId)),
+                    SidecarJson.Default.QueryTemplateResult));
             };
+
+            // The connection, database and container a node's query tabs belong to, for refreshing their catalogs.
+            methods["query.scope"] = (p, _) =>
+                Task.FromResult(Rpc.Result(tree.ScopeOf(Rpc.Params(p, SidecarJson.Default.NodeScopeParams).NodeId), SidecarJson.Default.QueryScope));
         }
 
         if (catalog is not null)
@@ -147,6 +152,16 @@ public static class Methods
             methods["catalog.refresh"] = (p, _) =>
                 Task.FromResult(Rpc.Result(catalog.Refresh(Rpc.Params(p, SidecarJson.Default.CatalogParams)), SidecarJson.Default.CatalogResult));
         }
+
+        // Labels for the context menu: the UI renders a node's action ids with these.
+        methods["node.actionLabels"] = (_, _) => Task.FromResult(Rpc.Result(tree.ActionLabels(), SidecarJson.Default.DictionaryStringString));
+
+        // Actions the sidecar performs (copyName). A null text means "use the node's label".
+        methods["node.invoke"] = async (p, ct) =>
+        {
+            var args = Rpc.Params(p, SidecarJson.Default.NodeInvokeParams);
+            return Rpc.Result(new NodeInvokeResult(await tree.InvokeAsync(args.NodeId, args.ActionId, ct)), SidecarJson.Default.NodeInvokeResult);
+        };
 
         methods["tree.children"] = async (p, ct) =>
         {
