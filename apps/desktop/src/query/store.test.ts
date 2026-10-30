@@ -164,6 +164,50 @@ describe("QueryWorkspace", () => {
       ws.reveal(tab, tab.messages[0]);
       expect(tab.reveal).toEqual({ id: tab.messages[0].id, seq: 2 });
     });
+
+    describe("Postgres", () => {
+      const pg = { ...target, language: "pgsql" as const };
+      const pgScript = 'select 1;\n\nselect o.idd, "Order Lines".qty\nfrom sales."order" o';
+
+      function failingPg(text: string) {
+        const { ws, api } = setup();
+        const tab = ws.open(pg, text);
+        const error = (message: { state?: string; line?: number; column?: number; text: string }) =>
+          ws.handle("query.message", { queryId: api.executeQuery.mock.calls[0][0].queryId, kind: "error", elapsedMs: 1, ...message });
+        return { ws, tab, error };
+      }
+
+      it("marks the name at the server's line and column, dotted and quoted parts included", () => {
+        const { ws, tab, error } = failingPg(pgScript);
+        ws.run(tab);
+        error({ state: "42703", line: 3, column: 8, text: "Line 3: column o.idd does not exist" });
+        error({ state: "42P01", line: 3, column: 15, text: 'Line 3: missing FROM-clause entry for table "Order Lines"' });
+        expect(tab.messages.map((m) => [pgScript.slice(m.at!.start, m.at!.end), m.located])).toEqual([
+          ["o.idd", true],
+          ['"Order Lines".qty', true],
+        ]);
+      });
+
+      it("maps a selection's lines to the editor's", () => {
+        const text = "-- header\n\n" + pgScript;
+        const { ws, tab, error } = failingPg(text);
+        ws.run(tab, pgScript, text.indexOf("select 1"));
+        error({ state: "42703", line: 3, column: 8, text: "Line 3: column o.idd does not exist" });
+        expect(tab.messages[0].text).toBe("Line 5: column o.idd does not exist");
+        expect(text.slice(tab.messages[0].at!.start, tab.messages[0].at!.end)).toBe("o.idd");
+      });
+
+      it("marks the line's start when there is no column, and nothing without a line", () => {
+        const { ws, tab, error } = failingPg("select 1;\n  select 1/0");
+        ws.run(tab);
+        error({ state: "22012", line: 2, text: "Line 2: division by zero" });
+        error({ state: "P0001", text: "PL/pgSQL function f() line 3 at RAISE: boom" });
+        expect(tab.messages.map((m) => [m.at, m.located])).toEqual([
+          [{ start: 12, end: 12 }, false],
+          [undefined, undefined],
+        ]);
+      });
+    });
   });
 
   describe("What's new tab", () => {
@@ -288,6 +332,16 @@ describe("QueryWorkspace: IntelliSense", () => {
     expect(ws.intellisenseStatus(tab).text).toBe("IntelliSense: building");
     ws.handle("catalog.updated", { key: "key:node", state: "current", catalog });
     expect(ws.intellisenseStatus(tab).text).toBe("IntelliSense: current");
+  });
+
+  it("Postgres tabs list databases but load no catalog until the pgsql dialect lands", async () => {
+    const { ws, api } = setupCatalog();
+    const tab = ws.open({ ...target, language: "pgsql" }, "");
+    await settle();
+    expect(api.catalogGet).not.toHaveBeenCalled();
+    expect(tab.databases).toEqual(["Orders", "Sales"]);
+    expect(ws.intellisense(tab)()).toBeUndefined();
+    expect(ws.intellisenseStatus(tab).text).toBe("IntelliSense: not yet for Postgres");
   });
 
   it("switching database reloads the catalog and the query runs against it", async () => {

@@ -283,6 +283,14 @@
   .time {
     display: inline-block;
     width: 64px;
+    text-indent: 0;
+  }
+  /* Postgres errors carry DETAIL and HINT lines: kept, and hung under the text rather than the time. */
+  .messages > div,
+  .messages > .row {
+    white-space: pre-wrap;
+    padding-left: 64px;
+    text-indent: -64px;
   }
   .error {
     color: var(--bad);

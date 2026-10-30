@@ -28,7 +28,7 @@
     warnUnknownNames?: boolean;
   } = $props();
 
-  const MONACO_LANGUAGE: Record<QueryLanguage, string> = { sql: "tsql", cosmos: "cosmos-sql" };
+  const MONACO_LANGUAGE: Record<QueryLanguage, string> = { sql: "tsql", cosmos: "cosmos-sql", pgsql: "pgsql" };
   /** Like the editor's own diagnostics would be: after typing pauses, never per keystroke (docs/query-editor.md). */
   const LINT_DELAY_MS = 500;
 
