@@ -13,7 +13,10 @@ export interface QuerySummary {
   queryId: string;
   resultSets: { rowCount: number }[];
   elapsedMs: number;
+  /** Read-only environment: the guard transaction was still open at the end and was rolled back. */
   rolledBack: boolean;
+  /** Read-only environment: a COMMIT or ROLLBACK in the script (or an error) ended the guard transaction early, so changes may be committed. */
+  committed: boolean;
   cancelled: boolean;
   error?: string | null;
   requestCharge?: number | null;

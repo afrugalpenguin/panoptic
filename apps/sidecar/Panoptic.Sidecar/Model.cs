@@ -72,7 +72,9 @@ public sealed record TestConnectionResult(bool Ok, double ElapsedMs, string? Err
 public sealed record QueryRequest(string QueryId, string NodeId, string Text, string? Database = null);
 public sealed record QueryCancelParams(string QueryId);
 public sealed record ResultSetSummary(int RowCount);
-public sealed record QuerySummary(string QueryId, ResultSetSummary[] ResultSets, double ElapsedMs, bool RolledBack, bool Cancelled, string? Error, double? RequestCharge);
+/// <param name="RolledBack">Read-only environment, and the guard transaction was still open and rolled back.</param>
+/// <param name="Committed">Read-only environment, but the guard transaction ended before the rollback (a COMMIT or ROLLBACK in the script, or an error that aborted it): changes may have been committed.</param>
+public sealed record QuerySummary(string QueryId, ResultSetSummary[] ResultSets, double ElapsedMs, bool RolledBack, bool Committed, bool Cancelled, string? Error, double? RequestCharge);
 public sealed record QueryTemplateParams(string NodeId, string Action);
 /// <param name="Language">"sql" or "cosmos".</param>
 public sealed record QueryTemplateResult(string? Text, string Language);

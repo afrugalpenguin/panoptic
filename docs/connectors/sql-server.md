@@ -67,6 +67,26 @@ Catalogs are cached under `%LOCALAPPDATA%\Panoptic\catalog`, one DPAPI-encrypted
 connection and database, named by a hash, so no server, database or object name is stored in
 clear text.
 
+## Read-only environments
+
+In a read-only environment, a query runs inside a transaction that Panoptic rolls back when the
+query ends (`Query/QueryService.cs`). This is belt and braces, not a security boundary: **a login
+with read-only permissions is the real control**, and is the only thing that stops a write. The
+transaction does not cover:
+
+- **COMMIT in the script, or in a procedure it calls.** A bare `COMMIT` (or `ROLLBACK`) ends the
+  guard transaction. A balanced `BEGIN TRAN ... COMMIT` pair does not: it nests inside the guard and
+  is still rolled back. After each batch (each `GO`), Panoptic checks `@@TRANCOUNT`; if the guard has
+  ended, it stops before the next batch, reports the query as committed, and shows an error. The
+  check is per batch, not per statement: statements after the `COMMIT` in the same batch have
+  already run, outside the guard.
+- **Side effects outside the database transaction**, such as `xp_cmdshell`, `sp_send_dbmail`,
+  linked-server calls that are not enlisted in the transaction, sequence values and identity
+  increments.
+
+Synapse serverless pools do not support transactions, so Panoptic refuses to run queries in a
+read-only environment on one rather than run them unguarded. Use a read-only login there.
+
 ## Importing connections
 
 **Import** (in the explorer toolbar, or on the empty start screen) reads saved connections from

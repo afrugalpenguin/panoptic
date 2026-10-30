@@ -78,7 +78,11 @@
     {/if}
     <span class="target" style:--band={tab.target.envColor ?? "transparent"}>
       {tab.target.connection} / {tab.target.label}
-      {#if tab.target.readOnly}<span class="ro" title="Changes are always rolled back in this environment">read-only</span>{/if}
+      {#if tab.target.readOnly}<span
+          class="ro"
+          title="SQL runs in a transaction that is rolled back at the end. A COMMIT in the script ends it early (the remaining batches are then skipped), and side effects outside the database transaction (xp_cmdshell, sp_send_dbmail, linked servers) are not rolled back. A read-only login is the real protection."
+          >read-only</span
+        >{/if}
     </span>
     {#if databaseOptions.length > 0}
       <select
@@ -101,7 +105,11 @@
       <span class="muted">
         {tab.summary.cancelled ? "Cancelled" : tab.summary.error ? "Failed" : "Done"} in {(tab.summary.elapsedMs / 1000).toFixed(2)} s
         {#if tab.summary.requestCharge != null}, {tab.summary.requestCharge.toFixed(2)} RU{/if}
+        {#if tab.summary.rolledBack}, rolled back{/if}
       </span>
+      {#if tab.summary.committed}<span class="committed" title="A COMMIT or ROLLBACK in the script ended the read-only transaction. See Messages."
+          >Read-only guard bypassed: changes may be committed</span
+        >{/if}
     {/if}
   </div>
 
@@ -171,6 +179,10 @@
   }
   .cancel {
     color: var(--bad);
+  }
+  .committed {
+    color: var(--bad);
+    font-weight: 600;
   }
   .database {
     max-width: 220px;
