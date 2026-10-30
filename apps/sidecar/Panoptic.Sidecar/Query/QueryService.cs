@@ -10,7 +10,8 @@ namespace Panoptic.Sidecar.Query;
 /// before the query finishes:
 ///   query.rows    { queryId, index, columns?, rows }  500 rows at a time; columns on a set's first
 ///                                                     batch, and again whenever Cosmos finds new ones
-///   query.message { queryId, kind, text }             PRINT output, rows affected, errors
+///   query.message { queryId, kind, text, number?, line? }  PRINT output, rows affected, errors (one per server error,
+///                                                    with its number and 1-based line in the sent text)
 /// ExecuteAsync returns a summary when everything has finished, been cancelled or failed; results
 /// already streamed are kept. The connection's backend executes the text (IBackend.ExecuteAsync) and
 /// streams into the run; this service owns the run's bookkeeping. Read-only environments are the
@@ -112,12 +113,13 @@ public sealed class QueryService
             Sets[set] += rows.Count;
         }
 
-        public void Message(string kind, string text) => owner.Message(this, kind, text);
+        public void Message(string kind, string text) => owner.Message(this, kind, text, null);
 
-        public void Fail(string error)
+        public void Fail(string error, IReadOnlyList<QueryError>? errors = null)
         {
             Error = error;
-            Message("error", error);
+            if (errors is null or { Count: 0 }) Message("error", error);
+            else foreach (var e in errors) owner.Message(this, "error", e.Text, e);
         }
 
         public void RolledBack() => IsRolledBack = true;
@@ -155,12 +157,17 @@ public sealed class QueryService
         w.WriteEndObject();
     });
 
-    private void Message(Run run, string kind, string text) => _notify("query.message", w =>
+    private void Message(Run run, string kind, string text, QueryError? error) => _notify("query.message", w =>
     {
         w.WriteStartObject();
         w.WriteString("queryId", run.QueryId);
         w.WriteString("kind", kind);
         w.WriteString("text", text);
+        if (error is not null)
+        {
+            w.WriteNumber("number", error.Number);
+            if (error.Line is { } line) w.WriteNumber("line", line);
+        }
         w.WriteNumber("elapsedMs", Math.Round(run.Clock.Elapsed.TotalMilliseconds));
         w.WriteEndObject();
     });

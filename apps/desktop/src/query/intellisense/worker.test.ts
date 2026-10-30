@@ -75,3 +75,34 @@ describe("IntelliSenseClient", () => {
     expect((await second).items.map((i) => i.label)).toEqual(["Main"]);
   });
 });
+
+describe("worker suggest and lint", () => {
+  handle({ type: "catalog", key: "kS", catalog: { stamp: "x", schemas: ["dbo"], types: [], objects: [
+    { name: "Contracts", schema: "dbo", kind: "table", columns: [{ name: "Signed", type: "date", nullable: true }] },
+    { name: "Archive", schema: "dbo", kind: "proc", params: [] },
+  ] } });
+  const keys = { current: "kS", databases: { s: "kS" } };
+  const suggest = (number: number, parts: string[], tables = [] as { name: string }[]) =>
+    (handle({ type: "suggest", id: 3, number, parts, tables, keys }) as { suggestion?: { label: string } }).suggestion?.label;
+
+  it("suggests an object for 208, a procedure for 2812 and a column for 207", () => {
+    expect(suggest(208, ["contract"])).toBe("dbo.Contracts");
+    expect(suggest(2812, ["Archiv"])).toBe("dbo.Archive");
+    expect(suggest(207, ["Signd"], [{ name: "Contracts" }])).toBe("Signed");
+    expect(suggest(4104, ["c", "Signd"], [{ name: "Contracts" }])).toBeUndefined();
+  });
+
+  it("lints the statement at the offset", () => {
+    const text = "select * from Contrcts";
+    expect(handle({ type: "lint", id: 4, text, offset: 0, keys })).toEqual({ id: 4, warnings: [{ start: 14, end: 22, message: "Unknown table or view 'Contrcts'." }] });
+  });
+
+  it("does not let one suggestion supersede another", async () => {
+    const client = new IntelliSenseClient(() => fakeWorker([]));
+    const [a, b] = await Promise.all([
+      client.suggest({ number: 208, parts: ["contract"], tables: [] }, keys),
+      client.suggest({ number: 2812, parts: ["Archiv"], tables: [] }, keys),
+    ]);
+    expect([a.suggestion?.label, b.suggestion?.label]).toEqual(["dbo.Contracts", "dbo.Archive"]);
+  });
+});

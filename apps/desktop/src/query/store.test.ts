@@ -1,16 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 import type { QuerySummary } from "./types";
+import type { Suggestion } from "./intellisense/suggest";
+import type { SuggestRequest } from "./intellisense/worker";
 import { nodeParts, QueryWorkspace } from "./store.svelte";
 
 const target = { nodeId: "env:dev/conn:c1/db:Orders", label: "Orders", connection: "sql-dev", envColor: "#2f9e44", readOnly: false, language: "sql" as const };
 
-function setup() {
+function setup(suggest?: (request: SuggestRequest) => Promise<Suggestion | undefined>) {
   let resolve!: (s: QuerySummary) => void;
   const api = {
     executeQuery: vi.fn((_: { queryId: string }) => new Promise<QuerySummary>((r) => (resolve = r))),
     cancelQuery: vi.fn(async () => true),
   };
-  const ws = new QueryWorkspace(api);
+  const ws = new QueryWorkspace(suggest ? { ...api, suggest } : api);
   return { ws, api, finish: (s: Partial<QuerySummary> = {}) => resolve({ queryId: "", resultSets: [], elapsedMs: 5, rolledBack: false, committed: false, cancelled: false, ...s }) };
 }
 
@@ -81,6 +83,87 @@ describe("QueryWorkspace", () => {
     await ws.run(tab);
     expect(tab.running).toBe(false);
     expect(tab.error).toBe("sidecar stopped");
+  });
+
+  describe("error location", () => {
+    const script = ["select 1 as a", "", "select c.Id", "from dbo.Customer c", "  join contracts k on k.CustomerId = c.Id"].join("\n");
+
+    function failing(text: string, suggest?: (request: SuggestRequest) => Promise<Suggestion | undefined>) {
+      const { ws, api } = setup(suggest);
+      const tab = ws.open(target, text);
+      const error = (message: { number?: number; line?: number; text: string }) =>
+        ws.handle("query.message", { queryId: api.executeQuery.mock.calls[0][0].queryId, kind: "error", elapsedMs: 1, ...message });
+      return { ws, tab, error };
+    }
+
+    it("points a name error at the token and says where the statement starts", () => {
+      const { ws, tab, error } = failing(script);
+      ws.run(tab);
+      error({ number: 208, line: 3, text: "Line 3: Invalid object name 'contracts'." });
+      const [m] = tab.messages;
+      expect(m.text).toBe("Line 5: Invalid object name 'contracts' (statement starts at line 3).");
+      expect(script.slice(m.at!.start, m.at!.end)).toBe("contracts");
+      expect(m.located).toBe(true);
+    });
+
+    it("maps a selection's lines to the editor's", () => {
+      const text = "-- header\n\n" + script;
+      const { ws, tab, error } = failing(text);
+      ws.run(tab, script, text.indexOf("select 1"));
+      error({ number: 208, line: 3, text: "Line 3: Invalid object name 'contracts'." });
+      expect(tab.messages[0].text).toBe("Line 7: Invalid object name 'contracts' (statement starts at line 5).");
+      expect(text.slice(tab.messages[0].at!.start, tab.messages[0].at!.end)).toBe("contracts");
+    });
+
+    it("keeps the reported line when the name is not found once", () => {
+      const { ws, tab, error } = failing("select 1\n\nselect * from t a join t b on 1 = 1");
+      ws.run(tab);
+      error({ number: 208, line: 3, text: "Line 3: Invalid object name 't'." });
+      error({ number: 102, line: 1, text: "Line 1: Incorrect syntax near 'x'." });
+      expect(tab.messages.map((m) => [m.text, m.located, m.at])).toEqual([
+        ["Line 3: Invalid object name 't'.", false, { start: 10, end: 10 }],
+        ["Line 1: Incorrect syntax near 'x'.", false, { start: 0, end: 0 }],
+      ]);
+    });
+
+    it("places nothing for an error without a script line", () => {
+      const { ws, tab, error } = failing("exec p");
+      ws.run(tab);
+      error({ number: 208, text: "Procedure dbo.p, line 3: Invalid object name 'x'." });
+      expect(tab.messages[0].at).toBeUndefined();
+    });
+
+    it("appends a suggestion and keeps it as a fix", async () => {
+      const suggest = vi.fn(async (_: SuggestRequest) => ({ label: "dbo.Contracts", insertText: "dbo.Contracts" }));
+      const { ws, tab, error } = failing(script, suggest);
+      ws.run(tab);
+      error({ number: 208, line: 3, text: "Line 3: Invalid object name 'contracts'." });
+      await vi.waitFor(() => expect(tab.messages[0].fix).toBeDefined());
+      expect(suggest.mock.calls[0][0]).toEqual({ number: 208, parts: ["contracts"], tables: [] });
+      expect(tab.messages[0].text).toBe("Line 5: Invalid object name 'contracts' (statement starts at line 3). Did you mean dbo.Contracts?");
+      expect(tab.messages[0].fix).toEqual({ label: "dbo.Contracts", insertText: "dbo.Contracts" });
+    });
+
+    it("leaves the message alone when there is no suggestion", async () => {
+      const suggest = vi.fn(async (_: SuggestRequest) => undefined);
+      const { ws, tab, error } = failing("select Nmae\nfrom dbo.Customer", suggest);
+      ws.run(tab);
+      error({ number: 207, line: 1, text: "Line 1: Invalid column name 'Nmae'." });
+      await vi.waitFor(() => expect(suggest).toHaveBeenCalled());
+      await Promise.resolve();
+      expect(suggest.mock.calls[0][0]).toMatchObject({ number: 207, parts: ["Nmae"], tables: [{ name: "Customer", schema: "dbo" }] });
+      expect(tab.messages[0].text).toBe("Line 1: Invalid column name 'Nmae'.");
+      expect(tab.messages[0].fix).toBeUndefined();
+    });
+
+    it("asks the editor to reveal a message", () => {
+      const { ws, tab, error } = failing(script);
+      ws.run(tab);
+      error({ number: 208, line: 3, text: "Line 3: Invalid object name 'contracts'." });
+      ws.reveal(tab, tab.messages[0]);
+      ws.reveal(tab, tab.messages[0]);
+      expect(tab.reveal).toEqual({ id: tab.messages[0].id, seq: 2 });
+    });
   });
 
   describe("What's new tab", () => {

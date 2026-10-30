@@ -19,6 +19,7 @@
   import { actionItems, actionLabel, queryItems, shortcutAction, type NodeActionHandlers } from "./node-menu";
   import Workspace from "../query/Workspace.svelte";
   import { preloadMonaco } from "../query/preload";
+  import { intellisense, syncCatalogs } from "../query/intellisense/shared";
   import { QueryWorkspace } from "../query/store.svelte";
   import SettingsDialog from "./SettingsDialog.svelte";
   import StatusBar from "./StatusBar.svelte";
@@ -56,7 +57,7 @@
   let settings = $state<AppSettings>({
     updateCheck: "startup",
     explorer: { showKindBadge: true, rowFont: "mono", envOrder: [] },
-    editor: { intellisense: true, catalogSampleDocs: 50, autoRefreshOnDdl: true },
+    editor: { intellisense: true, catalogSampleDocs: 50, autoRefreshOnDdl: true, warnUnknownNames: true },
   });
   const checkForUpdates = createUpdateChecker((s) => (update = s));
   let stopUpdateSchedule = () => {};
@@ -88,6 +89,10 @@
     catalogGet: (nodeId, database) => api!.catalogGet(nodeId, database),
     catalogRefresh: (nodeId, database) => api!.catalogRefresh(nodeId, database),
     databases: async (connection) => (await api!.children(connection)).filter((n) => n.kind === "database").map((n) => n.label),
+    suggest: async (request, info) => {
+      syncCatalogs(info);
+      return (await intellisense.suggest(request, info.keys)).suggestion;
+    },
   });
 
   // Editor settings apply to open tabs without a restart (docs/query-editor.md, "Settings").

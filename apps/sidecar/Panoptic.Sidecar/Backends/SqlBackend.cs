@@ -168,9 +168,16 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
 
         await using var tx = target.Environment.ReadOnly ? conn.BeginTransaction() : null;
         var committed = false;
+        var batchLine = 1;
         try
         {
-            var guardHeld = await RunBatches(BatchSplitter.Split(text), async batch =>
+            // Lazy, so batchLine is the line of the batch RunBatches is about to execute.
+            var batches = BatchSplitter.SplitWithLines(text).Select(b =>
+            {
+                batchLine = b.Line;
+                return b.Text;
+            });
+            var guardHeld = await RunBatches(batches, async batch =>
             {
                 await using var cmd = new SqlCommand(batch, conn, tx) { CommandTimeout = 0 };
                 var setsBefore = sink.SetCount;
@@ -188,12 +195,31 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
         }
         catch (SqlException ex) when (!ct.IsCancellationRequested)
         {
-            sink.Fail(ex.Errors.Count > 0 && ex.Errors[0].LineNumber > 0 ? $"Line {ex.Errors[0].LineNumber}: {ex.Message}" : ex.Message);
+            var errors = QueryErrors(ex.Errors.Cast<SqlError>(), batchLine);
+            var line = errors.Count > 0 ? errors[0].Line : null;
+            sink.Fail(line is not null ? $"Line {line}: {ex.Message}" : ex.Message, errors);
         }
         finally
         {
             if (tx is not null) await EndReadOnly(sink, target, conn, tx, committed);
         }
+    }
+
+    private static List<QueryError> QueryErrors(IEnumerable<SqlError> errors, int batchLine) =>
+        errors.Select(e => ToQueryError(e.Number, e.LineNumber, e.Procedure, e.Message, batchLine)).ToList();
+
+    /// <summary>
+    /// One server error as the UI gets it. SQL Server numbers lines from the start of the batch, so the batch's script
+    /// line is added. An error inside a procedure or trigger carries that module's line, not the script's: it is
+    /// named instead and gets no script line.
+    /// </summary>
+    public static QueryError ToQueryError(int number, int lineNumber, string? procedure, string message, int batchLine)
+    {
+        if (!string.IsNullOrEmpty(procedure))
+            return new QueryError(number, null, lineNumber > 0 ? $"Procedure {procedure}, line {lineNumber}: {message}" : $"Procedure {procedure}: {message}");
+        if (lineNumber <= 0) return new QueryError(number, null, message);
+        var line = batchLine + lineNumber - 1;
+        return new QueryError(number, line, $"Line {line}: {message}");
     }
 
     /// <summary>

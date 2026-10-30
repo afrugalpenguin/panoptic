@@ -12,7 +12,7 @@ Decided 29 Oct 2026. Pairs with docs/explorer-ux.md; the same principles apply.
 
 ## Monaco
 
-- Import `monaco-editor/esm/vs/editor/editor.api` plus only these contributions: suggest, hover, find, bracket matching, folding, comment toggling, multi-cursor, drop into editor. No languages other than the two defined below. Never import the `monaco-editor` barrel.
+- Import `monaco-editor/esm/vs/editor/editor.api` plus only these contributions: suggest, hover, find, bracket matching, folding, comment toggling, multi-cursor, drop into editor, code actions (the quick fix in "Error location"). No languages other than the two defined below. Never import the `monaco-editor` barrel.
 - The Monaco chunk is a separate Vite chunk. Fetch starts when a connection row is selected in the explorer; the editor instance is created when the first query tab opens. Subsequent tabs reuse the loaded module and create a model each.
 - Syntax colouring: Monaco's built-in Monarch `sql` tokenizer for T-SQL (registered as language id `tsql`, keyword list extended with T-SQL additions), and a hand-written Monarch definition for Cosmos SQL (language id `cosmos-sql`). Colouring never uses a parser.
 - Font follows `explorer.rowFont` for the monospace choice (Consolas / Cascadia Mono). Theme uses the same palette as the tree; the tab strip env colour band already exists and applies to query tabs.
@@ -99,9 +99,19 @@ Same worker, same scanner. Hovering an object name shows its kind, schema and co
 
 ## Off the keystroke path
 
-- Diagnostics (syntax errors, unknown columns) are a later feature. If added, ScriptDom runs in the sidecar on a 500ms idle debounce after the model changes and pushes markers back asynchronously. ScriptDom's compatibility with Native AOT must be verified before it is adopted; if it fails, diagnostics stay out of scope.
+- Unknown-name warnings ("Error location") are the only diagnostics. They run in the IntelliSense worker on a 500ms debounce after the text or cursor changes, from the catalog snapshot, and never call the sidecar. Syntax errors and full validation would need a real grammar (ScriptDom in the sidecar, if it works under Native AOT) and remain a later feature.
 - Formatting is a command, not a keystroke feature, and may call the sidecar.
 - Execution: the tab sends the selected text or the whole batch to the sidecar; results arrive as batches of rows into the virtualised grid with fixed row heights. Messages and row counts arrive on the same stream. Cancellation is a sidecar call that the UI does not wait on.
+
+## Error location
+
+SQL Server reports 208 (invalid object name), 4104 (multi-part identifier could not be bound) and 2812 (could not find stored procedure) at the line where the statement starts, and 207 (invalid column name) at the column's own line. Panoptic finds the name itself. Everything below runs in the UI from data it already holds; nothing is a sidecar call.
+
+- **The sidecar's part.** Each server error is its own `query.message`, with its `number` and its `line` counted from the start of the text that was sent (SQL Server counts from the start of the GO batch; the sidecar adds the batch's line). An error raised inside a procedure or trigger carries that module's line, so it is named instead (`Procedure dbo.p, line 3: ...`) and has no `line`.
+- **Pinning the error to the name.** For those four numbers (matched on the number, never on the message text), the UI reads the identifier quoted in the message, takes the statements covering the reported line (split at GO lines and semicolons only, because a statement may contain blank lines) and searches their tokens for a dotted name ending in the identifier's parts, case-insensitively. Strings and comments are tokens of their own, so they never match. For 4104 the last part alone is enough, as the alias written may differ. When there is exactly one match, the squiggle and the gutter icon go on the name and the row reads `Line 41: Invalid object name 'contracts' (statement starts at line 26).` With no match or several, they go on the reported line and the row keeps it. Lines are the editor's: a run of a selection adds the selection's starting line. If the text was edited while the query ran, the error is not placed.
+- **Did you mean.** For 208 and 2812 the worker looks the name up among the tables, views and synonyms (or procedures) of the current database's catalog: the same name in another schema or differing only in case, then a name that starts with the typed one (shortest first), then the nearest within two edits. For 207 it looks among the columns of the statement's FROM and JOIN tables that resolve in the catalog, or only the qualifier's table for `alias.column`. Names of three or more parts get no suggestion. At most one is offered: it is appended to the row (`Did you mean dbo.Contracts?`) and offered as a quick fix on the squiggle that replaces the name. No suggestion leaves the row unchanged.
+- **Messages rows.** Every error row with a place is clickable and moves the cursor to it: selecting the name when located, else the start of the reported line. The marks follow edits until the next run clears them.
+- **Warnings before running.** On a 500ms debounce, the worker checks the statement at the cursor and adds warning squiggles (never errors) for tables and views the catalog lacks, and for columns the named table lacks. It skips names it cannot be sure of: CTE names, `#temp` and `##temp` tables, table variables, objects created or selected INTO earlier in the batch, names of three or more parts, system views, table-valued functions, and an UPDATE or DELETE target that is another table's alias. Qualified columns are checked against their table; bare columns only when the statement reads one table and has no subquery, and never a word that could be an alias, keyword, function, type or date part. A warning on valid SQL is worse than a missed one; the server reports the rest. `editor.warnUnknownNames` turns the warnings off.
 
 ## Settings
 
@@ -110,10 +120,11 @@ editor.intellisense        bool   default true (per app; a per-connection overri
 editor.keywordCase         enum   lower | upper | preserve   default lower for tsql, upper for cosmos-sql
 editor.catalogSampleDocs   int    default 50, range 10 to 500
 editor.autoRefreshOnDdl    bool   default true
+editor.warnUnknownNames    bool   default true   (off with IntelliSense)
 ```
 
 Settings changes apply to open tabs without restart. `editor.keywordCase` only affects new insertions.
 
 ## Out of scope for this change
 
-Diagnostics, a formatter, snippets, execution plans, result editing, a language server of any kind, parsing with a real grammar on the keystroke path, intellisense for Synapse Spark.
+Syntax diagnostics, a formatter, snippets, execution plans, result editing, a language server of any kind, parsing with a real grammar on the keystroke path, intellisense for Synapse Spark.

@@ -206,7 +206,7 @@ function blankLineIn(text: string, from: number, to: number): number {
  * tokenizes the statement around the cursor (docs/query-editor.md, "Context resolution"). It reads strings,
  * comments and quoted names exactly as tokenize does, so a semicolon, blank line or GO inside them never splits.
  */
-function bounds(text: string, language: Language): Bounds {
+function bounds(text: string, language: Language, blankLines = true): Bounds {
   const statements: Segment[] = [];
   const batches: Segment[] = [];
   const uses: Segment[] = [];
@@ -214,6 +214,7 @@ function bounds(text: string, language: Language): Bounds {
   let batchStart = 0;
   let previousEnd = 0;
   const blank = (to: number) => {
+    if (!blankLines) return;
     const at = blankLineIn(text, previousEnd, to);
     if (at < 0) return;
     statements.push({ start, end: at });
@@ -249,6 +250,55 @@ function containing(list: Segment[], offset: number): number {
 export function statementAt(text: string, offset: number, language: Language = "tsql"): Segment {
   const { statements } = bounds(text, language);
   return statements[containing(statements, offset)];
+}
+
+/** Offset where 1-based line starts, or undefined past the end. */
+export function lineOffset(text: string, line: number): number | undefined {
+  let at = 0;
+  for (let l = 1; l < line; l++) {
+    at = text.indexOf("\n", at) + 1;
+    if (at === 0) return undefined;
+  }
+  return at;
+}
+
+/**
+ * The statements covering 1-based line, split at GO lines and semicolons only. A server error line is the line of a
+ * statement's first text or of the offending name inside it, and a statement may contain blank lines, so the
+ * cursor's blank-line rule does not apply here. Undefined when the line is past the end.
+ */
+export function statementsAtLine(text: string, line: number, language: Language = "tsql"): Segment | undefined {
+  const start = lineOffset(text, line);
+  if (start === undefined) return undefined;
+  const newline = text.indexOf("\n", start);
+  const end = newline < 0 ? text.length : newline;
+  const covering = bounds(text, language, false).statements.filter((s) => s.start <= end && start <= s.end);
+  if (covering.length === 0) return undefined;
+  return { start: covering[0].start, end: covering[covering.length - 1].end };
+}
+
+/** A dotted name as written: its parts unquoted, and each part's token. */
+export interface NameChain {
+  parts: string[];
+  tokens: Token[];
+}
+
+/** Every dotted name in tokens (comments already dropped). Strings are tokens of their own, so never part of one. */
+export function nameChains(tokens: Token[]): NameChain[] {
+  const chains: NameChain[] = [];
+  for (let i = 0; i < tokens.length; i++) {
+    if (!isName(tokens[i]) || (tokens[i - 1]?.text === "." && tokens[i - 1].type === "punct")) continue;
+    const chain: NameChain = { parts: [tokens[i].value], tokens: [tokens[i]] };
+    let j = i;
+    while (tokens[j + 1]?.text === "." && tokens[j + 1].type === "punct" && isName(tokens[j + 2])) {
+      j += 2;
+      chain.parts.push(tokens[j].value);
+      chain.tokens.push(tokens[j]);
+    }
+    chains.push(chain);
+    i = j;
+  }
+  return chains;
 }
 
 /**
@@ -339,9 +389,28 @@ function matching(tokens: Token[], open: number): number {
   return tokens.length;
 }
 
+/** A table reference with where it is written and what introduced it. */
+export interface PlacedRef {
+  ref: TableRef;
+  /** The name's first and last tokens. */
+  first: Token;
+  last: Token;
+  /** from, join, update, into or delete. */
+  keyword: string;
+  /** Followed by "(": a table-valued function call. */
+  call: boolean;
+  /** Followed by another ".": an incomplete or database..name chain. */
+  dangling: boolean;
+}
+
 /** Tables named after FROM, JOIN, UPDATE and INTO in tokens[start, end), at that paren depth only. */
 function tableRefs(tokens: Token[], start: number, end: number): TableRef[] {
-  const refs: TableRef[] = [];
+  return placedRefs(tokens, start, end).map((r) => r.ref);
+}
+
+export function placedRefs(tokens: Token[], start = 0, end = tokens.length): PlacedRef[] {
+  const refs: PlacedRef[] = [];
+  let keyword = "";
   const read = (i: number): number => {
     if (tokens[i]?.text === "(") {
       // A derived table: skip it and its alias.
@@ -351,10 +420,12 @@ function tableRefs(tokens: Token[], start: number, end: number): TableRef[] {
     }
     const { parts, next } = dottedName(tokens, i);
     if (parts.length === 0 || RESERVED.has(parts[0].toLowerCase())) return i;
+    const last = tokens[next - 1];
+    const placed = { first: tokens[i], last, keyword, call: tokens[next]?.text === "(", dangling: tokens[next]?.text === "." };
     let j = next;
     if (lower(tokens[j]) === "as") j++;
     const alias = isAlias(tokens[j]) ? tokens[j++].value : undefined;
-    refs.push(toRef(parts, alias));
+    refs.push({ ref: toRef(parts, alias), ...placed });
     return j;
   };
   for (let i = start; i < end; i++) {
@@ -365,6 +436,7 @@ function tableRefs(tokens: Token[], start: number, end: number): TableRef[] {
     }
     const w = lower(t);
     if (w === "from" || w === "join" || w === "update" || w === "into" || w === "delete") {
+      keyword = w;
       let j = read(i + 1);
       while (w === "from" && tokens[j]?.text === "," && j < end) j = read(j + 1);
       i = j - 1;
@@ -437,6 +509,49 @@ function nearestClause(tokens: Token[]): { kind: ClauseKind; index: number } | u
     }
   }
   return undefined;
+}
+
+/**
+ * For each token, whether it sits in a clause that names columns (the select list, WHERE, ON, BY, HAVING, SET), by
+ * the nearest clause keyword at its parenthesis depth or outside it. One forward pass over the statement's tokens.
+ */
+export function inColumnClause(tokens: Token[]): boolean[] {
+  const outer: ClauseKind[] = [];
+  let clause: ClauseKind = "keywords";
+  return tokens.map((t) => {
+    const w = lower(t);
+    if (t.text === "(") {
+      outer.push(clause);
+      return clause === "columns";
+    }
+    if (t.text === ")") {
+      clause = outer.pop() ?? "keywords";
+      return clause === "columns";
+    }
+    if (w && CLAUSES[w] && !SCAN_SKIP.has(w)) clause = CLAUSES[w];
+    return clause === "columns";
+  });
+}
+
+/** The tables named in text[start, end), comments skipped (for an error's statement). */
+export function tablesIn(text: string, start: number, end: number, language: Language = "tsql"): TableRef[] {
+  const tokens = tokenize(text, language, start, end).filter((t) => t.type !== "comment");
+  return tableRefs(tokens, 0, tokens.length);
+}
+
+/**
+ * The statement around offset as the unknown-name warnings read it: its tokens without comments, the tokens of its
+ * batch before it (for names created or declared earlier) and the database named by the last USE before it.
+ */
+export function statementScan(text: string, offset: number, language: Language): { tokens: Token[]; earlier: Token[]; useDatabase?: string } {
+  const b = bounds(text, language);
+  const { statement, tokens } = around(text, offset, language, b);
+  const batch = b.batches[containing(b.batches, offset)];
+  const earlier = tokenize(text, language, batch.start, Math.max(batch.start, statement.start)).filter((t) => t.type !== "comment");
+  const stmt = tokens.filter((t) => t.type !== "comment" && t.start >= statement.start);
+  // At the cursor, not the statement's start: without a semicolon, "use x" and the next line are one statement.
+  const { useDatabase } = contextAt(text, offset, language);
+  return useDatabase ? { tokens: stmt, earlier, useDatabase } : { tokens: stmt, earlier };
 }
 
 /** The tables named in the statement around offset (for hover). */

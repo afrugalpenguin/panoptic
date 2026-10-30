@@ -3,8 +3,11 @@ import type { Problem } from "../app/problems";
 import type { ChangelogSection } from "../whats-new";
 import { CatalogStore, type CatalogNotice } from "./catalog.svelte";
 import type { Options } from "./intellisense/engine";
+import { findName, lineAt, locatable, quotedName, type Found } from "./intellisense/locate";
 import type { ModelInfo } from "./intellisense/providers";
-import { isDdl } from "./intellisense/scanner";
+import { contextAt, isDdl, lineOffset, statementsAtLine, tablesIn } from "./intellisense/scanner";
+import type { Suggestion } from "./intellisense/suggest";
+import type { SuggestRequest } from "./intellisense/worker";
 import type { CellValue, MessageNotification, QueryScope, QuerySummary, QueryTarget, ResultColumn, RowsNotification } from "./types";
 
 export interface QueryApi {
@@ -14,7 +17,31 @@ export interface QueryApi {
   catalogRefresh?: (nodeId: string, database?: string) => Promise<CatalogNotice>;
   /** Database names on the connection whose node id is given, for a tab's database picker. */
   databases?: (connectionNodeId: string) => Promise<string[]>;
+  /** A "did you mean" for a name error, from the IntelliSense worker's catalogs (docs/query-editor.md, "Error location"). */
+  suggest?: (request: SuggestRequest, info: ModelInfo) => Promise<Suggestion | undefined>;
 }
+
+/** A row in a query tab's Messages. */
+export interface QueryMessage {
+  /** Unique across tabs, so the editor can track the row's mark. */
+  id: number;
+  kind: "info" | "error";
+  text: string;
+  elapsedMs: number;
+  /**
+   * Where the editor marks the error and puts the cursor when the row is clicked: the offending name when located,
+   * else the start of the reported line. Offsets into the tab's text as it was when the error arrived.
+   */
+  at?: { start: number; end: number };
+  /** at is the offending name, not just its line. */
+  located?: boolean;
+  /** The suggested name, offered as a quick fix on the mark. */
+  fix?: Suggestion;
+}
+
+/** Errors whose quoted name can be looked up in the catalog: objects, columns, procedures. */
+const SUGGESTABLE = new Set([208, 207, 2812]);
+let nextMessageId = 0;
 
 /**
  * The connection part of a node id (env:x/conn:y) and its database and Cosmos container segments, decoded. Only for
@@ -53,7 +80,12 @@ export class QueryTab {
   startedAt = $state(0);
   queryId = "";
   results = $state.raw<ResultSet[]>([]);
-  messages = $state<(Omit<MessageNotification, "queryId">)[]>([]);
+  messages = $state<QueryMessage[]>([]);
+  /** The text the last run sent and where it starts in text (a selection's offset, else 0), to place its errors. */
+  runText = "";
+  runOffset = 0;
+  /** Set to move the editor's cursor to a message's mark; seq makes a repeated click count. */
+  reveal = $state<{ id: number; seq: number }>();
   summary = $state.raw<QuerySummary>();
   error = $state<string>();
   /** Selected result tab: an index into results, or -1 for Messages. */
@@ -115,7 +147,7 @@ export class QueryWorkspace {
   constructor(private readonly api: QueryApi) {}
 
   readonly catalogs = new CatalogStore();
-  editor = $state<EditorSettings>({ intellisense: true, catalogSampleDocs: 50, autoRefreshOnDdl: true });
+  editor = $state<EditorSettings>({ intellisense: true, catalogSampleDocs: 50, autoRefreshOnDdl: true, warnUnknownNames: true });
   /** Catalog keys of the databases known on each connection: connection node id, then lower-cased database name. */
   private readonly databaseKeys = new Map<string, Record<string, string>>();
   private readonly fetching = new Set<string>();
@@ -213,6 +245,7 @@ export class QueryWorkspace {
           const entry = this.catalogs.get(key);
           return { key, catalog: entry?.catalog, version: entry?.version ?? 0 };
         }),
+        warnUnknownNames: this.editor.warnUnknownNames && tab.target.language === "sql",
         onMissing: (database) => void this.fetchDatabase(tab, database),
       };
     };
@@ -301,11 +334,13 @@ export class QueryWorkspace {
     if (this.activeId === id) this.activeId = this.tabs[Math.min(index, this.tabs.length - 1)]?.id;
   }
 
-  /** Runs the tab's text, or only `selection` when the user has selected some. Never throws. */
-  async run(tab: QueryTab, selection?: string): Promise<void> {
+  /** Runs the tab's text, or only `selection` (which starts at `offset` in it) when the user has selected some. Never throws. */
+  async run(tab: QueryTab, selection?: string, offset = 0): Promise<void> {
     if (tab.running) return;
     const text = selection?.trim() ? selection : tab.text;
     if (!text.trim()) return;
+    tab.runText = text;
+    tab.runOffset = text === selection ? offset : 0;
 
     tab.queryId = crypto.randomUUID();
     this.byQuery.set(tab.queryId, tab);
@@ -355,7 +390,73 @@ export class QueryWorkspace {
     } else if (method === "query.message") {
       const p = params as MessageNotification;
       const tab = this.byQuery.get(p.queryId);
-      if (tab) tab.messages.push({ kind: p.kind, text: p.text, elapsedMs: p.elapsedMs });
+      if (tab) this.addMessage(tab, p);
     }
+  }
+
+  /** Moves the tab's editor cursor to the message's mark. */
+  reveal(tab: QueryTab, message: QueryMessage): void {
+    tab.reveal = { id: message.id, seq: (tab.reveal?.seq ?? 0) + 1 };
+  }
+
+  private addMessage(tab: QueryTab, p: MessageNotification): void {
+    const message: QueryMessage = { id: ++nextMessageId, kind: p.kind, text: p.text, elapsedMs: p.elapsedMs };
+    const found = p.kind === "error" && p.line !== undefined && tab.target.language === "sql" ? this.place(tab, message, p.line, p.number) : undefined;
+    // The pushed row is a reactive proxy; a suggestion arriving later must update that, not the plain object.
+    const row = tab.messages[tab.messages.push(message) - 1];
+    if (found && p.number !== undefined && p.line !== undefined) void this.suggestFor(tab, row, p.number, p.line, found);
+  }
+
+  /**
+   * Points an error that has a script line at its name (docs/query-editor.md, "Error location"), or at the start of
+   * the line when the name is not found exactly once, and rewrites the line in its text to the editor's. Returns the
+   * name when found.
+   */
+  private place(tab: QueryTab, message: QueryMessage, line: number, number?: number): Found | undefined {
+    const run = tab.runText;
+    // Typed over while it ran: the offsets would point at the wrong text, so leave the message as the server sent it.
+    if (tab.text.slice(tab.runOffset, tab.runOffset + run.length) !== run) return undefined;
+    const before = lineAt(tab.text, tab.runOffset) - 1;
+    const prefix = `Line ${line}: `;
+    const body = message.text.startsWith(prefix) ? message.text.slice(prefix.length) : message.text;
+    const name = number !== undefined && locatable(number) ? quotedName(body) : undefined;
+    const found = name ? findName(run, line, name, number!) : undefined;
+
+    if (!found) {
+      const start = lineOffset(run, line);
+      if (start === undefined) return undefined;
+      const first = tab.runOffset + start + (/^[ \t]*/.exec(run.slice(start))?.[0].length ?? 0);
+      message.at = { start: first, end: first };
+      message.located = false;
+      if (body !== message.text) message.text = `Line ${before + line}: ${body}`;
+      return undefined;
+    }
+    message.at = { start: tab.runOffset + found.start, end: tab.runOffset + found.end };
+    message.located = true;
+    const where = found.line === line ? "" : ` (statement starts at line ${before + line})`;
+    message.text = `Line ${before + found.line}: ${body.replace(/\.$/, "")}${where}.`;
+    return found;
+  }
+
+  /** Asks the worker for the closest catalog name and, if there is one, appends it to the row and offers it as a fix. */
+  private async suggestFor(tab: QueryTab, row: QueryMessage, number: number, line: number, found: Found): Promise<void> {
+    const info = this.intellisense(tab)();
+    if (!this.api.suggest || !info || !SUGGESTABLE.has(number)) return;
+    const run = tab.runText;
+    const parts = found.chain.parts;
+    let request: SuggestRequest;
+    if (number === 207) {
+      const statement = statementsAtLine(run, line)!;
+      request = { number, parts: parts.slice(-1), tables: tablesIn(run, statement.start, statement.end) };
+      if (parts.length >= 2) request.qualifier = parts[parts.length - 2];
+    } else request = { number, parts, tables: [] };
+    const useDatabase = contextAt(run, found.start, "tsql").useDatabase;
+    if (useDatabase) request.useDatabase = useDatabase;
+
+    const queryId = tab.queryId;
+    const suggestion = await this.api.suggest(request, info);
+    if (!suggestion || tab.queryId !== queryId) return;
+    row.text = `${row.text} Did you mean ${suggestion.label}?`;
+    row.fix = suggestion;
   }
 }

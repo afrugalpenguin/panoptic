@@ -11,11 +11,11 @@ import "monaco-editor/editor/contrib/folding/browser/folding";
 import "monaco-editor/editor/contrib/comment/browser/comment";
 import "monaco-editor/editor/contrib/multicursor/browser/multicursor";
 import "monaco-editor/editor/contrib/dropOrPasteInto/browser/dropIntoEditorContribution";
+import "monaco-editor/editor/contrib/codeAction/browser/codeActionContributions";
 import EditorWorker from "monaco-editor/editor/editor.worker?worker";
-import IntelliSenseWorker from "./intellisense/worker-entry?worker";
-import { IntelliSenseClient } from "./intellisense/client";
 import { COSMOS_FUNCTIONS, COSMOS_KEYWORDS } from "./intellisense/cosmos-words";
-import { registerIntelliSense } from "./intellisense/providers";
+import { registerIntelliSense, registerQuickFixes } from "./intellisense/providers";
+import { intellisense } from "./intellisense/shared";
 import { TSQL_KEYWORDS } from "./intellisense/tsql-words";
 
 Object.assign(self, { MonacoEnvironment: { getWorker: () => new EditorWorker() } });
@@ -53,6 +53,7 @@ monaco.languages.setLanguageConfiguration("cosmos-sql", {
   autoClosingPairs: [{ open: "(", close: ")" }, { open: "[", close: "]" }, { open: "{", close: "}" }, { open: "'", close: "'" }, { open: '"', close: '"' }],
 });
 
-registerIntelliSense(monaco, new IntelliSenseClient(() => new IntelliSenseWorker()));
+registerIntelliSense(monaco, intellisense);
+registerQuickFixes(monaco);
 
-export { monaco };
+export { intellisense, monaco };

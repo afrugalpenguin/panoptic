@@ -13,12 +13,46 @@ export interface ModelInfo {
   options: Options;
   keys: Keys;
   catalogs: { key: string; catalog?: DatabaseCatalog; version: number }[];
+  /** Underline unknown tables and columns in the statement at the cursor (T-SQL only). */
+  warnUnknownNames: boolean;
   /** A database named in the text has no catalog yet: fetch it in the background. */
   onMissing(database: string): void;
 }
 
 /** Set by QueryEditor for each model it creates. */
 export const models = new WeakMap<object, () => ModelInfo | undefined>();
+
+/** A quick fix on a run error's mark: replace the name at range with the suggestion. */
+export interface QuickFix {
+  range: Monaco.IRange;
+  label: string;
+  insertText: string;
+}
+
+/** Set by QueryEditor for each model: the fixes for its current error marks, at their current ranges. */
+export const quickFixes = new WeakMap<object, () => QuickFix[]>();
+
+const touches = (a: Monaco.IRange, b: Monaco.IRange) =>
+  !(a.endLineNumber < b.startLineNumber || (a.endLineNumber === b.startLineNumber && a.endColumn < b.startColumn) ||
+    b.endLineNumber < a.startLineNumber || (b.endLineNumber === a.startLineNumber && b.endColumn < a.startColumn));
+
+/** "Did you mean" fixes from run errors (docs/query-editor.md, "Error location"), offered on the error's mark. */
+export function registerQuickFixes(monaco: typeof Monaco): void {
+  monaco.languages.registerCodeActionProvider("tsql", {
+    provideCodeActions(model, range, context) {
+      const actions = (quickFixes.get(model)?.() ?? [])
+        .filter((f) => touches(f.range, range))
+        .map((f): Monaco.languages.CodeAction => ({
+          title: `Change to ${f.label}`,
+          kind: "quickfix",
+          isPreferred: true,
+          diagnostics: context.markers.filter((m) => touches(m, f.range)),
+          edit: { edits: [{ resource: model.uri, textEdit: { range: f.range, text: f.insertText }, versionId: undefined }] },
+        }));
+      return { actions, dispose() {} };
+    },
+  });
+}
 
 type Kinds = Record<string, number>;
 

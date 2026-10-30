@@ -8,20 +8,31 @@ namespace Panoptic.Sidecar.Query;
 /// </summary>
 public static class BatchSplitter
 {
-    public static List<string> Split(string script)
+    public static List<string> Split(string script) => SplitWithLines(script).Select(b => b.Text).ToList();
+
+    /// <summary>
+    /// The batches and the 1-based script line each starts on: the line of its first text, as leading blank lines
+    /// are trimmed. SQL Server numbers error lines from the start of the batch it was sent, so adding
+    /// <see cref="Batch.Line"/> - 1 gives the line in the script.
+    /// </summary>
+    public static List<Batch> SplitWithLines(string script)
     {
-        var batches = new List<string>();
+        var batches = new List<Batch>();
         var current = new StringBuilder();
         var inBlockComment = false;
         var inString = false;
+        var line = 0;
+        var firstLine = 0;
 
         foreach (var rawLine in script.Replace("\r\n", "\n").Split('\n'))
         {
+            line++;
             if (!inBlockComment && !inString && IsGo(rawLine))
             {
                 Flush();
                 continue;
             }
+            if (firstLine == 0 && rawLine.Trim().Length > 0) firstLine = line;
             current.Append(rawLine).Append('\n');
             Scan(rawLine);
         }
@@ -31,8 +42,9 @@ public static class BatchSplitter
         void Flush()
         {
             var batch = current.ToString().Trim();
-            if (batch.Length > 0) batches.Add(batch);
+            if (batch.Length > 0) batches.Add(new Batch(batch, firstLine));
             current.Clear();
+            firstLine = 0;
         }
 
         // Tracks whether the next line starts inside a /* comment */ or a 'string', so GO there doesn't split.
@@ -65,3 +77,6 @@ public static class BatchSplitter
         return rest.Length == 0 || rest.All(char.IsDigit);
     }
 }
+
+/// <summary>One GO batch and the 1-based script line its text starts on.</summary>
+public sealed record Batch(string Text, int Line);
