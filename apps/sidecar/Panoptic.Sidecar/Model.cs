@@ -80,7 +80,7 @@ public sealed record ResultSetSummary(int RowCount);
 /// <param name="Committed">Read-only environment, but the guard transaction ended before the rollback (a COMMIT or ROLLBACK in the script, or an error that aborted it): changes may have been committed.</param>
 public sealed record QuerySummary(string QueryId, ResultSetSummary[] ResultSets, double ElapsedMs, bool RolledBack, bool Committed, bool Cancelled, string? Error, double? RequestCharge);
 public sealed record QueryTemplateParams(string NodeId, string Action);
-/// <param name="Language">The backend's editor language: "sql" or "cosmos" today.</param>
+/// <param name="Language">The backend's editor language: "sql", "cosmos" or "pgsql".</param>
 /// <param name="Scope">What the tab runs against, so the UI never parses the node id.</param>
 public sealed record QueryTemplateResult(string? Text, string Language, QueryScope? Scope = null);
 /// <summary>A node's query scope for the UI (added 2026-10-30, ADR 0005).</summary>
@@ -98,10 +98,14 @@ public sealed record NodeInvokeResult(string? Text);
 public sealed record QueryTarget(EnvironmentConfig Environment, ConnectionConfig Connection, string? Database, string? Container);
 
 /// <summary>One server error in a failed query, sent with its query.message so the UI can place it in the editor.</summary>
-/// <param name="Number">The server's error number (208 invalid object name, 207 invalid column name, ...).</param>
+/// <param name="Number">The server's error number (208 invalid object name, 207 invalid column name, ...). 0 for a server
+/// that has none (Postgres), and then not sent.</param>
 /// <param name="Line">1-based line in the text that was sent. Null when the error is inside another module (a procedure,
 /// a trigger), whose own line it would be.</param>
-public sealed record QueryError(int Number, int? Line, string Text);
+/// <param name="State">The SQLSTATE (Postgres: 42P01 undefined table, ...).</param>
+/// <param name="Column">1-based column on <paramref name="Line"/>, in UTF-16 code units as the editor counts, when the
+/// server gives an exact position (Postgres).</param>
+public sealed record QueryError(int Number, int? Line, string Text, string? State = null, int? Column = null);
 public sealed record DeviceCodePrompt(string Message, string UserCode, string VerificationUri);
 
 public static class UpdateCheckModes

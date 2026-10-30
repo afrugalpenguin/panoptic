@@ -54,6 +54,11 @@ public sealed class FakeBackend : IQueryBackend
     {
         if (target.Environment.ReadOnly && text.StartsWith("write", StringComparison.OrdinalIgnoreCase))
             throw new RpcException(RpcException.InvalidParams, $"{target.Environment.Name} is read-only.");
+        if (text == "fail")
+        {
+            sink.Fail("Line 2: no such table", [new QueryError(0, 2, "Line 2: no such table", "42P01", 6)]);
+            return Task.CompletedTask;
+        }
         var set = sink.BeginSet();
         var columns = new[] { new ResultColumn("n", "int") };
         var all = Enumerable.Range(1, 1200).Select(n => new object?[] { n }).ToArray();
@@ -185,6 +190,19 @@ public sealed class BackendContractTests : IDisposable
         Assert.Equal("n", batches[0].GetProperty("columns")[0].GetProperty("name").GetString());
         Assert.False(batches[1].TryGetProperty("columns", out _));
         Assert.Equal("ran in main", Assert.Single(Notes("query.message")).GetProperty("text").GetString());
+    }
+
+    [Fact]
+    public async Task Query_errors_carry_state_and_column_and_no_number_when_the_server_has_none()
+    {
+        var summary = await Call(Sidecar(), "query.execute", new { queryId = "q4", nodeId = Widgets, text = "fail" });
+
+        Assert.Equal("Line 2: no such table", summary.GetProperty("error").GetString());
+        var message = Assert.Single(Notes("query.message"));
+        Assert.Equal("42P01", message.GetProperty("state").GetString());
+        Assert.Equal(2, message.GetProperty("line").GetInt32());
+        Assert.Equal(6, message.GetProperty("column").GetInt32());
+        Assert.False(message.TryGetProperty("number", out _));
     }
 
     [Fact]
