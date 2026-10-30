@@ -4,7 +4,14 @@
   import WhatsNewView from "./WhatsNewView.svelte";
   import type { QueryWorkspace } from "./store.svelte";
 
-  let { workspace }: { workspace: QueryWorkspace } = $props();
+  let {
+    workspace,
+    onLinkError,
+  }: {
+    workspace: QueryWorkspace;
+    /** A What's new link failed to open; the message goes to the status bar. */
+    onLinkError: (message: string) => void;
+  } = $props();
 </script>
 
 <div class="workspace">
@@ -36,7 +43,7 @@
       {:else if tab.kind === "problems"}
         <ProblemsView {tab} />
       {:else}
-        <WhatsNewView {tab} />
+        <WhatsNewView {tab} {onLinkError} />
       {/if}
     </div>
   {/each}

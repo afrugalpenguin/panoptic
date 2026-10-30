@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { bullets, compareVersions, inlineTokens, parseChangelog, sectionsSince } from "./whats-new";
+import { describe, expect, it, vi } from "vitest";
+import { bullets, compareVersions, inlineTokens, openLink, parseChangelog, sectionsSince } from "./whats-new";
 
 const FIXTURE = `# Panoptic changelog
 
@@ -102,5 +102,22 @@ describe("inlineTokens: the markdown subset", () => {
 
   it("leaves unclosed markers as text", () => {
     expect(inlineTokens("2 ** 3 and `open")).toEqual([{ type: "text", text: "2 ** 3 and `open" }]);
+  });
+});
+
+describe("openLink", () => {
+  it("opens the url and reports nothing on success", async () => {
+    const open = vi.fn().mockResolvedValue(undefined);
+    const onError = vi.fn();
+    await openLink("https://example.com/docs", open, onError);
+    expect(open).toHaveBeenCalledWith("https://example.com/docs");
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("reports a rejected open, including the string errors Tauri commands reject with", async () => {
+    const onError = vi.fn();
+    await openLink("https://example.com", () => Promise.reject("Not allowed to open url https://example.com"), onError);
+    await openLink("https://example.com", () => Promise.reject(new Error("boom")), onError);
+    expect(onError.mock.calls).toEqual([["Not allowed to open url https://example.com"], ["boom"]]);
   });
 });

@@ -1,16 +1,16 @@
 <script lang="ts">
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import { bullets, inlineTokens } from "../whats-new";
+  import { bullets, inlineTokens, openLink } from "../whats-new";
   import type { WhatsNewTab } from "./store.svelte";
 
-  let { tab }: { tab: WhatsNewTab } = $props();
+  let { tab, onLinkError }: { tab: WhatsNewTab; onLinkError: (message: string) => void } = $props();
 </script>
 
 {#snippet inline(text: string)}
   {#each inlineTokens(text) as t}
     {#if t.type === "bold"}<strong>{t.text}</strong>
     {:else if t.type === "code"}<code>{t.text}</code>
-    {:else if t.type === "link"}<a href={t.href} onclick={(e) => (e.preventDefault(), openUrl(t.href))}>{t.text}</a>
+    {:else if t.type === "link"}<a href={t.href} onclick={(e) => (e.preventDefault(), void openLink(t.href, openUrl, onLinkError))}>{t.text}</a>
     {:else}{t.text}{/if}
   {/each}
 {/snippet}
