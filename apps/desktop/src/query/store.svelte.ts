@@ -180,7 +180,8 @@ export class QueryWorkspace {
       this.catalogs.apply(result);
       this.remember(tab, database, result.key);
     } catch {
-      // Not a database, or not reachable: completions for it stay empty.
+      // The request failed (a timeout, the sidecar stopping): not remembered, so the next mention asks again. A name
+      // that is not a database does not land here: it gets a key now and an error state later (see forgetFailed).
     } finally {
       this.fetching.delete(marker);
     }
@@ -217,9 +218,23 @@ export class QueryWorkspace {
     return entry.state === "error" ? { text: "IntelliSense: error", title: entry.message } : { text: `IntelliSense: ${entry.state}` };
   }
 
+  /**
+   * A database named in the text whose catalog failed to load (most often a name that is not a database: an alias,
+   * a CTE or a typo) stays remembered so it is not asked for on every keystroke. This forgets those on a connection,
+   * or just the one database, so the next mention asks again: the database may exist now.
+   */
+  private forgetFailed(connection: string, database?: string): void {
+    const keys = this.databaseKeys.get(connection);
+    if (!keys) return;
+    const failed = ([name, key]: [string, string]) =>
+      this.catalogs.get(key)?.state === "error" && (database === undefined || name === database.toLowerCase());
+    this.databaseKeys.set(connection, Object.fromEntries(Object.entries(keys).filter((e) => !failed(e))));
+  }
+
   /** Explorer refresh on a connection or database: rebuild the catalogs of query tabs open against it. */
   refreshForNode(nodeId: string): void {
     const node = nodeParts(nodeId);
+    this.forgetFailed(node.connection, node.database);
     for (const t of this.tabs) {
       if (t.kind !== "query" || nodeParts(t.target.nodeId).connection !== node.connection) continue;
       if (node.database === undefined || node.database.toLowerCase() === this.databaseOf(t)?.toLowerCase()) this.refreshCatalog(t);
@@ -291,7 +306,10 @@ export class QueryWorkspace {
     tab.running = true;
     try {
       tab.summary = await this.api.executeQuery({ queryId: tab.queryId, nodeId: tab.target.nodeId, text, database: tab.database });
-      if (this.editor.autoRefreshOnDdl && tab.target.language === "sql" && isDdl(text)) this.refreshCatalog(tab);
+      if (this.editor.autoRefreshOnDdl && tab.target.language === "sql" && isDdl(text)) {
+        this.forgetFailed(nodeParts(tab.target.nodeId).connection);
+        this.refreshCatalog(tab);
+      }
       tab.error = tab.summary.error ?? undefined;
       if (tab.error && tab.results.length === 0) tab.view = -1;
     } catch (e) {

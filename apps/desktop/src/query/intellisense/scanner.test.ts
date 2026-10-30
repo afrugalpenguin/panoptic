@@ -41,6 +41,78 @@ describe("statementAt", () => {
     const s = statementAt(text, text.length);
     expect(s.start).toBe(0);
   });
+
+  const slice = (text: string, marker: string, language: Language = "tsql") => {
+    const s = statementAt(text, text.indexOf(marker), language);
+    return text.slice(s.start, s.end).trim();
+  };
+
+  it("does not split on a semicolon in a string, comment or quoted name", () => {
+    const text = "select 'a;b', [c;d] -- e;f\nfrom t /* g; h */ where x = 1";
+    expect(slice(text, "where")).toBe(text);
+    expect(slice(`select c.x from c where c.y = "a;b"`, "where", "cosmos-sql")).toBe(`select c.x from c where c.y = "a;b"`);
+  });
+
+  it("does not split on GO inside a comment or string, or not alone on its line", () => {
+    const text = "select 1 /*\nGO\n*/ from t\nwhere 'x\nGO\n' = '' go\nand 1 = 1";
+    expect(slice(text, "and")).toBe(text);
+  });
+
+  it("keeps a CTE spanning several lines in one statement", () => {
+    const text = "with recent as (\n  select Id from dbo.Orders\n)\nselect r.Id\nfrom recent r";
+    expect(slice(text, "r.Id")).toBe(text);
+    expect(at(text.replace("r.Id", "r.|")).context).toEqual({ kind: "aliasColumns", table: { name: "recent", alias: "r" } });
+  });
+
+  it("splits a procedure body at its semicolons but still sees the header's parameters", () => {
+    const text = "create procedure dbo.P @since date as\nbegin\n  select 1;\n  select * from dbo.Orders o where o.At > @|\nend\nGO\nselect 2";
+    const source = text.replace("|", "");
+    expect(slice(source, "select *")).toBe("select * from dbo.Orders o where o.At > @\nend");
+    expect(at(text)).toMatchObject({ context: { kind: "variables", names: ["@since"] }, prefix: "@" });
+    expect(at(text.replace("@|", "o.|")).context).toEqual({ kind: "aliasColumns", table: { name: "Orders", schema: "dbo", alias: "o" } });
+  });
+
+  it("finds the same statements as splitting the full token list", () => {
+    // Reference: the split this scanner did before it stopped tokenizing the whole script.
+    const reference = (text: string, language: Language) => {
+      const result: { start: number; end: number }[] = [];
+      let start = 0;
+      let previousEnd = 0;
+      const blank = (to: number) => {
+        const m = /\n[ \t\r]*\n/.exec(text.slice(previousEnd, to));
+        if (m) result.push({ start, end: previousEnd + m.index }), (start = previousEnd + m.index + 1);
+      };
+      for (const t of tokenize(text, language)) {
+        blank(t.start);
+        const line = (from: number, to: number) => text.slice(from, to).trim() === "";
+        const go =
+          t.type === "word" &&
+          t.text.toLowerCase() === "go" &&
+          line(text.lastIndexOf("\n", t.start - 1) + 1, t.start) &&
+          line(t.end, text.indexOf("\n", t.end) < 0 ? text.length : text.indexOf("\n", t.end));
+        if (go || (t.type === "punct" && t.text === ";")) result.push({ start, end: t.start }), (start = t.end);
+        previousEnd = t.end;
+      }
+      blank(text.length);
+      result.push({ start, end: text.length });
+      return result;
+    };
+    const scripts = [
+      "select 1\nGO\nselect 2; select 3\n\nselect 4",
+      "select 'a;\n\nb' ; [x;\n\ny] -- c;\n\n\n/* d;\n\nGO\n*/ select 5\n  go  \nselect 6;\n\n\n\n;",
+      "declare @x int = (select count(*) from [a]]b].[c\" d] e) /* unterminated\n\nGO\n;",
+      "select 'unterminated;\n\nGO\nfrom [x",
+      "((((select from from from . . . , , @ @@ [ ] ) ) ;;;\n\n\nGO\ngo go\r\n\r\nselect\r\n \r\n1",
+    ];
+    for (const language of ["tsql", "cosmos-sql"] as const)
+      for (const script of scripts) {
+        const expected = reference(script, language);
+        for (let o = 0; o <= script.length; o++) {
+          const want = expected.find((s) => s.start <= o && o <= s.end);
+          if (want) expect(statementAt(script, o, language), `${language} ${JSON.stringify(script)} @${o}`).toEqual(want);
+        }
+      }
+  });
 });
 
 describe("contextAt: T-SQL", () => {
