@@ -1,11 +1,12 @@
 <#
 .SYNOPSIS
-    Starts local SQL Server 2022 and the Cosmos DB emulator in Docker and seeds both.
+    Starts local SQL Server 2022, PostgreSQL 17 and the Cosmos DB emulator in Docker and seeds them.
 
 .DESCRIPTION
     SQL Server:  127.0.0.1,14333  user sa, password in docker\.env (generated on first run)
+    PostgreSQL:  127.0.0.1:15432  user postgres, password in docker\.env (generated on first run)
     Cosmos:      https://localhost:8081  the emulator's well-known key (printed below)
-    Both bind to 127.0.0.1 only. Re-running reseeds.
+    All bind to 127.0.0.1 only. Re-running reseeds.
 
 .PARAMETER Down
     Stop and remove the containers (data volumes are kept).
@@ -22,12 +23,18 @@ if ($Down) {
     return
 }
 
-if (-not (Test-Path $envFile)) {
+function New-DevPassword {
     $bytes = New-Object byte[] 18
     [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-    $password = 'Pn!' + [Convert]::ToBase64String($bytes).Replace('/', 'x').Replace('+', 'y')
-    [IO.File]::WriteAllText($envFile, "PANOPTIC_DEV_SA_PASSWORD=$password`n")
-    Write-Host "Generated SA password in $envFile"
+    'Pn!' + [Convert]::ToBase64String($bytes).Replace('/', 'x').Replace('+', 'y')
+}
+
+# Each password is generated once and appended, so an .env from before a database was added gains its line.
+foreach ($name in 'PANOPTIC_DEV_SA_PASSWORD', 'PANOPTIC_DEV_PG_PASSWORD') {
+    if (-not ((Test-Path $envFile) -and (Select-String -Path $envFile -Pattern "^$name=" -Quiet))) {
+        [IO.File]::AppendAllText($envFile, "$name=$(New-DevPassword)`n")
+        Write-Host "Generated $name in $envFile"
+    }
 }
 $password = (Select-String -Path $envFile -Pattern '^PANOPTIC_DEV_SA_PASSWORD=(.+)$').Matches[0].Groups[1].Value
 
@@ -53,6 +60,23 @@ docker cp (Join-Path $root 'docker\seed.sql') panoptic-dev-sql-1:/tmp/seed.sql |
 & docker @sqlcmd -i /tmp/seed.sql
 if ($LASTEXITCODE -ne 0) { throw 'SQL seed failed' }
 Write-Host 'SQL Server seeded: Orders, Inventory'
+
+# --- PostgreSQL ---------------------------------------------------------------
+Write-Host 'Waiting for PostgreSQL...'
+$deadline = (Get-Date).AddMinutes(1)
+do {
+    Start-Sleep -Seconds 2
+    $ErrorActionPreference = 'Continue'
+    & docker exec panoptic-dev-postgres-1 pg_isready -h 127.0.0.1 -U postgres 2>&1 | Out-Null
+    $ready = $LASTEXITCODE -eq 0
+    $ErrorActionPreference = 'Stop'
+} until ($ready -or (Get-Date) -gt $deadline)
+if (-not $ready) { throw 'PostgreSQL did not become ready' }
+
+docker cp (Join-Path $root 'docker\seed-postgres.sql') panoptic-dev-postgres-1:/tmp/seed-postgres.sql | Out-Null
+& docker exec panoptic-dev-postgres-1 psql -q -U postgres -d postgres -f /tmp/seed-postgres.sql
+if ($LASTEXITCODE -ne 0) { throw 'PostgreSQL seed failed' }
+Write-Host 'PostgreSQL seeded: orders, inventory'
 
 # --- Cosmos emulator (REST API with master-key auth) ---------------------------
 $cosmosKey = 'C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw=='
@@ -118,5 +142,6 @@ Write-Host 'Cosmos seeded: panoptic-dev (tenants, orders, events, settings), aud
 Write-Host ''
 Write-Host 'Add these in Panoptic:'
 Write-Host "  SQL Server   127.0.0.1,14333  SQL auth, user sa, password in $envFile, trust server certificate"
+Write-Host "  PostgreSQL   127.0.0.1:15432  username and password, user postgres, password in $envFile, trust server certificate"
 Write-Host "  Cosmos       $endpoint   account key, skip certificate validation (emulator)"
 Write-Host "               key: $cosmosKey"
