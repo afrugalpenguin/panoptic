@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Row } from "../tree-model";
+  import WarningIcon from "./WarningIcon.svelte";
 
   let { row }: { row: Extract<Row, { type: "node" }> } = $props();
 </script>
@@ -10,6 +11,7 @@
 </svg>
 <span class="name">{row.node.label}</span>
 {#if row.count !== undefined}<span class="count">{row.count}</span>{/if}
+{#if row.error}<WarningIcon small title="Failed to load. Expand to see why." />{/if}
 {#if row.loading}<span class="spinner" aria-label="Loading"></span>{/if}
 {#if row.stale}<span class="stale" title="Loaded a while ago. F5 to refresh.">stale</span>{/if}
 

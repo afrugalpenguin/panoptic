@@ -30,6 +30,16 @@ describe("RpcClient", () => {
     await expect(p).rejects.toEqual(new RpcError(-32601, "Method not found"));
   });
 
+  it("keeps the error's data", async () => {
+    const { client, lastId } = setup();
+    const p = client.request("tree.children");
+    await Promise.resolve();
+
+    const data = { summary: "Login failed.", detail: "full", code: "18456", retryable: false };
+    client.receive(JSON.stringify({ jsonrpc: "2.0", id: lastId(), error: { code: -32000, message: "raw", data } }));
+    await expect(p).rejects.toMatchObject({ code: -32000, message: "raw", data });
+  });
+
   it("matches responses to requests by id when they arrive out of order", async () => {
     const { client, sent } = setup();
     const a = client.request("a");

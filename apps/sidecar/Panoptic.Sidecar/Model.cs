@@ -17,6 +17,14 @@ public sealed record TreeNode(
     string[] Actions,
     Dictionary<string, string>? Meta = null);
 
+/// <summary>
+/// Why a node's children failed to load, sent as the JSON-RPC error's data (docs/explorer-errors.md).
+/// </summary>
+/// <param name="Summary">One short human sentence with no identifiers, shown on the tree row.</param>
+/// <param name="Detail">The full original message plus status, ids, endpoint and identity, for the Problems tab.</param>
+/// <param name="Code">The provider status where there is one: "403/5300", "429", a SQL error number.</param>
+public sealed record NodeError(string Summary, string Detail, string? Code, bool Retryable);
+
 public static class ConnectionKinds
 {
     public const string Sql = "sql";
@@ -126,6 +134,7 @@ public sealed record StoreFile(AppConfig Config, Dictionary<string, string> Secr
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(TreeNode[]))]
+[JsonSerializable(typeof(NodeError))]
 [JsonSerializable(typeof(AppConfig))]
 [JsonSerializable(typeof(AppSettings))]
 [JsonSerializable(typeof(EnvironmentConfig))]

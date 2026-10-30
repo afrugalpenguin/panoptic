@@ -10,14 +10,16 @@ namespace Panoptic.Sidecar;
 /// </summary>
 public delegate Task<Action<Utf8JsonWriter>> RpcHandler(JsonElement? parameters, CancellationToken cancellationToken);
 
-/// <summary>Thrown by handlers to return a specific JSON-RPC error code.</summary>
-public sealed class RpcException(int code, string message) : Exception(message)
+/// <summary>Thrown by handlers to return a specific JSON-RPC error code, optionally with a structured node error as its data.</summary>
+public sealed class RpcException(int code, string message, NodeError? nodeError = null) : Exception(message)
 {
     public const int InvalidParams = -32602;
     /// <summary>Application error: the operation ran and failed (login failed, timeout, not found).</summary>
     public const int OperationFailed = -32000;
 
     public int Code { get; } = code;
+
+    public NodeError? NodeError { get; } = nodeError;
 }
 
 /// <summary>
@@ -73,7 +75,7 @@ public sealed class JsonRpcDispatcher(IReadOnlyDictionary<string, RpcHandler> ha
         }
         catch (RpcException ex)
         {
-            return id is null ? null : Error(id, ex.Code, ex.Message);
+            return id is null ? null : Error(id, ex.Code, ex.Message, ex.NodeError);
         }
         catch (Exception ex)
         {
@@ -89,12 +91,17 @@ public sealed class JsonRpcDispatcher(IReadOnlyDictionary<string, RpcHandler> ha
         parameters(w);
     });
 
-    private static string Error(JsonElement? id, int code, string message) => Write(w =>
+    private static string Error(JsonElement? id, int code, string message, NodeError? data = null) => Write(w =>
     {
         Header(w, id);
         w.WriteStartObject("error");
         w.WriteNumber("code", code);
         w.WriteString("message", message);
+        if (data is not null)
+        {
+            w.WritePropertyName("data");
+            JsonSerializer.Serialize(w, data, SidecarJson.Default.NodeError);
+        }
         w.WriteEndObject();
     });
 

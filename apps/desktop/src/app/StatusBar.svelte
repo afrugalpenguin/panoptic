@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type { UpdateState } from "../updates";
+  import WarningIcon from "./rows/WarningIcon.svelte";
   import type { LoadReport } from "./tree-model";
 
   let {
@@ -10,6 +11,8 @@
     lastLoad,
     startup,
     update,
+    problems,
+    onOpenProblems,
   }: {
     sidecar: "connecting" | "connected" | "disconnected";
     sidecarText: string;
@@ -17,6 +20,9 @@
     lastLoad: LoadReport | undefined;
     startup: string;
     update: UpdateState | undefined;
+    /** Explorer errors; shown as a count badge that opens the Problems tab. */
+    problems: number;
+    onOpenProblems: () => void;
   } = $props();
 
   let now = $state(Date.now());
@@ -41,6 +47,11 @@
     {/if}
   </span>
 
+  {#if problems > 0}
+    <button class="problems" title="Open Problems" onclick={onOpenProblems}>
+      <WarningIcon small />{problems} problem{problems === 1 ? "" : "s"}
+    </button>
+  {/if}
   {#if update?.kind === "available"}
     <span class="item" title="Download the new portable zip from GitHub Releases">v{update.next} available on GitHub</span>
   {:else if update?.kind === "downloading"}
@@ -90,6 +101,19 @@
   .bad,
   .slow {
     color: var(--bad);
+  }
+  .problems {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0 8px;
+    font-size: 12px;
+    border: none;
+    background: none;
+    color: var(--bad);
+  }
+  .problems:hover {
+    background: var(--bg-hover);
   }
   .update {
     padding: 0 8px;

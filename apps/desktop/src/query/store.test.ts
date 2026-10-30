@@ -131,6 +131,42 @@ describe("QueryWorkspace", () => {
   });
 });
 
+describe("QueryWorkspace: Problems tab", () => {
+  const problem = (nodeId: string) => ({
+    nodeId,
+    env: "dev",
+    connection: "orders",
+    path: ["app"],
+    error: { summary: "Login failed.", detail: "full", code: "18456", retryable: false },
+    at: 1,
+  });
+  const ws = () => new QueryWorkspace({ executeQuery: vi.fn(), cancelQuery: vi.fn() });
+
+  it("is a singleton titled with its count, focused on the asked-for entry", () => {
+    const w = ws();
+    const tab = w.openProblems([problem("a")]);
+    expect(tab.title).toBe("Problems (1)");
+    const again = w.openProblems([problem("a"), problem("b")], "b");
+    expect(again).toBe(tab);
+    expect(w.tabs.filter((t) => t.kind === "problems")).toHaveLength(1);
+    expect(w.active).toBe(tab);
+    expect(tab.title).toBe("Problems (2)");
+    expect(tab.focus).toEqual({ nodeId: "b", seq: 1 });
+    w.openProblems([problem("b")], "b");
+    expect(tab.focus?.seq).toBe(2);
+  });
+
+  it("follows the tree's problems only while open", () => {
+    const w = ws();
+    w.setProblems([problem("a")]);
+    expect(w.tabs).toHaveLength(0);
+    const tab = w.openProblems([problem("a")]);
+    w.setProblems([]);
+    expect(tab.entries).toEqual([]);
+    expect(tab.title).toBe("Problems (0)");
+  });
+});
+
 describe("QueryWorkspace: IntelliSense", () => {
   const catalog = { stamp: "s", schemas: ["dbo"], objects: [], types: [] };
 

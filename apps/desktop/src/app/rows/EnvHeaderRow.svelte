@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Row } from "../tree-model";
+  import WarningIcon from "./WarningIcon.svelte";
 
   let { row }: { row: Extract<Row, { type: "node" }> } = $props();
 </script>
@@ -7,6 +8,7 @@
 <span class="chevron" class:open={row.expanded}></span>
 <span class="name">{row.node.label}</span>
 {#if row.readOnly}<span class="read-only">Read only</span>{/if}
+{#if row.error}<WarningIcon small title="Failed to load. Expand to see why." />{/if}
 {#if row.loading}<span class="spinner" aria-label="Loading"></span>{/if}
 <span class="count">{row.count ?? ""}</span>
 

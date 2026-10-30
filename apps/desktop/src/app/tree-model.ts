@@ -1,6 +1,7 @@
-import type { TreeNode } from "./api";
+import type { NodeError, TreeNode } from "./api";
 import { kindBadge, type KindBadge } from "./kinds";
 import { computeLabels, leafLabel, type LabelSegments } from "./labels";
+import { toNodeError, type Problem } from "./problems";
 
 /** Fixed row heights per level (docs/explorer-ux.md); the virtualiser lays rows out from these alone. */
 export const ROW_HEIGHT = { header: 26, connection: 24, folder: 22, leaf: 22 } as const;
@@ -14,7 +15,7 @@ export type RowKind = keyof typeof ROW_HEIGHT;
 type ChildState =
   | { status: "loading"; startedAt: number }
   | { status: "loaded"; ids: string[]; loadedAt: number }
-  | { status: "error"; message: string };
+  | { status: "error"; error: NodeError };
 
 interface RowBase {
   /** Stable key: the node id, or the parent id plus a suffix for placeholder rows. */
@@ -48,9 +49,11 @@ export type Row =
       count?: number;
       /** Muted text after the name, e.g. a container's partition key. */
       secondary?: string;
+      /** Its children failed to load: a warning glyph after the label, visible even when collapsed. */
+      error?: NodeError;
     })
   | (RowBase & { type: "loading"; parentId: string })
-  | (RowBase & { type: "error"; parentId: string; message: string })
+  | (RowBase & { type: "error"; parentId: string; error: NodeError })
   | (RowBase & { type: "empty"; parentId: string });
 
 /** One chip in the kind filter row: a kind present in the loaded connections and how many. */
@@ -65,6 +68,7 @@ export interface LoadReport {
   label: string;
   count: number;
   ms: number;
+  /** The failure's summary line. */
   error?: string;
 }
 
@@ -103,6 +107,8 @@ export class TreeModel {
   private kindFilter: string | undefined;
   /** explorer.envOrder: environment ids (not node ids) in manual order. */
   private envOrder: string[] = [];
+  /** Each node's last failed load, kept while a retry is loading (docs/explorer-errors.md); cleared on success. */
+  private readonly failures = new Map<string, { error: NodeError; at: number }>();
 
   constructor(
     private readonly load: (id: string) => Promise<TreeNode[]>,
@@ -220,6 +226,36 @@ export class TreeModel {
     if (this.children.has(id)) await this.loadChildren(id);
   }
 
+  /**
+   * One entry per node whose children failed to load, oldest first. A node that is reloading keeps its
+   * entry until it succeeds; one no longer in the tree (connection removed, ancestor refreshed) drops it.
+   */
+  problems(): Problem[] {
+    const out: Problem[] = [];
+    for (const [id, { error, at }] of this.failures) {
+      if (!this.children.has(id) || !this.reachable(id)) {
+        this.failures.delete(id);
+        continue;
+      }
+      const chain: TreeNode[] = [];
+      for (let cur: string | undefined = id; cur; cur = this.parents.get(cur)) {
+        const n = this.nodes.get(cur);
+        if (n) chain.unshift(n);
+      }
+      const env = chain.find((n) => n.kind === "environment");
+      const connectionIndex = chain.findIndex((n) => n.kind === "connection");
+      out.push({
+        nodeId: id,
+        env: env?.label ?? "",
+        connection: connectionIndex >= 0 ? chain[connectionIndex].label : "",
+        path: connectionIndex >= 0 ? chain.slice(connectionIndex + 1).map((n) => n.label) : [],
+        error,
+        at,
+      });
+    }
+    return out.sort((a, b) => a.at - b.at);
+  }
+
   rows(): Row[] {
     const out: Row[] = [];
     const root = this.children.get("");
@@ -275,6 +311,7 @@ export class TreeModel {
                   ? loadedCount
                   : undefined,
               secondary: node.meta?.partitionKey ?? node.meta?.detail,
+              error: state?.status === "error" ? state.error : undefined,
             },
             out.length === 0,
           ),
@@ -282,7 +319,7 @@ export class TreeModel {
         if (!expanded || !state) continue;
         const base = { depth: depth + 1, envColor: color, readOnly: ro, parentId: id, rowKind: "leaf" as const, indent: indentFor(depth + 1), envId: env };
         if (state.status === "loading") out.push(place({ ...base, type: "loading" as const, key: `${id}#loading` }, false));
-        else if (state.status === "error") out.push(place({ ...base, type: "error" as const, key: `${id}#error`, message: state.message }, false));
+        else if (state.status === "error") out.push(place({ ...base, type: "error" as const, key: `${id}#error`, error: state.error }, false));
         else if (state.ids.length === 0) out.push(place({ ...base, type: "empty" as const, key: `${id}#empty` }, false));
         else visit(state.ids, depth + 1, color, ro, env);
       }
@@ -310,12 +347,14 @@ export class TreeModel {
         this.parents.set(item.id, id);
       }
       this.children.set(id, { status: "loaded", ids: items.map((i) => i.id), loadedAt: Date.now() });
+      this.failures.delete(id);
       this.buildLabels(items);
       this.onLoaded({ id, label, count: items.length, ms: Math.round(performance.now() - startedAt) });
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      this.children.set(id, { status: "error", message });
-      this.onLoaded({ id, label, count: 0, ms: Math.round(performance.now() - startedAt), error: message });
+      const error = toNodeError(e);
+      this.children.set(id, { status: "error", error });
+      this.failures.set(id, { error, at: Date.now() });
+      this.onLoaded({ id, label, count: 0, ms: Math.round(performance.now() - startedAt), error: error.summary });
     }
     this.onChange();
   }
@@ -362,6 +401,17 @@ export class TreeModel {
     }
     this.kindList = [...totals].map(([kind, count]) => ({ kind, badge: kindBadge(kind), count }));
     if (this.kindFilter && !totals.has(this.kindFilter)) this.kindFilter = undefined;
+  }
+
+  /** Whether a node is still listed: every ancestor is loaded and lists it. */
+  private reachable(id: string): boolean {
+    for (let cur = id; cur !== ""; ) {
+      const parent = this.parents.get(cur);
+      const state = parent === undefined ? undefined : this.children.get(parent);
+      if (parent === undefined || state?.status !== "loaded" || !state.ids.includes(cur)) return false;
+      cur = parent;
+    }
+    return true;
   }
 
   private forgetBelow(id: string): void {

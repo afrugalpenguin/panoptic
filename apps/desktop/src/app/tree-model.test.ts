@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { TreeNode } from "./api";
+import { RpcError } from "../rpc";
 import { ENV_GAP, moveEnvironment, ROW_HEIGHT, TreeModel } from "./tree-model";
 
 const node = (id: string, hasChildren = true, meta?: Record<string, string>): TreeNode => ({
@@ -65,12 +66,77 @@ describe("TreeModel", () => {
 
     await model.toggle("a");
     expect(labels(model)).toEqual(["a", "  <error>"]);
-    expect(model.rows()[1]).toMatchObject({ type: "error", message: "boom a" });
+    expect(model.rows()[1]).toMatchObject({ type: "error", error: { summary: "boom a", detail: "boom a", retryable: true } });
 
     children.a = [node("a/x", false)];
     await model.toggle("a");
     await model.toggle("a");
     expect(labels(model)).toEqual(["a", "  x"]);
+  });
+
+  describe("errors", () => {
+    const denied = { summary: "No data-plane access.", detail: "403 full text", code: "403/5300", retryable: false };
+    const env = (id: string): TreeNode => ({ ...node(id), kind: "environment", label: "dev", meta: { environmentId: "dev" } });
+    const conn = (id: string): TreeNode => ({ ...node(id), kind: "connection", label: "orders", meta: { connectionKind: "cosmos" } });
+
+    function failing() {
+      const children: Record<string, TreeNode[]> = {
+        "": [env("env:dev")],
+        "env:dev": [conn("env:dev/conn:c1")],
+        "env:dev/conn:c1": [{ ...node("env:dev/conn:c1/db:app"), kind: "database", label: "app" }],
+      };
+      const fail = new Set(["env:dev/conn:c1/db:app"]);
+      const load = vi.fn(async (id: string) => {
+        if (fail.has(id)) throw new RpcError(-32000, "raw", denied);
+        return children[id] ?? [];
+      });
+      return { model: new TreeModel(load, () => {}), fail, children };
+    }
+
+    async function expandAll(model: TreeModel) {
+      await model.loadRoot();
+      await model.expand("env:dev");
+      await model.expand("env:dev/conn:c1");
+      await model.expand("env:dev/conn:c1/db:app");
+    }
+
+    it("keeps the sidecar's structured error on a leaf-height row and flags the parent", async () => {
+      const { model } = failing();
+      await expandAll(model);
+      const rows = model.rows();
+      expect(rows.at(-1)).toMatchObject({ type: "error", parentId: "env:dev/conn:c1/db:app", error: denied, rowKind: "leaf", height: ROW_HEIGHT.leaf });
+      expect(rows.at(-2)).toMatchObject({ type: "node", error: denied });
+      expect(rows.filter((r) => r.type === "node" && r.error)).toHaveLength(1);
+
+      model.collapse("env:dev/conn:c1/db:app");
+      expect(model.rows().at(-1)).toMatchObject({ type: "node", error: denied });
+    });
+
+    it("lists one problem per failed node with where it is", async () => {
+      const { model } = failing();
+      await expandAll(model);
+      expect(model.problems()).toEqual([
+        { nodeId: "env:dev/conn:c1/db:app", env: "dev", connection: "orders", path: ["app"], error: denied, at: expect.any(Number) },
+      ]);
+    });
+
+    it("keeps the problem while a retry loads, and clears it when the node loads", async () => {
+      const { model, fail } = failing();
+      await expandAll(model);
+      fail.delete("env:dev/conn:c1/db:app");
+      const retry = model.refresh("env:dev/conn:c1/db:app");
+      expect(model.problems()).toHaveLength(1);
+      await retry;
+      expect(model.problems()).toEqual([]);
+    });
+
+    it("clears the problem when its connection is removed", async () => {
+      const { model, children } = failing();
+      await expandAll(model);
+      children["env:dev"] = [];
+      await model.reload("env:dev");
+      expect(model.problems()).toEqual([]);
+    });
   });
 
   it("shows an empty row for a node with no children", async () => {
