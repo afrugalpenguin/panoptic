@@ -231,6 +231,108 @@ public sealed class ConfigStoreTests : IDisposable
         Assert.Empty(store.Config.Environments);
         Assert.Null(store.GetSecret("c1"));
     }
+
+    private void WriteEncrypted(string json)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+        File.WriteAllBytes(_path, System.Security.Cryptography.ProtectedData.Protect(
+            System.Text.Encoding.UTF8.GetBytes(json), "panoptic.store.v1"u8.ToArray(), System.Security.Cryptography.DataProtectionScope.CurrentUser));
+    }
+
+    private string[] CorruptCopies() => Directory.GetFiles(Path.GetDirectoryName(_path)!, "store.bin.corrupt-*");
+
+    [Fact]
+    public void Missing_file_is_an_empty_store_and_not_a_recovery()
+    {
+        var store = new ConfigStore(_path);
+
+        Assert.Empty(store.Config.Environments);
+        Assert.Null(store.RecoveredFrom);
+    }
+
+    [Fact]
+    public void Garbage_file_is_moved_aside_and_the_store_starts_empty()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+        File.WriteAllText(_path, "not a dpapi blob");
+
+        var store = new ConfigStore(_path);
+
+        Assert.Empty(store.Config.Environments);
+        var copy = Assert.Single(CorruptCopies());
+        Assert.Equal(copy, store.RecoveredFrom);
+        Assert.Equal("not a dpapi blob", File.ReadAllText(copy));
+        Assert.False(File.Exists(_path));
+    }
+
+    [Fact]
+    public void Truncated_blob_is_moved_aside()
+    {
+        new ConfigStore(_path).SaveEnvironment(new EnvironmentConfig("dev", "Dev", "#000", false, []));
+        var bytes = File.ReadAllBytes(_path);
+        File.WriteAllBytes(_path, bytes[..(bytes.Length / 2)]);
+
+        var store = new ConfigStore(_path);
+
+        Assert.Empty(store.Config.Environments);
+        Assert.Equal(Assert.Single(CorruptCopies()), store.RecoveredFrom);
+    }
+
+    [Theory]
+    [InlineData("{\"config\":")] // truncated JSON
+    [InlineData("{\"config\":{\"environments\":\"oops\"},\"secrets\":{}}")] // wrong shape
+    [InlineData("null")]
+    [InlineData("{}")] // deserialises, but with no config or secrets
+    [InlineData("{\"config\":{},\"secrets\":{}}")]
+    public void Decryptable_but_undeserialisable_payload_is_moved_aside(string json)
+    {
+        WriteEncrypted(json);
+
+        var store = new ConfigStore(_path);
+
+        Assert.Empty(store.Config.Environments);
+        Assert.Null(store.GetSecret("c1"));
+        Assert.Equal(Assert.Single(CorruptCopies()), store.RecoveredFrom);
+    }
+
+    [Fact]
+    public void Saving_after_a_recovery_keeps_the_corrupt_copy_and_reloads_cleanly()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+        File.WriteAllText(_path, "garbage");
+        var store = new ConfigStore(_path);
+
+        store.SaveEnvironment(new EnvironmentConfig("dev", "Dev", "#000", false, []));
+
+        Assert.Equal("garbage", File.ReadAllText(Assert.Single(CorruptCopies())));
+        var reloaded = new ConfigStore(_path);
+        Assert.Equal("Dev", reloaded.Config.Environments.Single().Name);
+        Assert.Null(reloaded.RecoveredFrom);
+    }
+
+    [Fact]
+    public async Task Ping_reports_a_recovered_store()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+        File.WriteAllText(_path, "garbage");
+        var store = new ConfigStore(_path);
+        var dispatcher = new JsonRpcDispatcher(Methods.Create(new SidecarInfo(1, "0.1.0", "test"), store));
+
+        var response = await dispatcher.HandleAsync("""{"jsonrpc":"2.0","id":1,"method":"ping"}""");
+        var result = System.Text.Json.JsonDocument.Parse(response!).RootElement.GetProperty("result");
+
+        Assert.Equal(store.RecoveredFrom, result.GetProperty("storeRecoveredFrom").GetString());
+    }
+
+    [Fact]
+    public async Task Ping_omits_recovery_for_a_healthy_store()
+    {
+        var dispatcher = new JsonRpcDispatcher(Methods.Create(new SidecarInfo(1, "0.1.0", "test"), new ConfigStore(_path)));
+
+        var response = await dispatcher.HandleAsync("""{"jsonrpc":"2.0","id":1,"method":"ping"}""");
+
+        Assert.False(System.Text.Json.JsonDocument.Parse(response!).RootElement.GetProperty("result").TryGetProperty("storeRecoveredFrom", out _));
+    }
 }
 
 public sealed class TreeServiceTests : IDisposable

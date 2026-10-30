@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import type { RpcClient } from "../rpc";
-  import { connectSidecar, type PingResult, type SidecarStatus } from "../sidecar";
+  import { connectSidecar, readyText, type PingResult, type SidecarStatus } from "../sidecar";
   import { finishBenchmark, firstPaintEpochMs, nowEpochMs, type StartupInfo } from "../startup";
   import { sidecarView } from "../sidecar-status";
   import { scheduleUpdateChecks } from "../update-schedule";
@@ -141,7 +141,7 @@
       return; // An exited/failed status follows and says what happened.
     }
     sidecar = "connected";
-    sidecarText = "Ready";
+    sidecarText = readyText(ping);
     if (initialised) {
       // Restarted: requests in flight at the exit may have landed errors since, so forget again, then
       // refresh environments and connections.

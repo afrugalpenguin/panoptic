@@ -18,6 +18,7 @@ public static class Methods
                 w.WriteString("version", info.Version);
                 w.WriteString("mode", info.Mode);
                 w.WriteNumber("pid", Environment.ProcessId);
+                if (store?.RecoveredFrom is { } recovered) w.WriteString("storeRecoveredFrom", recovered);
                 w.WriteEndObject();
             }),
         };

@@ -1,0 +1,1 @@
+Fixed: Panoptic no longer fails to start when its saved connections file cannot be read (copied from another Windows profile or damaged by a crash). The file is kept as `store.bin.corrupt-<time>`, Panoptic starts with no saved connections, and the status bar says so.
