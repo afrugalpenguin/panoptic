@@ -76,6 +76,8 @@ public sealed class CosmosBackend(Credentials credentials) : IQueryBackend
         }
     }
 
+    public IReadOnlyList<string> AuthsFor(string kind) => [AuthKinds.Entra, AuthKinds.Key];
+
     public void Forget(string connectionId)
     {
         if (_clients.TryRemove(connectionId, out var entry)) entry.Client.Dispose();

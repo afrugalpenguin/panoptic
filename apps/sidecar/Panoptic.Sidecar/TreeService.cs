@@ -106,6 +106,15 @@ public sealed class TreeService(ConfigStore store, IReadOnlyDictionary<string, I
             ? backend
             : throw new RpcException(RpcException.InvalidParams, $"Unknown connection kind: {connection.Kind}");
 
+    /// <summary>The backend for a connection about to be saved or tested, once its auth is one that kind supports.</summary>
+    public IBackend Validate(ConnectionConfig connection)
+    {
+        var backend = BackendFor(connection);
+        if (!backend.AuthsFor(connection.Kind).Contains(connection.Auth))
+            throw new RpcException(RpcException.InvalidParams, $"{connection.Kind} connections do not support auth '{connection.Auth}'");
+        return backend;
+    }
+
     public void Forget(string connectionId)
     {
         foreach (var backend in backends.Values) backend.Forget(connectionId);

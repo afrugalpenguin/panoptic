@@ -31,6 +31,8 @@ public static class ConnectionKinds
     public const string Cosmos = "cosmos";
     /// <summary>Azure Synapse SQL pool (dedicated or serverless). TDS, served by the SQL Server backend.</summary>
     public const string Synapse = "synapse";
+    /// <summary>PostgreSQL and Azure Database for PostgreSQL.</summary>
+    public const string Postgres = "postgres";
 }
 
 public static class AuthKinds
@@ -40,11 +42,13 @@ public static class AuthKinds
     public const string Key = "key";
     /// <summary>Windows integrated authentication (SQL Server only).</summary>
     public const string Windows = "windows";
+    /// <summary>User name and password (Postgres). SQL Server's equivalent is <see cref="Sql"/>.</summary>
+    public const string Password = "password";
 }
 
-/// <param name="Endpoint">SQL Server host[,port] or Cosmos account URI.</param>
+/// <param name="Endpoint">SQL Server host[,port], Postgres host[:port] or Cosmos account URI.</param>
 /// <param name="Database">Optional: restrict the tree to one database (needed for contained users).</param>
-/// <param name="TrustServerCertificate">SQL: skip certificate validation. Cosmos: allowed only for a localhost emulator.</param>
+/// <param name="TrustServerCertificate">SQL and Postgres: encrypt without validating the certificate. Cosmos: allowed only for a localhost emulator.</param>
 public sealed record ConnectionConfig(
     string Id,
     string Name,

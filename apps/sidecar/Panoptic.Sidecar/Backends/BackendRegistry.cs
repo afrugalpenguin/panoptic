@@ -15,6 +15,7 @@ public static class BackendRegistry
             [ConnectionKinds.Sql] = sql,
             [ConnectionKinds.Synapse] = sql,
             [ConnectionKinds.Cosmos] = new CosmosBackend(credentials),
+            [ConnectionKinds.Postgres] = new PostgresBackend(credentials),
         };
     }
 }

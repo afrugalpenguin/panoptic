@@ -21,6 +21,10 @@ public interface IBackend
     /// <summary>Drops any cached client for a connection whose settings changed or was removed.</summary>
     void Forget(string connectionId);
 
+    /// <summary>The <see cref="AuthKinds"/> a connection of <paramref name="kind"/> may use. Saving or testing a
+    /// connection with any other is refused before it reaches the store or the backend, whatever the UI sent.</summary>
+    IReadOnlyList<string> AuthsFor(string kind);
+
     // --- Node actions (optional) ---------------------------------------------------------------------
     // A node's action ids come with it from ChildrenAsync. Labels for the shared ones are in Nodes.ActionLabels.
     // Node meta may carry ready-made text for the UI: "dragText", what dragging the node into an editor inserts, and

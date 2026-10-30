@@ -53,6 +53,7 @@ public static class Methods
         methods["config.saveConnection"] = (p, _) =>
         {
             var args = Rpc.Params(p, SidecarJson.Default.SaveConnectionParams);
+            tree.Validate(args.Connection);
             store.SaveConnection(args.EnvironmentId, args.Connection, args.Secret);
             tree.Forget(args.Connection.Id);
             catalog?.Forget();
@@ -72,8 +73,8 @@ public static class Methods
         methods["connection.test"] = async (p, ct) =>
         {
             var args = Rpc.Params(p, SidecarJson.Default.TestConnectionParams);
+            var backend = tree.Validate(args.Connection);
             var secret = args.Secret ?? store.GetSecret(args.Connection.Id);
-            var backend = tree.BackendFor(args.Connection);
             backend.Forget(args.Connection.Id);
             var sw = Stopwatch.StartNew();
             TestConnectionResult result;
