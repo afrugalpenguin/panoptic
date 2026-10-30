@@ -1,0 +1,1 @@
+Added: Run queries against PostgreSQL connections. Results show values the way Postgres writes them, notices and row counts appear in Messages, errors are marked at the exact spot with the server's hint, and read-only environments are enforced by the server so nothing can be written.

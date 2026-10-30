@@ -10,8 +10,9 @@ namespace Panoptic.Sidecar.Query;
 /// before the query finishes:
 ///   query.rows    { queryId, index, columns?, rows }  500 rows at a time; columns on a set's first
 ///                                                     batch, and again whenever Cosmos finds new ones
-///   query.message { queryId, kind, text, number?, line? }  PRINT output, rows affected, errors (one per server error,
-///                                                    with its number and 1-based line in the sent text)
+///   query.message { queryId, kind, text, number?, state?, line?, column? }  PRINT output and notices, rows affected,
+///                                                    errors (one per server error, with its number or SQLSTATE and
+///                                                    1-based line, and column where the server gives one)
 /// ExecuteAsync returns a summary when everything has finished, been cancelled or failed; results
 /// already streamed are kept. The connection's backend executes the text (IBackend.ExecuteAsync) and
 /// streams into the run; this service owns the run's bookkeeping. Read-only environments are the
@@ -165,8 +166,10 @@ public sealed class QueryService
         w.WriteString("text", text);
         if (error is not null)
         {
-            w.WriteNumber("number", error.Number);
+            if (error.Number != 0) w.WriteNumber("number", error.Number);
+            if (error.State is { } state) w.WriteString("state", state);
             if (error.Line is { } line) w.WriteNumber("line", line);
+            if (error.Column is { } column) w.WriteNumber("column", column);
         }
         w.WriteNumber("elapsedMs", Math.Round(run.Clock.Elapsed.TotalMilliseconds));
         w.WriteEndObject();

@@ -3,14 +3,17 @@ using System.Text;
 using System.Text.Json;
 using Azure.Core;
 using Npgsql;
+using Panoptic.Sidecar.Catalog;
+using Panoptic.Sidecar.Query;
 
 namespace Panoptic.Sidecar.Backends;
 
 /// <summary>
-/// PostgreSQL and Azure Database for PostgreSQL (docs/connectors/postgres.md). One catalog query per expand, from
-/// pg_catalog. A Postgres connection is bound to one database, so each database has its own pooled data source.
+/// PostgreSQL and Azure Database for PostgreSQL (docs/connectors/postgres.md): the explorer tree (one catalog query per
+/// expand, from pg_catalog), queries and the IntelliSense catalog. A Postgres connection is bound to one database, so
+/// each database has its own pooled data source.
 /// </summary>
-public sealed class PostgresBackend(Credentials credentials) : IBackend
+public sealed class PostgresBackend(Credentials credentials) : IQueryBackend
 {
     /// <summary>Azure Database for PostgreSQL's Entra resource.</summary>
     private static readonly string[] EntraScope = ["https://ossrdbms-aad.database.windows.net/.default"];
@@ -116,6 +119,217 @@ public sealed class PostgresBackend(Credentials credentials) : IBackend
     {
         foreach (var key in _sources.Keys.Where(k => k.ConnectionId == connectionId))
             if (_sources.TryRemove(key, out var source)) source.Dispose();
+    }
+
+    // --- Queries ----------------------------------------------------------------------------------------
+
+    public string EditorLanguage => "pgsql";
+
+    private static readonly HashSet<string> SelectableFolders = ["tables", "views", "matviews"];
+
+    /// <summary>selectTop on a table, view or materialized view (the tree offers it there); any other action opens empty.</summary>
+    public string? TemplateFor(NodePath path, string action)
+    {
+        if (action != "selectTop") return "";
+        if (path.Count < 2 || path[path.Count - 1].Type != "o" || path[path.Count - 2] is not { Type: "f" } folder || !SelectableFolders.Contains(folder.Value))
+            return null;
+        var parts = NodePath.SplitParts(path[path.Count - 1].Value);
+        return $"SELECT *\nFROM {QualifiedName(parts[0], parts[1])}\nLIMIT 1000;";
+    }
+
+    /// <summary>
+    /// Runs the script one statement at a time (<see cref="PostgresStatements"/>) and stops at the first error, so
+    /// statements before it stay done, as in psql and SSMS. In a read-only environment the server enforces it: the
+    /// session's default_transaction_read_only is on and the script runs inside a read-only transaction that is rolled
+    /// back at the end, so any write fails with 25006. A COMMIT or ROLLBACK in the script ends that transaction; the run
+    /// stops right after it and reports Committed, so nothing runs in a transaction the script could have made writable.
+    /// </summary>
+    public async Task ExecuteAsync(QueryTarget target, string? secret, string text, IQuerySink sink, CancellationToken ct)
+    {
+        await using var conn = await Open(target.Connection, secret, target.Database, ct);
+        NoticeEventHandler notices = (_, e) =>
+            sink.Message("info", e.Notice.InvariantSeverity == "WARNING" ? $"WARNING: {e.Notice.MessageText}" : e.Notice.MessageText);
+        conn.Notice += notices;
+
+        var readOnly = target.Environment.ReadOnly;
+        var committed = false;
+        var failed = false;
+        PostgresStatements.Statement? current = null;
+        try
+        {
+            var guardStart = readOnly ? await BeginReadOnly(conn, ct) : default;
+            foreach (var statement in PostgresStatements.Split(text))
+            {
+                current = statement;
+                await Run(conn, statement, sink, ct);
+                if (readOnly && PostgresStatements.EndsTransaction(statement) && await GuardEnded(conn, guardStart, ct))
+                {
+                    committed = true;
+                    break;
+                }
+            }
+            if (readOnly && !committed) committed = await GuardEnded(conn, guardStart, ct);
+        }
+        catch (PostgresException ex) when (!ct.IsCancellationRequested)
+        {
+            failed = true;
+            var error = ToQueryError(text, current, ex.SqlState, ex.MessageText, ex.Position, ex.Where, ex.Detail, ex.Hint);
+            sink.Fail(error.Text, [error]);
+        }
+        finally
+        {
+            // ROLLBACK with no transaction open only warns; that is not the script's notice.
+            conn.Notice -= notices;
+            if (readOnly) await EndReadOnly(sink, target, conn, committed, failed);
+        }
+    }
+
+    /// <summary>
+    /// One statement, with text format results (see <see cref="PostgresValues"/>). Npgsql parses a command's text for
+    /// semicolons as the splitter does, except inside a BEGIN ATOMIC body, which it would split: that statement (a
+    /// CREATE FUNCTION or PROCEDURE, so no rows) goes as a batch command, which Npgsql sends as written.
+    /// </summary>
+    private static async Task Run(NpgsqlConnection conn, PostgresStatements.Statement statement, IQuerySink sink, CancellationToken ct)
+    {
+        if (statement.Atomic)
+        {
+            await using var batch = new NpgsqlBatch(conn) { Timeout = 0, BatchCommands = { new NpgsqlBatchCommand(statement.Text) } };
+            await batch.ExecuteNonQueryAsync(ct);
+            return;
+        }
+        await using var cmd = new NpgsqlCommand(statement.Text, conn) { CommandTimeout = 0, AllResultTypesAreUnknown = true };
+        var setsBefore = sink.SetCount;
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        do
+        {
+            if (reader.FieldCount > 0) await StreamSet(sink, reader, ct);
+        } while (await reader.NextResultAsync(ct));
+        await reader.CloseAsync();
+        if (reader.RecordsAffected >= 0 && sink.SetCount == setsBefore)
+            sink.Message("info", $"({reader.RecordsAffected} row{(reader.RecordsAffected == 1 ? "" : "s")} affected)");
+    }
+
+    private static async Task StreamSet(IQuerySink sink, NpgsqlDataReader reader, CancellationToken ct)
+    {
+        var index = sink.BeginSet();
+        var columns = Enumerable.Range(0, reader.FieldCount).Select(i => new ResultColumn(reader.GetName(i), reader.GetDataTypeName(i))).ToArray();
+        var types = Enumerable.Range(0, reader.FieldCount).Select(reader.GetDataTypeOID).ToArray();
+        var batch = new List<object?[]>(sink.BatchSize);
+        var first = true;
+
+        while (await reader.ReadAsync(ct))
+        {
+            var row = new object?[reader.FieldCount];
+            for (var i = 0; i < row.Length; i++) row[i] = reader.IsDBNull(i) ? null : PostgresValues.FromText(types[i], reader.GetString(i));
+            batch.Add(row);
+            if (batch.Count == sink.BatchSize)
+            {
+                sink.Rows(index, first ? columns : null, batch);
+                batch.Clear();
+                first = false;
+            }
+        }
+        if (batch.Count > 0 || first) sink.Rows(index, first ? columns : null, batch);
+    }
+
+    /// <summary>Starts the read-only guard and returns its transaction's start time. The SELECT takes the transaction's
+    /// snapshot, after which SET TRANSACTION READ WRITE is refused (25001). The SET is its own command so that it is
+    /// not part of the transaction: a ROLLBACK in the script does not undo it.</summary>
+    private static async Task<DateTime> BeginReadOnly(NpgsqlConnection conn, CancellationToken ct)
+    {
+        foreach (var sql in new[] { "SET default_transaction_read_only = on", "BEGIN READ ONLY" })
+        {
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        return await TransactionStart(conn, ct);
+    }
+
+    /// <summary>Whether the guard's transaction has ended: the connection's transaction is no longer the one that
+    /// started at <paramref name="guardStart"/> (none is open and the check runs in its own, or the script began one).</summary>
+    private static async Task<bool> GuardEnded(NpgsqlConnection conn, DateTime guardStart, CancellationToken ct) =>
+        await TransactionStart(conn, ct) != guardStart;
+
+    private static async Task<DateTime> TransactionStart(NpgsqlConnection conn, CancellationToken ct)
+    {
+        await using var cmd = new NpgsqlCommand("SELECT transaction_timestamp()", conn);
+        return (DateTime)(await cmd.ExecuteScalarAsync(ct))!;
+    }
+
+    /// <summary>Rolls back the guard (and any transaction the script left open), and reports how the guard ended.</summary>
+    private static async Task EndReadOnly(IQuerySink sink, QueryTarget target, NpgsqlConnection conn, bool committed, bool failed)
+    {
+        try
+        {
+            await using var cmd = new NpgsqlCommand("ROLLBACK", conn);
+            await cmd.ExecuteNonQueryAsync(CancellationToken.None);
+        }
+        catch (Exception ex) when (!committed && ex is NpgsqlException or InvalidOperationException)
+        {
+            sink.Message("error", $"{target.Environment.Name} is read-only, but the rollback failed: {ex.Message}. "
+                + "The transaction was read-only, so the server refused any writes, and it ends when the connection closes.");
+            return;
+        }
+        catch (Exception ex) when (ex is NpgsqlException or InvalidOperationException)
+        {
+            // The connection is discarded next anyway.
+        }
+
+        if (committed)
+        {
+            sink.Committed();
+            sink.Message("error", "A COMMIT or ROLLBACK in this script ended the read-only guard, so the run stopped there: "
+                + "the statements after it were not run. The server refused writes until then.");
+        }
+        else
+        {
+            sink.RolledBack();
+            sink.Message("info", SqlBackend.RolledBackMessage(target.Environment.Name, failed));
+        }
+    }
+
+    /// <summary>
+    /// A server error as the UI gets it, with DETAIL and HINT lines as psql prints them. <paramref name="position"/> is
+    /// a 1-based character offset into the failed statement, which becomes a script line and column. An error with no
+    /// position (division by zero) gets the statement's first line. One inside a function names the function instead
+    /// and gets no script line: its position would be in the function's body.
+    /// </summary>
+    public static QueryError ToQueryError(string script, PostgresStatements.Statement? statement, string state, string message, int position,
+        string? where, string? detail, string? hint)
+    {
+        var text = message;
+        if (!string.IsNullOrEmpty(detail)) text += $"\nDETAIL: {detail}";
+        if (!string.IsNullOrEmpty(hint)) text += $"\nHINT: {hint}";
+        if (statement is null) return new QueryError(0, null, text, state);
+        if (position > 0)
+        {
+            var (line, column) = PostgresStatements.Locate(script, statement, position);
+            return new QueryError(0, line, $"Line {line}: {text}", state, column);
+        }
+        if (!string.IsNullOrEmpty(where)) return new QueryError(0, null, $"{where.Split('\n')[0]}: {text}", state);
+        var (startLine, _) = PostgresStatements.LineAndColumn(script, statement.Start);
+        return new QueryError(0, startLine, $"Line {startLine}: {text}", state);
+    }
+
+    // --- IntelliSense catalog ---------------------------------------------------------------------------
+
+    public async Task<string?> CatalogStampAsync(QueryTarget target, string? secret, CancellationToken ct)
+    {
+        await using var conn = await Open(target.Connection, secret, target.Database, ct);
+        try
+        {
+            return await PostgresCatalog.StampAsync(conn, ct);
+        }
+        catch (PostgresException)
+        {
+            return null; // no cheap check here: the catalog is rebuilt once per session
+        }
+    }
+
+    public async Task<DatabaseCatalog> CatalogAsync(QueryTarget target, string? secret, EditorSettings editor, CancellationToken ct)
+    {
+        await using var conn = await Open(target.Connection, secret, target.Database, ct);
+        return await PostgresCatalog.BuildAsync(conn, ct);
     }
 
     // --- Names -----------------------------------------------------------------------------------------

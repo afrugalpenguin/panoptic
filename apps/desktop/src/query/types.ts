@@ -36,11 +36,15 @@ export interface MessageNotification {
   elapsedMs: number;
   /** A server error's number (SQL Server: 208 invalid object name, ...). */
   number?: number;
+  /** A server error's SQLSTATE (Postgres: 42P01 undefined table, ...). */
+  state?: string;
   /** 1-based line of a server error in the text that was sent; absent when it is in another module or unknown. */
   line?: number;
+  /** 1-based column on that line (UTF-16 code units), when the server gives an exact position (Postgres). */
+  column?: number;
 }
 
-export type QueryLanguage = "sql" | "cosmos";
+export type QueryLanguage = "sql" | "cosmos" | "pgsql";
 
 /**
  * Mirrors QueryScope in the sidecar's Model.cs: what a node's query tabs belong to, resolved by the sidecar so the UI

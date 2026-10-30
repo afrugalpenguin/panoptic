@@ -48,7 +48,7 @@ public interface IBackend
 /// </summary>
 public interface IQueryBackend : IBackend
 {
-    /// <summary>The editor language the UI opens this backend's query tabs in: "sql" (T-SQL) or "cosmos" today.</summary>
+    /// <summary>The editor language the UI opens this backend's query tabs in: "sql" (T-SQL), "cosmos" or "pgsql".</summary>
     string EditorLanguage { get; }
 
     /// <summary>Text for a query tab opened by a node action: selectTop on a table, view or container (null on any

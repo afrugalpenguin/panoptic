@@ -41,6 +41,8 @@ export interface QueryMessage {
 
 /** Errors whose quoted name can be looked up in the catalog: objects, columns, procedures. */
 const SUGGESTABLE = new Set([208, 207, 2812]);
+/** A Postgres name, dotted and "quoted" parts included, or any other run of word characters: what an error marks. */
+const PG_TOKEN = /^(?:"(?:[^"]|"")*"|[\p{L}_][\p{L}\p{N}_$]*)(?:\.(?:"(?:[^"]|"")*"|[\p{L}_][\p{L}\p{N}_$]*))*|^\w+/u;
 let nextMessageId = 0;
 
 /**
@@ -188,8 +190,13 @@ export class QueryWorkspace {
     this.databaseKeys.set(connection, { ...this.databaseKeys.get(connection), [database.toLowerCase()]: key });
   }
 
+  /** IntelliSense for Postgres needs the pgsql dialect in the engine (#118); until then its tabs get colouring only. */
+  private hasIntelliSense(tab: QueryTab): boolean {
+    return this.editor.intellisense && tab.target.language !== "pgsql";
+  }
+
   private async loadCatalog(tab: QueryTab): Promise<void> {
-    if (!this.api.catalogGet || !this.editor.intellisense) return;
+    if (!this.api.catalogGet || !this.hasIntelliSense(tab)) return;
     tab.catalogError = undefined;
     try {
       const result = await this.api.catalogGet(tab.target.nodeId, tab.database);
@@ -202,7 +209,7 @@ export class QueryWorkspace {
   }
 
   private async loadDatabases(tab: QueryTab): Promise<void> {
-    if (!this.api.databases || tab.target.language !== "sql") return;
+    if (!this.api.databases || tab.target.language === "cosmos") return;
     try {
       tab.databases = await this.api.databases(this.scopeOf(tab.target).connection);
     } catch {
@@ -231,7 +238,7 @@ export class QueryWorkspace {
   /** What the tab's editor completes against; undefined when IntelliSense is off. Read on every request. */
   intellisense(tab: QueryTab): () => ModelInfo | undefined {
     return () => {
-      if (!this.editor.intellisense) return undefined;
+      if (!this.hasIntelliSense(tab)) return undefined;
       const parts = this.scopeOf(tab.target);
       const databases = this.databaseKeys.get(parts.connection) ?? {};
       const keys = [...new Set([tab.catalogKey, ...Object.values(databases)])].filter((k): k is string => !!k);
@@ -254,6 +261,7 @@ export class QueryWorkspace {
 
   intellisenseStatus(tab: QueryTab): { text: string; title?: string } {
     if (!this.editor.intellisense) return { text: "IntelliSense: off" };
+    if (!this.hasIntelliSense(tab)) return { text: "IntelliSense: not yet for Postgres", title: "Completion and checks for Postgres come in a later update." };
     if (tab.catalogError) return { text: "IntelliSense: error", title: tab.catalogError };
     const entry = tab.catalogKey ? this.catalogs.get(tab.catalogKey) : undefined;
     if (!entry) return { text: "IntelliSense: building" };
@@ -402,6 +410,7 @@ export class QueryWorkspace {
 
   private addMessage(tab: QueryTab, p: MessageNotification): void {
     const message: QueryMessage = { id: ++nextMessageId, kind: p.kind, text: p.text, elapsedMs: p.elapsedMs };
+    if (p.kind === "error" && p.line !== undefined && tab.target.language === "pgsql") this.placeAt(tab, message, p.line, p.column);
     const found = p.kind === "error" && p.line !== undefined && tab.target.language === "sql" ? this.place(tab, message, p.line, p.number) : undefined;
     // The pushed row is a reactive proxy; a suggestion arriving later must update that, not the plain object.
     const row = tab.messages[tab.messages.push(message) - 1];
@@ -437,6 +446,29 @@ export class QueryWorkspace {
     const where = found.line === line ? "" : ` (statement starts at line ${before + line})`;
     message.text = `Line ${before + found.line}: ${body.replace(/\.$/, "")}${where}.`;
     return found;
+  }
+
+  /**
+   * Points an error the server positioned exactly (Postgres) at the name or token there, with no token finder; one
+   * with a line only at the start of that line. Rewrites the line in its text to the editor's, like place().
+   */
+  private placeAt(tab: QueryTab, message: QueryMessage, line: number, column?: number): void {
+    const run = tab.runText;
+    if (tab.text.slice(tab.runOffset, tab.runOffset + run.length) !== run) return;
+    const start = lineOffset(run, line);
+    if (start === undefined) return;
+    const prefix = `Line ${line}: `;
+    if (message.text.startsWith(prefix)) message.text = `Line ${lineAt(tab.text, tab.runOffset) - 1 + line}: ${message.text.slice(prefix.length)}`;
+    if (column === undefined) {
+      const first = tab.runOffset + start + (/^[ \t]*/.exec(run.slice(start))?.[0].length ?? 0);
+      message.at = { start: first, end: first };
+      message.located = false;
+      return;
+    }
+    const at = Math.min(start + column - 1, run.length);
+    const token = PG_TOKEN.exec(run.slice(at))?.[0] ?? run.slice(at, at + 1).replace(/\s/, "");
+    message.at = { start: tab.runOffset + at, end: tab.runOffset + at + token.length };
+    message.located = true;
   }
 
   /** Asks the worker for the closest catalog name and, if there is one, appends it to the row and offers it as a fix. */
