@@ -13,6 +13,20 @@ Every merge to main ships a release and the patch number is the workflow run num
 - Fragments are never edited, renamed, moved or deleted after merge. Git history is what assigns them to a release.
 - `changes/README.md` explains the rule in five lines and is itself ignored by the generator.
 - CI check (its own workflow, fragment.yml, so a retitle re-runs only this check; runs on pull_request only): if the PR title starts with `feat` or `fix` (conventional commit type, with or without scope and `!`), the diff against the base branch must add at least one file matching `changes/*.md` other than README.md. Otherwise fail with a message that says what to add. `chore`, `ci`, `docs`, `refactor`, `test`, `perf`, `build`, `style` are exempt. The check reads `github.event.pull_request.title`, not the commit messages.
+- The same check, on every PR whatever its title, also fails if the PR modifies, renames or deletes an existing file under `changes/` (`git diff --diff-filter=MDR`; editing `changes/README.md` is allowed, it is documentation), or if an added fragment is not directly under `changes/`, is empty, or does not start with `Added:`, `Changed:`, `Fixed:` or `Removed:` followed by text. The diff base is the first parent of the PR's test merge commit, not the event's `base.sha`, which goes stale when main moves and would count fragments other PRs merged since.
+
+## Enforcement: the ruleset on main
+
+The fragment check only blocks a merge if it is a required status check. The repository ruleset `main` (Settings > Rules > Rulesets, created 2026-10-29) is the source of truth; this is what it holds, and what to set if it is ever recreated:
+
+- Target: the default branch. Enforcement: Active. Bypass list: empty.
+- Restrict deletions; block force pushes.
+- Require a pull request before merging, 0 approvals (single maintainer).
+- Require status checks to pass, source GitHub Actions, checks `ui`, `sidecar`, `shell` (ci.yml) and `fragment` (fragment.yml). These are job names, not workflow names. "Require branches to be up to date" off: every merge releases, and the checks already run on the test merge commit.
+
+A required check that is skipped (a job whose `if:` is false) reports success and does not block the merge. So none of these jobs may carry an `if:` that can be false on a pull_request event: that is why the fragment check lives in its own workflow (ci.yml's build jobs would otherwise be skipped on a retitle) and why fragment.yml's job has no `if:`. A cancelled run (fragment.yml cancels superseded runs) does not count as passing; the newer run decides.
+
+The check reads the PR title, but a squash merge of a one-commit PR takes the commit subject by default, so the PR title and the commit on main can disagree. Set Settings > General > Pull Requests > Allow squash merging > default message to "Default to pull request title" so the commit on main always carries the title the check saw.
 
 ## Generator: scripts/changelog.ps1
 
