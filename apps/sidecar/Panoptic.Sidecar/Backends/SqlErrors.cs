@@ -29,6 +29,16 @@ public static class SqlErrors
             : NodeErrors.Fallback(message, code, extra);
     }
 
+    /// <summary>Entra sign-in ran out of time before a connection was even attempted. Retryable: the prompt may just
+    /// have been missed.</summary>
+    public static RpcException SignInTimedOut(ConnectionConfig c, string? database, TimeSpan budget)
+    {
+        var message = $"Entra sign-in did not finish within {budget.TotalMinutes:0.#} minutes. Complete the sign-in prompt, then retry.";
+        var extra = NodeErrors.Lines(("Server", c.Endpoint), ("Database", database), ("Identity", NodeErrors.Identity(c)));
+        var error = NodeErrors.Mapped(("Entra sign-in timed out. Complete the sign-in prompt, then retry.", true), message, "signin-timeout", extra);
+        return new RpcException(RpcException.OperationFailed, message, error);
+    }
+
     /// <summary>Keeps SQL Server's own message as the RPC message: query tabs show it in their messages pane.</summary>
     public static RpcException ToRpc(SqlException ex, ConnectionConfig c, string? database)
     {

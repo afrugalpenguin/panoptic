@@ -294,6 +294,7 @@ public sealed class SqlBackend(Credentials credentials) : IBackend
                 conn = new SqlConnection(builder.ConnectionString);
                 break;
             case AuthKinds.Entra:
+                await SignInAsync(credentials.For(c.TenantId), SignInBudget, c, database, ct);
                 conn = new SqlConnection(builder.ConnectionString) { AccessTokenCallback = TokenCallbackFor(c.TenantId) };
                 break;
             default:
@@ -313,6 +314,34 @@ public sealed class SqlBackend(Credentials credentials) : IBackend
     }
 
     /// <summary>
+    /// How long an Entra open waits for sign-in. SqlClient gives the token callback only what is left of the 15 s
+    /// connect timeout, too short to read a device code, open the page and sign in. Three minutes covers that and a
+    /// WAM prompt with MFA, while a prompt nobody answers still fails rather than holding the expand open for good.
+    /// </summary>
+    public static readonly TimeSpan SignInBudget = TimeSpan.FromMinutes(3);
+
+    /// <summary>
+    /// Gets the token before OpenAsync, under the request's cancellation and <paramref name="budget"/> instead of the
+    /// connect timeout. It lands in MSAL's cache, so the callback SqlClient then calls is a silent cache hit. When the
+    /// token is already cached this is that same silent lookup, once more. Cancelling the request surfaces as
+    /// OperationCanceledException (which FallbackCredential does not count as a WAM failure); running out of budget
+    /// as a sign-in node error.
+    /// </summary>
+    public static async Task SignInAsync(TokenCredential credential, TimeSpan budget, ConnectionConfig c, string? database, CancellationToken ct)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(budget);
+        try
+        {
+            await credential.GetTokenAsync(new TokenRequestContext(SqlScope), cts.Token).AsTask().WaitAsync(cts.Token);
+        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested && !ct.IsCancellationRequested)
+        {
+            throw SqlErrors.SignInTimedOut(c, database, budget);
+        }
+    }
+
+    /// <summary>
     /// One callback per tenant credential. SqlClient keys its pool on the callback instance as well as the connection
     /// string, so a new lambda per open meant a new pool, and a fresh TCP, TLS and Entra login, on every expand.
     /// </summary>
@@ -322,6 +351,7 @@ public sealed class SqlBackend(Credentials credentials) : IBackend
     /// <summary>
     /// SqlClient cancels <c>token</c> when the connect timeout runs out. WaitAsync stops waiting then even if the
     /// credential does not observe it (a WAM dialog or device-code poll), so OpenAsync cannot hang on sign-in.
+    /// Open signs in first (<see cref="SignInAsync"/>), so this is normally a cache hit and the timeout a backstop.
     /// </summary>
     public static Func<SqlAuthenticationParameters, CancellationToken, Task<SqlAuthenticationToken>> TokenCallback(TokenCredential credential) =>
         async (_, token) =>

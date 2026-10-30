@@ -26,6 +26,9 @@ sign in silently with the account already signed in to Windows. If the broker fa
 back to device-code flow, and the UI shows the code in a banner. Tokens are cached by MSAL in
 the user profile, encrypted with DPAPI. One credential per tenant is shared by every SQL and
 Cosmos connection.
+Each Entra open gets its token before connecting, with up to 3 minutes to finish a sign-in
+prompt, so a WAM or device-code sign-in is not cut off by the 15 s connect timeout. A sign-in
+that takes longer fails with a sign-in timeout; cancelling the request cancels it.
 
 ## Tree
 
