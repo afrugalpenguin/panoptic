@@ -28,7 +28,7 @@ The existing `ConnectionConfig` is unchanged:
 | --- | --- |
 | `Endpoint` | `host[:port]`, port 5432 by default |
 | `Database` | Initial database, `postgres` when empty. When set by the user, the tree is restricted to it, as for SQL. |
-| `User` | Login name, or the Entra principal (user principal name or group name) for Entra |
+| `User` | Login name. For Entra, optional: the Entra principal (user principal name or group name); blank means the `upn` (or `preferred_username`) claim of the signed-in account's token |
 | `TenantId` | Entra only |
 | `TrustServerCertificate` | `SSL Mode=Require` without certificate validation. Otherwise `VerifyFull`. |
 
@@ -36,7 +36,7 @@ The existing `ConnectionConfig` is unchanged:
 
 - `entra`: `Credentials.For(tenantId)` gets a token for `https://ossrdbms-aad.database.windows.net/.default` (Azure Database for PostgreSQL Flexible Server). Npgsql's periodic password provider supplies it as the password, so new physical connections get a fresh token before expiry.
 - `password`: a new `AuthKinds.Password`. The password is a secret in the DPAPI store, like a SQL login's.
-- The sidecar validates the pair: `postgres` accepts only `entra` and `password`, and `connection.save` and `connection.test` reject anything else whatever the UI sent.
+- The sidecar validates the pair: each backend declares the auth kinds it accepts (`IBackend.AuthsFor`), so `postgres` accepts only `entra` and `password`, and `config.saveConnection` and `connection.test` reject anything else whatever the UI sent (`TreeService.Validate`). Keeping the list on the backend keeps a new backend to one class plus its registry line.
 
 ### Tree
 
@@ -55,8 +55,10 @@ Connection
       Materialized views       relkind m; Columns, Indexes
       Functions                pg_proc prokind f, labelled schema.name(arg types)
       Procedures               pg_proc prokind p, labelled the same way
-      Sequences                relkind S
+      Sequences                relkind S, without identity columns' own sequences
 ```
+
+Functions an extension installed are left out (there can be hundreds), and so are child partitions.
 
 `pg_catalog`, `information_schema`, `pg_toast` and `pg_temp_*` are hidden.
 
@@ -117,7 +119,7 @@ Warnings before running, in the `pgsql` editor only, through the existing lint a
 ## Testing
 
 - Sidecar unit tests: identifier quoting, SQLSTATE mapping, position to line and column, value rendering, the auth allowlist.
-- Sidecar integration tests against a `postgres:17` container (`docker/compose.dev.yml`, `127.0.0.1:15432`, seeded by `scripts/dev-db.ps1` with a synthetic schema), run by a `sidecar-pg` CI job like `sidecar-sql`: every tree level and partition hiding, Select top, notices and rows affected, cancel, a write refused under the read-only guard, the COMMIT escape reporting `Committed()`, error position, the catalog stamp changing after DDL.
+- Sidecar integration tests against a `postgres:17` container with TLS on (the image's self-signed certificate; `docker/compose.dev.yml`, `127.0.0.1:15432`, seeded by `scripts/dev-db.ps1` from `docker/seed-postgres.sql`), run by a `sidecar-pg` CI job like `sidecar-sql`: every tree level and partition hiding, Select top, notices and rows affected, cancel, a write refused under the read-only guard, the COMMIT escape reporting `Committed()`, error position, the catalog stamp changing after DDL.
 - vitest: dialect cases for the scanner, tokenizer, lint and locator; the habits lint.
 - The running app against the dev container. Entra is checked by the maintainer against Azure; no real server details go in the repository.
 

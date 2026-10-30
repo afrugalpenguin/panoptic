@@ -1,6 +1,6 @@
 # PostgreSQL connector
 
-Status: in progress. The design is in [docs/plans/2026-10-30-postgres-design.md](../plans/2026-10-30-postgres-design.md) (ADR 0015); this page describes the connector as it lands, pull request by pull request (#116 to #119).
+Status: in progress. The design is in [docs/plans/2026-10-30-postgres-design.md](../plans/2026-10-30-postgres-design.md) (ADR 0015); this page describes the connector as it lands, pull request by pull request. The tree, sign-in and connection dialog are in (#116); queries, the read-only guard (#117), IntelliSense (#118) and the T-SQL habits warnings (#119) follow.
 
 Covers PostgreSQL and Azure Database for PostgreSQL Flexible Server. Backend: `apps/sidecar/Panoptic.Sidecar/Backends/PostgresBackend.cs`, using Npgsql.
 
@@ -11,12 +11,14 @@ Covers PostgreSQL and Azure Database for PostgreSQL Flexible Server. Backend: `a
 | Server | `host` or `host:port`; port 5432 by default. |
 | Database | The database to connect to first, `postgres` when empty. Every Postgres connection is bound to one database, so the tree opens each database on its own connection. When set, the tree shows only this database. |
 | Authentication | Microsoft Entra ID, or username and password. Client certificates (#120), AWS RDS IAM (#121) and Kerberos (#122) are planned. |
-| User | The login, or for Entra the Entra user principal name (or group name) that was added as a Postgres role. |
+| User | The login. For Entra, optional: the Entra name of the Postgres role (a user principal name, or a group's name to sign in through the group). Left blank, it is the name of the account you sign in with. |
 | Password | Username and password only. Stored DPAPI-encrypted in the local store, never sent to the UI. |
 | Tenant | Optional, Entra only. |
-| Trust server certificate | Encrypts without validating the certificate. For local and dev servers only. Otherwise the certificate and host name are verified. |
+| Trust server certificate | Encrypts without validating the certificate. For local and dev servers only. Otherwise the certificate and host name are verified. Connections are always encrypted, so a server without TLS cannot be reached. |
 
-Entra connections get tokens for `https://ossrdbms-aad.database.windows.net/.default` through the same credential as SQL and Cosmos (WAM first, then device code); the token is sent as the password and refreshed before it expires.
+Entra connections get tokens for `https://ossrdbms-aad.database.windows.net/.default` through the same credential as SQL and Cosmos (WAM first, then device code), with the same 3 minute allowance for a sign-in prompt. The token is sent as the password; every new physical connection asks the credential again, so an expired token is replaced from MSAL's cache.
+
+Connections use a 15 s connect timeout and a 30 s command timeout. Each database gets its own pooled data source, dropped when the connection is edited or deleted.
 
 ## Tree
 
@@ -33,15 +35,29 @@ Connection
       Sequences
 ```
 
-System schemas (`pg_catalog`, `information_schema`, `pg_toast`) are not shown. Copy name quotes a name only when Postgres needs it: `public.customer`, but `public."Customer"`.
+Databases are listed without templates or databases that refuse connections, with `postgres` (and Azure's `azure_sys` and `azure_maintenance`) last. System schemas (`pg_catalog`, `information_schema`, `pg_toast`, temporary schemas) are not shown. Functions an extension installed are left out, and so are the sequences behind identity columns. Copy name and drag quote a name only when Postgres needs it, using the server's own rule (`quote_ident`): `public.customer`, but `public."Customer"` and `sales."order"` (`order` is a keyword).
+
+## Errors
+
+Failures show on the node with the SQLSTATE as the code:
+
+| Code | Shown as |
+| --- | --- |
+| 28P01 | Sign-in failed (for Entra: check the user is the Entra name of a role on the server) |
+| 28000 | The server refused this connection (firewall rules or the user's role) |
+| 3D000 | Database does not exist, or the user cannot see it |
+| 42501 | Permission denied |
+| 57P03, 53300 | Starting up, or no free connections (retryable) |
+| `network` | Server not found or not reachable (retryable) |
+| `tls` | The server's certificate could not be verified |
 
 ## Read-only environments
 
-On a read-only environment every query runs in a read-only transaction that is rolled back at the end. The server refuses any write (SQLSTATE 25006), so nothing is written even for a moment. If a script ends that transaction itself with COMMIT, Panoptic says so.
+Lands with #117. On a read-only environment every query runs in a read-only transaction that is rolled back at the end. The server refuses any write (SQLSTATE 25006), so nothing is written even for a moment. If a script ends that transaction itself with COMMIT, Panoptic says so.
 
 ## Coming from SQL Server
 
-Panoptic's Postgres editor warns about the habits in the first table before you run, and offers a fix where there is one.
+Once #119 lands, Panoptic's Postgres editor warns about the habits in the first table before you run, and offers a fix where there is one.
 
 | T-SQL | PostgreSQL |
 | --- | --- |
