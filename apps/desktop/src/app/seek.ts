@@ -97,7 +97,8 @@ export const livePlace = (index: SeekIndex): Place | undefined => liveUsage(inde
 /** The landing's muted line: environments when there are any, otherwise connections. */
 export function seekSummary(envCount: number, connectionCount: number): string {
   const hint = "Type a table, container, proc or host.";
-  if (envCount) return `Objects across all ${envCount} environment${envCount === 1 ? "" : "s"}. ${hint}`;
+  if (envCount === 1) return `Objects across 1 environment. ${hint}`;
+  if (envCount) return `Objects across all ${envCount} environments. ${hint}`;
   if (connectionCount === 1) return `Objects across 1 connection. ${hint}`;
   if (connectionCount) return `Objects across all ${connectionCount} connections. ${hint}`;
   return "No connections yet";
