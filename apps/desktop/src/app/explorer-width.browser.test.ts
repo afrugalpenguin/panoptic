@@ -11,13 +11,14 @@ const env = (id: string, name: string, color: string, count: number): TreeNode =
   id: `env:${id}`, kind: "environment", label: name, icon: "environment", hasChildren: count > 0, actions: [],
   meta: { environmentId: id, color, readOnly: "false", connectionCount: String(count) },
 });
-const conn = (name: string, kind: string): TreeNode => ({
+// Every third connection trusts its certificate, so its row also carries the "cert not checked" badge.
+const conn = (name: string, kind: string, trust = false): TreeNode => ({
   id: `conn:${name}`, kind: "connection", label: name, icon: kind, hasChildren: true, actions: [],
-  meta: { endpoint: `${name}.a-rather-long-private-endpoint-suffix.example.test`, connectionKind: kind, connectionId: name },
+  meta: { endpoint: `${name}.a-rather-long-private-endpoint-suffix.example.test`, connectionKind: kind, connectionId: name, ...(trust ? { trustServerCertificate: "true" } : {}) },
 });
 
 function fixture(kinds: string[]): Record<string, TreeNode[]> {
-  const hosts = (prefix: string) => Array.from({ length: 8 }, (_, i) => conn(`${prefix}-${kinds[i % kinds.length]}-${String(i + 1).padStart(2, "0")}`, kinds[i % kinds.length]));
+  const hosts = (prefix: string) => Array.from({ length: 8 }, (_, i) => conn(`${prefix}-${kinds[i % kinds.length]}-${String(i + 1).padStart(2, "0")}`, kinds[i % kinds.length], i % 3 === 0));
   return {
     "": [env("prod", "Production West Europe", "#e03131", 8), env("uat", "UAT", "#f08c00", 8), env("test", "Test", "#1971c2", 8)],
     "env:prod": hosts("uk-prod"),
@@ -62,6 +63,7 @@ describe("explorer width", () => {
       noSideways(tree);
       noSideways(panel.querySelector<HTMLElement>(".filter-bar")!);
       noSideways(panel.querySelector<HTMLElement>(".footer")!);
+      expect(tree.querySelectorAll(".cert-unchecked").length).toBeGreaterThan(0);
 
       // Scrolled down, with a header pinned, still nothing sideways.
       tree.scrollTop = 300;

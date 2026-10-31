@@ -27,13 +27,17 @@ if (-not (Get-Command vswhere.exe -ErrorAction SilentlyContinue) -and (Test-Path
     $env:Path = "$vsInstaller;$env:Path"
 }
 
+# Single-file publish would otherwise switch on the single-file analyzer, which pulls in Microsoft.NET.ILLink.Tasks at
+# the installed SDK's version: a package restore never sees, so the NuGet lock file (and CI's locked restore) would
+# reject every publish. The analyzer only adds build warnings. Native AOT needs ILLink, so aot keeps it.
+$singleFile = '-p:EnableSingleFileAnalyzer=false'
 $modeArgs = @(switch ($Mode) {
     'aot' { @('-p:PublishAot=true') }
-    'jit' { @('--self-contained', '-p:PublishSingleFile=true', '-p:IncludeNativeLibrariesForSelfExtract=true') }
-    'r2r' { @('--self-contained', '-p:PublishSingleFile=true', '-p:PublishReadyToRun=true', '-p:IncludeNativeLibrariesForSelfExtract=true') }
+    'jit' { @('--self-contained', '-p:PublishSingleFile=true', '-p:IncludeNativeLibrariesForSelfExtract=true', $singleFile) }
+    'r2r' { @('--self-contained', '-p:PublishSingleFile=true', '-p:PublishReadyToRun=true', '-p:IncludeNativeLibrariesForSelfExtract=true', $singleFile) }
     # Native libraries (SqlClient's SNI, msalruntime for WAM) must be bundled here too: only the exe is
     # copied to binaries, and without SNI every SQL Server and Synapse connect fails.
-    'fdd' { @('--no-self-contained', '-p:PublishSingleFile=true', '-p:IncludeNativeLibrariesForSelfExtract=true') }
+    'fdd' { @('--no-self-contained', '-p:PublishSingleFile=true', '-p:IncludeNativeLibrariesForSelfExtract=true', $singleFile) }
 })
 
 Write-Host "Publishing sidecar ($Mode)..."
