@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type * as Monaco from "monaco-editor/editor/editor.api";
+  import { mdText } from "./intellisense/markdown";
   import { models, quickFixes, type ModelInfo, type QuickFix } from "./intellisense/providers";
   import type { QueryMessage } from "./store.svelte";
   import type { QueryLanguage } from "./types";
@@ -196,7 +197,7 @@
       const tracked = marks.has(e.id) ? model.getDecorationRange(marks.get(e.id)!) : null;
       let r = tracked ?? range(model, e.at.start, e.at.end);
       if (!tracked && !e.located) r = { ...r, endColumn: model.getLineMaxColumn(r.startLineNumber) };
-      decorations.push({ range: r, options: { glyphMarginClassName: "panoptic-error-glyph", glyphMarginHoverMessage: { value: e.text }, stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges } });
+      decorations.push({ range: r, options: { glyphMarginClassName: "panoptic-error-glyph", glyphMarginHoverMessage: { value: mdText(e.text) }, stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges } });
       markers.push({ ...r, severity: monaco.MarkerSeverity.Error, message: e.text });
     }
     const ids = model.deltaDecorations([...marks.values()], decorations);
