@@ -25,6 +25,13 @@ describe("recordUse", () => {
     expect(u.last?.kind).toBe("connection");
   });
 
+  it("records a place in no environment without touching any environment's use", () => {
+    const u = recordUse(EMPTY_USAGE, place({ envId: undefined, hostId: "conn:a" }), 1);
+    expect(u.envs).toEqual({});
+    expect(u.last?.hostId).toBe("conn:a");
+    expect(u.recent).toHaveLength(1);
+  });
+
   it(`keeps ${RECENT_KEEP} recent objects`, () => {
     let u = EMPTY_USAGE;
     for (let i = 0; i < RECENT_KEEP + 5; i++) u = recordUse(u, place({ nodeId: `n${i}` }), i);

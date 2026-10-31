@@ -170,7 +170,7 @@ export class TreeModel {
   }
 
   /** The root's connections in no environment. */
-  private looseIds(): string[] {
+  looseIds(): string[] {
     return this.childIds("").filter((id) => this.nodes.get(id)?.kind === "connection");
   }
 

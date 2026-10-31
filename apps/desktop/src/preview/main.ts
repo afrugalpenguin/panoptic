@@ -94,6 +94,7 @@ function mountLanding() {
     props: {
       index,
       envCount: index.envs.length,
+      connectionCount: index.envs.reduce((n, e) => n + e.hosts.length, 0),
       version: "0.2.0",
       engine,
       // As in the app: only known once the engine is ready.

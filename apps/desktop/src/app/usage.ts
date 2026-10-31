@@ -2,7 +2,9 @@
 // recent objects (docs/landing.md, "Usage"). Local storage only: a convenience on this machine, never sent anywhere.
 
 export interface Place {
-  envId: string;
+  /** The environment's node id when recorded; absent for a connection in no environment. Seek looks the current one
+   * up from the connection (liveUsage), since a connection can move. */
+  envId?: string;
   /** The connection's node id and display name. */
   hostId: string;
   hostName: string;
@@ -26,8 +28,9 @@ const KEY = "panoptic.usage";
 type Storage = Pick<globalThis.Storage, "getItem" | "setItem">;
 
 export function recordUse(usage: Usage, place: Place, now: number): Usage {
-  const env = usage.envs[place.envId];
   const recent = place.kind === "connection" ? usage.recent : [place, ...usage.recent.filter((r) => r.nodeId !== place.nodeId)].slice(0, RECENT_KEEP);
+  if (!place.envId) return { envs: usage.envs, last: place, recent };
+  const env = usage.envs[place.envId];
   return { envs: { ...usage.envs, [place.envId]: { last: now, uses: (env?.uses ?? 0) + 1 } }, last: place, recent };
 }
 

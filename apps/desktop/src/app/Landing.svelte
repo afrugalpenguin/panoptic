@@ -3,11 +3,12 @@
   // action list, the engine's status and a faded wordmark. Renders and forwards only; App does the work.
   import mark from "../../src-tauri/icons/icon.svg";
   import SeekBox from "./SeekBox.svelte";
-  import { livePlace, type SeekIndex, type SeekRow } from "./seek";
+  import { livePlace, seekSummary, type SeekIndex, type SeekRow } from "./seek";
 
   let {
     index,
     envCount,
+    connectionCount,
     version,
     engine,
     openedMs,
@@ -23,6 +24,8 @@
   }: {
     index: SeekIndex;
     envCount: number;
+    /** Every connection, in an environment or not: the muted line counts these when there are no environments. */
+    connectionCount: number;
     version?: string;
     engine: "connecting" | "connected" | "disconnected";
     /** Launch to engine ready, once known. */
@@ -45,12 +48,10 @@
   }
 
   const last = $derived(livePlace(index));
-  const lastPath = $derived(last ? [index.envs.find((e) => e.id === last.envId)?.name, last.hostName, last.label].join(" / ") : "");
-  const hint = $derived(
-    envCount
-      ? `Objects across all ${envCount} environment${envCount === 1 ? "" : "s"}. Type a table, container, proc or host.`
-      : "No environments yet",
+  const lastPath = $derived(
+    last ? [index.envs.find((e) => e.id === last.envId)?.name, last.hostName, last.label].filter(Boolean).join(" / ") : "",
   );
+  const hint = $derived(seekSummary(envCount, connectionCount));
 </script>
 
 <section class="landing">

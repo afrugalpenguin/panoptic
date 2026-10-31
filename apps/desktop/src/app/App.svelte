@@ -18,7 +18,7 @@
   import IconButton from "./IconButton.svelte";
   import KindChips from "./KindChips.svelte";
   import Landing from "./Landing.svelte";
-  import type { SeekEnv, SeekHost, SeekIndex, SeekRow } from "./seek";
+  import { livePlace, type SeekEnv, type SeekHost, type SeekIndex, type SeekRow } from "./seek";
   import { globalShortcut } from "./shortcuts";
   import { loadUsage, recordUse, saveUsage, type Place } from "./usage";
   import { actionItems, actionLabel, queryItems, shortcutAction, type NodeActionHandlers } from "./node-menu";
@@ -110,11 +110,19 @@
       return [{ id: envId, name: env.label, color: env.meta?.color, hosts }];
     });
   }
-  const seekIndex = $derived<SeekIndex>({ envs: seekEnvs(), usage });
+  /** Connections in no environment, for Seek. */
+  function seekHosts(): SeekHost[] {
+    void rows;
+    return model.looseIds().flatMap((id) => {
+      const n = model.node(id);
+      return n ? [{ id, name: n.label }] : [];
+    });
+  }
+  const seekIndex = $derived<SeekIndex>({ envs: seekEnvs(), hosts: seekHosts(), usage });
 
-  /** An environment node's colour band and read-only flag, as its rows get them. */
-  const envLook = (envId: string) => {
-    const meta = model.node(envId)?.meta;
+  /** An environment node's colour band and read-only flag, as its rows get them. None for a connection in no environment. */
+  const envLook = (envId: string | undefined) => {
+    const meta = envId ? model.node(envId)?.meta : undefined;
     return { envColor: meta?.color, readOnly: meta?.readOnly === "true" };
   };
 
@@ -418,7 +426,7 @@
     }
   }
 
-  /** The node's environment and connection, walking up the loaded tree; undefined above connection level. */
+  /** The node's connection and environment (if it is in one), walking up the loaded tree; undefined above connection level. */
   function placeFor(nodeId: string, label: string): Place | undefined {
     let host: TreeNode | undefined;
     let env: TreeNode | undefined;
@@ -427,8 +435,8 @@
       if (n?.kind === "connection") host = n;
       else if (n?.kind === "environment") env = n;
     }
-    if (!host || !env) return undefined;
-    return { envId: env.id, hostId: host.id, hostName: host.label, nodeId, label, kind: model.node(nodeId)?.kind ?? "object" };
+    if (!host) return undefined;
+    return { envId: env?.id, hostId: host.id, hostName: host.label, nodeId, label, kind: model.node(nodeId)?.kind ?? "object" };
   }
 
   function remember(nodeId: string, label: string) {
@@ -438,7 +446,10 @@
     saveUsage(usage);
   }
 
-  /** Reopen last session / Pick up where you left off: the place only, in the tree and in a new query tab. */
+  /**
+   * Reopen last session / Pick up where you left off: the place only, in the tree and in a new query tab. The place
+   * is a live one (seek's liveUsage), so its environment is where the connection is now.
+   */
   async function reopen(place: Place) {
     await model.focus(place.envId, place.hostId);
     selectedKey = place.hostId;
@@ -630,13 +641,17 @@
         bind:this={landing}
         index={seekIndex}
         envCount={config.environments.length}
+        connectionCount={config.connections.length + config.environments.reduce((n, e) => n + e.connections.length, 0)}
         {version}
         engine={sidecar}
         {openedMs}
         onSeekOpen={seekOpen}
         onSeekQuery={seekQuery}
         onSeekLeave={() => tree?.focus()}
-        onReopen={() => seekIndex.usage.last && reopen(seekIndex.usage.last)}
+        onReopen={() => {
+          const last = livePlace(seekIndex);
+          if (last) void reopen(last);
+        }}
         onNewQuery={() => workspace.openUnconnected()}
         onNewConnection={() => sidecar === "connected" && addConnection()}
         onImport={() => sidecar === "connected" && (dialog = { kind: "import" })}
