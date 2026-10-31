@@ -59,7 +59,9 @@ public sealed record ConnectionConfig(
     string? Database = null,
     string? TenantId = null,
     bool TrustServerCertificate = false,
-    string? ClientId = null);
+    string? ClientId = null,
+    string? CertificateHostName = null,
+    string? CertificateFile = null);
 
 public sealed record EnvironmentConfig(string Id, string Name, string Color, bool ReadOnly, List<ConnectionConfig> Connections);
 

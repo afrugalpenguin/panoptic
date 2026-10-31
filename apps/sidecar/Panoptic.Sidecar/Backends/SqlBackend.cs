@@ -540,17 +540,23 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
 
     public Task<SqlConnection> OpenAsync(ConnectionConfig c, string? secret, string? database, CancellationToken ct) => Open(c, secret, database, ct);
 
+    /// <summary>The connection string for one database, without credentials.</summary>
+    public static SqlConnectionStringBuilder Settings(ConnectionConfig c, string? database) => new()
+    {
+        DataSource = c.Endpoint,
+        InitialCatalog = database ?? c.Database ?? "",
+        ConnectTimeout = 15,
+        Encrypt = SqlConnectionEncryptOption.Mandatory,
+        TrustServerCertificate = c.TrustServerCertificate,
+        // Validate a server known by another name, or with a private CA, without trusting everything (issue #261).
+        HostNameInCertificate = c.CertificateHostName?.Trim() ?? "",
+        ServerCertificate = c.CertificateFile?.Trim() ?? "",
+        ApplicationName = "Panoptic",
+    };
+
     private async Task<SqlConnection> Open(ConnectionConfig c, string? secret, string? database, CancellationToken ct)
     {
-        var builder = new SqlConnectionStringBuilder
-        {
-            DataSource = c.Endpoint,
-            InitialCatalog = database ?? c.Database ?? "",
-            ConnectTimeout = 15,
-            Encrypt = SqlConnectionEncryptOption.Mandatory,
-            TrustServerCertificate = c.TrustServerCertificate,
-            ApplicationName = "Panoptic",
-        };
+        var builder = Settings(c, database);
 
         SqlConnection conn;
         switch (c.Auth)

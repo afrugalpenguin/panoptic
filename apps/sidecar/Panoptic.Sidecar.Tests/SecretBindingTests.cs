@@ -133,6 +133,20 @@ public sealed class SecretBindingTests : IDisposable
         Assert.Null(Trust("c1"));
     }
 
+    [Theory]
+    [InlineData("host")]
+    [InlineData("file")]
+    public void Changing_the_certificate_host_name_or_file_drops_the_stored_secret(string field)
+    {
+        // They decide which server is trusted, like Trust server certificate (issue #261).
+        Sidecar();
+
+        _store.SaveConnection("prod", field == "host" ? Saved with { CertificateHostName = "orders.fabrikam.test" } : Saved with { CertificateFile = @"C:\certs\other-ca.pem" }, null);
+
+        Assert.Null(_store.GetSecret("c1"));
+        Assert.Null(_store.GetSecretFor(Saved with { CertificateHostName = "x.fabrikam.test" }));
+    }
+
     [Fact]
     public void Changing_the_kind_also_drops_the_stored_secret()
     {

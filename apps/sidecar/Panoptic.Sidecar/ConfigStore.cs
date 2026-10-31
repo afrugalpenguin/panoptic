@@ -104,14 +104,17 @@ public sealed class ConfigStore
 
     /// <summary>
     /// Whether a secret saved for <paramref name="a"/> may be used for <paramref name="b"/>: same kind, endpoint, auth,
-    /// user and certificate trust. Name, database and environment don't matter.
+    /// user and everything that decides which server is trusted (Trust server certificate, certificate host name and
+    /// file). Name, database and environment don't matter.
     /// </summary>
     private static bool SameSecretTarget(ConnectionConfig a, ConnectionConfig b) =>
         a.Kind == b.Kind
         && string.Equals(a.Endpoint, b.Endpoint, StringComparison.OrdinalIgnoreCase)
         && a.Auth == b.Auth
         && a.User == b.User
-        && a.TrustServerCertificate == b.TrustServerCertificate;
+        && a.TrustServerCertificate == b.TrustServerCertificate
+        && string.Equals(a.CertificateHostName?.Trim() ?? "", b.CertificateHostName?.Trim() ?? "", StringComparison.OrdinalIgnoreCase)
+        && string.Equals(a.CertificateFile?.Trim() ?? "", b.CertificateFile?.Trim() ?? "", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Adds or replaces an environment, keeping its existing connections.</summary>
     public void SaveEnvironment(EnvironmentConfig environment)

@@ -14,7 +14,9 @@ using Microsoft.Data.SqlClient.
 | Password | SQL login only. Stored DPAPI-encrypted in the local store, never sent to the UI. |
 | Database | Optional. Restricts the tree to one database; needed for contained users who cannot see `master`. |
 | Tenant | Optional, Entra only. Defaults to the signed-in work account's tenant. |
-| Trust server certificate | Skips certificate validation. For local and dev servers only. |
+| Trust server certificate | Skips certificate validation. For local and dev servers only. The explorer marks such connections **cert not checked**. |
+| Certificate host name | Optional. The name the server's certificate must match when it isn't the server's (a private endpoint, an alias): SqlClient's `HostNameInCertificate`. Validation stays on. |
+| Certificate file | Optional. A certificate to trust for this connection only (a private CA, or the server's own): SqlClient's `ServerCertificate`. Can't be combined with Trust server certificate. |
 
 Connections always use `Encrypt=Mandatory`, a 15 s connect timeout and a 30 s command timeout.
 
