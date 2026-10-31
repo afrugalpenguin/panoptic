@@ -120,6 +120,20 @@ public sealed class SecretBindingTests : IDisposable
     }
 
     [Fact]
+    public async Task Connection_nodes_say_when_the_certificate_is_trusted()
+    {
+        var sidecar = Sidecar();
+        _store.SaveConnection("prod", Saved with { Id = "c2", Name = "Trusting", TrustServerCertificate = true }, "pw");
+
+        var request = JsonSerializer.Serialize(new { jsonrpc = "2.0", id = ++_id, method = "tree.children", @params = new { nodeId = "env:prod" } });
+        var nodes = JsonDocument.Parse((await sidecar.HandleAsync(request))!).RootElement.GetProperty("result").EnumerateArray().ToList();
+        string? Trust(string id) => nodes.Single(n => n.GetProperty("id").GetString() == $"conn:{id}").GetProperty("meta").TryGetProperty("trustServerCertificate", out var v) ? v.GetString() : null;
+
+        Assert.Equal("true", Trust("c2"));
+        Assert.Null(Trust("c1"));
+    }
+
+    [Fact]
     public void Changing_the_kind_also_drops_the_stored_secret()
     {
         Sidecar();
