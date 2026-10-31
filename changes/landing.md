@@ -1,0 +1,1 @@
+Added: a new start page. Seek your environments, connections and recent objects from one box, reopen where you left off, and open a New query (Ctrl+N) before choosing a connection. The status bar now says database engine where it used to say sidecar, and the logo colours in What's new now match the new icon.

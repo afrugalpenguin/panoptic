@@ -113,6 +113,10 @@ SQL Server reports 208 (invalid object name), 4104 (multi-part identifier could 
 - **Messages rows.** Every error row with a place is clickable and moves the cursor to it: selecting the name when located, else the start of the reported line. The marks follow edits until the next run clears them.
 - **Warnings before running.** On a 500ms debounce, the worker checks the statement at the cursor and adds warning squiggles (never errors) for tables and views the catalog lacks, and for columns the named table lacks. It skips names it cannot be sure of: CTE names, `#temp` and `##temp` tables, table variables, objects created or selected INTO earlier in the batch, names of three or more parts, system views, table-valued functions, and an UPDATE or DELETE target that is another table's alias. Qualified columns are checked against their table; bare columns only when the statement reads one table and has no subquery, and never a word that could be an alias, keyword, function, type or date part. A warning on valid SQL is worse than a missed one; the server reports the rest. `editor.warnUnknownNames` turns the warnings off.
 
+## Unconnected tabs
+
+New query with nothing selected (Ctrl+N, or the landing's New query) opens "Query N" with no connection (docs/landing.md). The editor is plain text, Run is disabled, and the IntelliSense status reads "IntelliSense: off until connected": no catalog or database list loads. Above the editor, "Not connected - choose a connection" shows Seek scoped to connections, the last used one pre-selected but never connected automatically. Choosing one connects the tab in place: title and text stay, the editor switches to the connection's language, and the catalog and database list load as for a tab opened on a node.
+
 ## Settings
 
 ```
