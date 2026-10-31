@@ -204,6 +204,10 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* 12px like the tree's rows: at 13px the mono names read heavier than the UI text beside them. */
+  .main.mono {
+    font-size: 12px;
+  }
   .mono {
     font-family: var(--font-mono);
   }
