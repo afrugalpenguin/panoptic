@@ -68,13 +68,19 @@ function byUse(usage: Usage) {
     a.name.localeCompare(b.name);
 }
 
+/** The last place, unless its environment has since been removed from config: usage outlives config. */
+export function livePlace(index: SeekIndex): Place | undefined {
+  const last = index.usage.last;
+  return last && index.envs.some((e) => e.id === last.envId) ? last : undefined;
+}
+
 export function seek(index: SeekIndex, query: string, scope: "all" | "connections" = "all"): SeekRow[] {
   const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
   // Usage outlives config: a place in an environment that has since been removed is dropped, never offered.
   const known = new Set(index.envs.map((e) => e.id));
   const usage: Usage = {
     ...index.usage,
-    last: index.usage.last && known.has(index.usage.last.envId) ? index.usage.last : undefined,
+    last: livePlace(index),
     recent: index.usage.recent.filter((r) => known.has(r.envId)),
   };
   const ordered = [...index.envs].sort(byUse(usage));

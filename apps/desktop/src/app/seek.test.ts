@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ENV_CAP, MAX_ROWS, seek, seekKey, type SeekEnv, type SeekIndex, type SeekRow } from "./seek";
+import { ENV_CAP, livePlace, MAX_ROWS, seek, seekKey, type SeekEnv, type SeekIndex, type SeekRow } from "./seek";
 import type { Place } from "./usage";
 
 const host = (env: string, name: string) => ({ id: `env:${env}/conn:${name}`, name, envId: `env:${env}` });
@@ -95,5 +95,13 @@ describe("seekKey", () => {
   it("Esc clears a query, then leaves", () => {
     expect(key("Escape", 0, "prod")).toEqual({ kind: "clear" });
     expect(key("Escape", 0, "")).toEqual({ kind: "leave" });
+  });
+});
+
+describe("livePlace", () => {
+  it("is the last place while its environment exists, and nothing once it is gone", () => {
+    expect(livePlace(index)).toBe(orders);
+    expect(livePlace({ envs, usage: { envs: {}, last: { ...orders, envId: "env:old" }, recent: [] } })).toBeUndefined();
+    expect(livePlace({ envs, usage: { envs: {}, recent: [] } })).toBeUndefined();
   });
 });
