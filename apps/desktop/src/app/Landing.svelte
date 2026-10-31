@@ -17,7 +17,7 @@
     onSeekLeave,
     onReopen,
     onNewQuery,
-    onNewEnvironment,
+    onNewConnection,
     onImport,
     onRestart,
   }: {
@@ -33,7 +33,8 @@
     onSeekLeave: () => void;
     onReopen: () => void;
     onNewQuery: () => void;
-    onNewEnvironment: () => void;
+    /** With no environments yet, this asks for one first (App's addConnection). */
+    onNewConnection: () => void;
     onImport: () => void;
     onRestart: () => void;
   } = $props();
@@ -98,12 +99,12 @@
         </button>
       </li>
       <li>
-        <button onclick={onNewEnvironment}>
+        <button onclick={onNewConnection}>
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-            <rect x="2" y="2.5" width="12" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3" />
-            <path d="M8 5.5v5 M5.5 8h5" fill="none" stroke="currentColor" stroke-width="1.3" />
+            <ellipse cx="7" cy="3.5" rx="4.5" ry="1.8" fill="none" stroke="currentColor" stroke-width="1.3" />
+            <path d="M2.5 3.5v8c0 1 2 1.8 4.5 1.8 M11.5 3.5V8 M2.5 7.5c0 1 2 1.8 4.5 1.8 M12 10.5v4 M10 12.5h4" fill="none" stroke="currentColor" stroke-width="1.3" />
           </svg>
-          <span class="label">New environment</span>
+          <span class="label">New connection</span>
           <kbd>Ctrl Shift N</kbd>
         </button>
       </li>

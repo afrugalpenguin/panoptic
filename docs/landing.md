@@ -13,7 +13,7 @@ A centred column, at most 460px wide:
 - Header: the 32px mark (`src-tauri/icons/icon.svg`), `PANOPTIC` (16px, 600, letter-spacing 2.4px, muted), the version in mono 11px on the right.
 - The Seek box: 56px tall, radius 12, a cyan border with a 4px cyan ring, placeholder "Seek anything, anywhere", a `Ctrl P` chip. Focused when the landing shows.
 - A muted line: "Objects across all N environments. Type a table, container, proc or host." ("No environments yet" with none.)
-- Actions, 44px rows with dividers: Reopen last session (amber clock and the last place in muted mono, only when there is one), New query `Ctrl N`, New environment `Ctrl Shift N`, Import `Ctrl I` (dimmed).
+- Actions, 44px rows with dividers: Reopen last session (amber clock and the last place in muted mono, only when there is one), New query `Ctrl N`, New connection `Ctrl Shift N` (with no environments yet it asks for one first; New environment stays in the explorer toolbar), Import `Ctrl I` (dimmed).
 - Bottom left, mono 11px: an amber dot, "Ready" and "opened in NNN ms" when the engine is up; "Starting database engine..."; or "Database engine stopped" and Restart.
 - Bottom right: a faded 300px "Panoptic" wordmark overflowing the corner, `aria-hidden`, behind everything.
 
@@ -51,7 +51,7 @@ Click is Enter, Ctrl+click is Ctrl+Enter.
 
 ## App shortcuts
 
-Ctrl+N is New query: with a node selected that offers it, on that node, as before; otherwise an unconnected tab. Ctrl+Shift+N is New environment, Ctrl+I is Import (left to the editor, where it opens suggestions), Ctrl+P clears the selection and focuses Seek on the landing. None of them fire while a dialog is open.
+Ctrl+N is New query: with a node selected that offers it, on that node, as before; otherwise an unconnected tab. Ctrl+Shift+N is New connection (once the engine is ready), Ctrl+I is Import (left to the editor, where it opens suggestions), Ctrl+P clears the selection and focuses Seek on the landing. None of them fire while a dialog is open.
 
 ## Usage
 

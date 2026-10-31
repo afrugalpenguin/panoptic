@@ -5,9 +5,9 @@ const k = (key: string, mods: { ctrlKey?: boolean; shiftKey?: boolean } = {}, in
   globalShortcut({ key, ctrlKey: !!mods.ctrlKey, metaKey: false, shiftKey: !!mods.shiftKey }, inEditor);
 
 describe("globalShortcut", () => {
-  it("maps Ctrl+N, Ctrl+Shift+N, Ctrl+I and Ctrl+P", () => {
+  it("maps Ctrl+N, Ctrl+Shift+N (New connection), Ctrl+I and Ctrl+P", () => {
     expect(k("n", { ctrlKey: true })).toBe("newQuery");
-    expect(k("N", { ctrlKey: true, shiftKey: true })).toBe("newEnvironment");
+    expect(k("N", { ctrlKey: true, shiftKey: true })).toBe("newConnection");
     expect(k("i", { ctrlKey: true })).toBe("import");
     expect(k("p", { ctrlKey: true })).toBe("seek");
   });

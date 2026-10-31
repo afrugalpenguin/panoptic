@@ -484,7 +484,9 @@
     if (!global) return;
     e.preventDefault();
     if (global === "newQuery") workspace.openUnconnected();
-    else if (global === "newEnvironment") dialog = { kind: "environment" };
+    else if (global === "newConnection") {
+      if (sidecar === "connected") addConnection();
+    }
     else if (global === "import") {
       if (sidecar === "connected") dialog = { kind: "import" };
     } else void focusSeek();
@@ -614,7 +616,7 @@
         onSeekLeave={() => tree?.focus()}
         onReopen={() => seekIndex.usage.last && reopen(seekIndex.usage.last)}
         onNewQuery={() => workspace.openUnconnected()}
-        onNewEnvironment={() => (dialog = { kind: "environment" })}
+        onNewConnection={() => sidecar === "connected" && addConnection()}
         onImport={() => sidecar === "connected" && (dialog = { kind: "import" })}
         onRestart={restartEngine}
       />

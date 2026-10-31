@@ -53,7 +53,7 @@ mount(Landing, {
     onSeekLeave: noop,
     onReopen: noop,
     onNewQuery: noop,
-    onNewEnvironment: noop,
+    onNewConnection: noop,
     onImport: noop,
     onRestart: noop,
   },
