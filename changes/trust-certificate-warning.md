@@ -1,0 +1,1 @@
+Fixed: The connection dialog now warns when **Trust server certificate** is on for a server that isn't this machine, and says what an interceptor could capture: the password, or with Microsoft Entra a sign-in token that works against other Azure databases.
