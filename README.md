@@ -53,7 +53,7 @@ scope; SSMS stays the tool for those.
 - **Updates.** Panoptic updates itself from GitHub Releases, and a What's new tab shows what
   changed. No telemetry; the update check is the only outbound call.
 
-![A query tab running Select top 1000 against a sample Orders table, with twelve rows in the results grid and a Messages tab](docs/images/readme/query.png)
+![A query tab running Select top 1000 against a sample Orders table, with 1,000 rows across 22 columns in the results grid and a Messages tab](docs/images/readme/query.png)
 
 *Select top 1000 on a table, with results and messages (sample data).*
 

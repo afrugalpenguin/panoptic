@@ -118,20 +118,85 @@ function children(id: string): TreeNode[] {
   return [];
 }
 
-const ORDERS = [
-  [10241, 1007, "2026-10-01 09:14:22", "Shipped", 182.4, "GBP"],
-  [10242, 1012, "2026-10-01 10:02:51", "Shipped", 64.0, "GBP"],
-  [10243, 1003, "2026-10-02 08:47:09", "Delivered", 1240.75, "EUR"],
-  [10244, 1019, "2026-10-02 13:30:40", "Cancelled", 0, "GBP"],
-  [10245, 1007, "2026-10-03 11:18:03", "Delivered", 39.99, "GBP"],
-  [10246, 1021, "2026-10-04 16:55:27", "Shipped", 512.3, "USD"],
-  [10247, 1002, "2026-10-05 09:01:12", "Pending", 88.5, "GBP"],
-  [10248, 1015, "2026-10-05 14:42:38", "Delivered", 230.0, "EUR"],
-  [10249, 1012, "2026-10-06 10:26:45", "Shipped", 17.25, "GBP"],
-  [10250, 1024, "2026-10-07 12:09:30", "Pending", 940.0, "USD"],
-  [10251, 1003, "2026-10-08 15:33:19", "Delivered", 76.8, "EUR"],
-  [10252, 1009, "2026-10-09 08:12:54", "Shipped", 305.6, "GBP"],
+// dbo.Orders: 1000 rows like a real order table, from a fixed seed so every capture is identical.
+const ORDER_COLUMNS = [
+  { name: "OrderId", type: "int" },
+  { name: "OrderNumber", type: "nvarchar(20)" },
+  { name: "CustomerId", type: "int" },
+  { name: "AccountCode", type: "char(9)" },
+  { name: "OrderedAt", type: "datetime2(3)" },
+  { name: "RequiredBy", type: "date" },
+  { name: "ShippedAt", type: "datetime2(3)" },
+  { name: "Status", type: "nvarchar(20)" },
+  { name: "Channel", type: "nvarchar(20)" },
+  { name: "Region", type: "nvarchar(16)" },
+  { name: "Warehouse", type: "char(5)" },
+  { name: "ItemCount", type: "smallint" },
+  { name: "Currency", type: "char(3)" },
+  { name: "Subtotal", type: "decimal(12,2)" },
+  { name: "Discount", type: "decimal(12,2)" },
+  { name: "Tax", type: "decimal(12,2)" },
+  { name: "Shipping", type: "decimal(12,2)" },
+  { name: "Total", type: "decimal(12,2)" },
+  { name: "PaymentMethod", type: "nvarchar(16)" },
+  { name: "IsPriority", type: "bit" },
+  { name: "PromoCode", type: "nvarchar(16)" },
+  { name: "CreatedBy", type: "sysname" },
 ];
+
+function orders(): (string | number | boolean | null)[][] {
+  let seed = 20261031;
+  const rand = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+  const pick = <T>(xs: T[]) => xs[Math.floor(rand() * xs.length)];
+  const pad = (n: number, w = 2) => String(n).padStart(w, "0");
+  const stamp = (d: Date) =>
+    `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}.${pad(d.getUTCMilliseconds(), 3)}`;
+  const day = (d: Date) => stamp(d).slice(0, 10);
+  const money = (n: number) => Math.round(n * 100) / 100;
+  const regions: [string, string, number][] = [["UK-North", "GBP", 0.2], ["UK-South", "GBP", 0.2], ["EU-West", "EUR", 0.21], ["US-East", "USD", 0.0725]];
+  const statuses = ["Delivered", "Delivered", "Delivered", "Shipped", "Shipped", "Picking", "Pending", "Cancelled", "Returned"];
+  const rows: (string | number | boolean | null)[][] = [];
+  let at = Date.UTC(2026, 8, 1, 7, 12, 4, 211);
+  for (let i = 0; i < 1000; i++) {
+    at += Math.floor(rand() * 75 * 60_000);
+    const ordered = new Date(at);
+    const [region, currency, rate] = pick(regions);
+    const status = pick(statuses);
+    const items = 1 + Math.floor(rand() * rand() * 24);
+    const subtotal = money(items * (4.5 + rand() * 120));
+    const discount = rand() < 0.25 ? money(subtotal * pick([0.05, 0.1, 0.15])) : 0;
+    const shipping = subtotal - discount > 75 ? 0 : pick([3.95, 4.99, 6.5, 9.99]);
+    const tax = money((subtotal - discount) * rate);
+    const shipped = ["Shipped", "Delivered", "Returned"].includes(status) ? stamp(new Date(at + (6 + rand() * 60) * 3_600_000)) : null;
+    const customer = 1000 + Math.floor(rand() * 480);
+    rows.push([
+      10241 + i,
+      `SO-2026-${pad(10241 + i, 6)}`,
+      customer,
+      `ACC-${pad(customer, 5)}`,
+      stamp(ordered),
+      day(new Date(at + (2 + Math.floor(rand() * 9)) * 86_400_000)),
+      shipped,
+      status,
+      pick(["Web", "Web", "Web", "Phone", "Partner", "Marketplace"]),
+      region,
+      pick(["WH-01", "WH-02", "WH-03", "WH-04"]),
+      items,
+      currency,
+      subtotal,
+      discount,
+      tax,
+      shipping,
+      money(subtotal - discount + tax + shipping),
+      pick(["Card", "Card", "Card", "Invoice", "Transfer", "Wallet"]),
+      rand() < 0.12,
+      discount > 0 ? pick(["AUTUMN10", "WELCOME5", "BULK15", "LOYAL10"]) : null,
+      pick(["web-checkout", "web-checkout", "phone-desk", "partner-api", "import-job"]),
+    ]);
+  }
+  return rows;
+}
+const ORDERS = orders();
 
 type Request = { id?: number; method: string; params?: Record<string, unknown> };
 const reply = (line: unknown) => setTimeout(() => void emit("sidecar://message", JSON.stringify(line)), 5);
@@ -180,23 +245,17 @@ function handle(req: Request): unknown {
     case "catalog.get":
     case "catalog.refresh": {
       const scope = scopeOf(String(p.nodeId));
-      const objects = TABLES.map(([schema, name]) => ({ schema, name, kind: "table", columns: [] }));
+      const objects = TABLES.map(([schema, name]) => ({ schema, name, kind: "table", columns: name === "Orders" ? ORDER_COLUMNS.map((c) => ({ name: c.name, type: c.type, nullable: ["ShippedAt", "PromoCode"].includes(c.name) })) : [] }));
       return { key: `${scope.connection}|${p.database ?? scope.database ?? ""}`, state: "current", catalog: { stamp: "1", schemas: ["dbo", "sales"], objects, types: [] } };
     }
     case "query.execute": {
       const queryId = String(p.queryId);
-      const columns = [
-        { name: "OrderId", type: "int" },
-        { name: "CustomerId", type: "int" },
-        { name: "OrderedAt", type: "datetime2" },
-        { name: "Status", type: "nvarchar" },
-        { name: "Total", type: "decimal" },
-        { name: "Currency", type: "char" },
-      ];
-      notify("query.rows", { queryId, index: 0, columns, rows: ORDERS });
-      notify("query.message", { queryId, kind: "info", text: `(${ORDERS.length} rows affected)`, elapsedMs: 38 });
+      // Streamed in 500-row batches, as the sidecar sends them.
+      for (let i = 0; i < ORDERS.length; i += 500)
+        notify("query.rows", { queryId, index: 0, columns: i === 0 ? ORDER_COLUMNS : undefined, rows: ORDERS.slice(i, i + 500) });
+      notify("query.message", { queryId, kind: "info", text: `(${ORDERS.length} rows affected)`, elapsedMs: 184 });
       return new Promise((resolve) =>
-        setTimeout(() => resolve({ queryId, resultSets: [{ rowCount: ORDERS.length }], elapsedMs: 41, rolledBack: false, committed: false, cancelled: false }), 40),
+        setTimeout(() => resolve({ queryId, resultSets: [{ rowCount: ORDERS.length }], elapsedMs: 187, rolledBack: false, committed: false, cancelled: false }), 40),
       );
     }
     default:
