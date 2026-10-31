@@ -23,7 +23,17 @@ Builds are not code-signed yet; signing is planned, see [ADR 0014](adr/0014-code
   [benchmarks.md](benchmarks.md)). Every release is a new file Defender has not seen, so it can
   happen again after an update.
 
-Until builds are signed, add a Defender folder exclusion for `%LOCALAPPDATA%\Panoptic` (Windows
-Security, Virus and threat protection, Manage settings, Exclusions, Add an exclusion, Folder) and
-reinstall. With the exclusion in place, installed copies update in place as normal. On a managed
-machine the exclusion may need your IT team.
+Until builds are signed, the safest way to keep it is to allow that one detection: Windows
+Security, Virus and threat protection, Protection history, open the `Bearfoos` entry, then
+Actions, **Allow on device**, and reinstall. This allows that exact file only, so it may be
+needed again after an update.
+
+If that is too frequent, a **file** exclusion for `%LOCALAPPDATA%\Panoptic\panoptic.exe` only
+(Manage settings, Exclusions, Add an exclusion, File) is the narrower fallback. It has not been
+confirmed to stop this quarantine, and it means anything that replaces that one file is not
+scanned.
+
+**Do not exclude the whole `%LOCALAPPDATA%\Panoptic` folder.** Any program running as you can
+write there, so a folder exclusion lets it drop or replace files unscanned, including the
+database engine (`panoptic-sidecar.exe`), which decrypts your saved credentials. On a managed
+machine, ask your IT team rather than adding exclusions yourself.
