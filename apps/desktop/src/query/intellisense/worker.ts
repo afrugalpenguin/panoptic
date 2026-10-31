@@ -4,6 +4,7 @@
 
 import type { DatabaseCatalog } from "../catalog.svelte";
 import { complete, hover, Index, type Item, type Lookup, type Options } from "./engine";
+import { tsqlHabits } from "./habits";
 import { unknownNames, type Warning } from "./lint";
 import { contextAt, type Language, type TableRef } from "./scanner";
 import { suggestColumn, suggestObject, type Suggestion } from "./suggest";
@@ -38,7 +39,8 @@ export type Request =
   | { type: "complete"; id: number; text: string; offset: number; options: Options; keys: Keys }
   | { type: "hover"; id: number; text: string; offset: number; options: Options; keys: Keys }
   | ({ type: "suggest"; id: number; keys: Keys } & SuggestRequest)
-  | { type: "lint"; id: number; text: string; offset: number; keys: Keys; language?: Language };
+  /** unknownNames (default true) checks names against the catalog; Postgres scripts also get the T-SQL habits. */
+  | { type: "lint"; id: number; text: string; offset: number; keys: Keys; language?: Language; unknownNames?: boolean };
 
 export type CompleteResponse = { id: number; items: Item[]; start: number; missing?: string };
 export type HoverResponse = { id: number; markdown: string | null };
@@ -92,7 +94,14 @@ export function handle(message: Request): Response | undefined {
       const suggestion = suggest(message);
       return suggestion ? { id: message.id, suggestion } : { id: message.id };
     }
-    case "lint":
-      return { id: message.id, warnings: unknownNames(lookup(message.keys), message.text, message.offset, message.language) };
+    case "lint": {
+      const find = lookup(message.keys);
+      const warnings = message.unknownNames === false ? [] : unknownNames(find, message.text, message.offset, message.language);
+      if (message.language === "pgsql") {
+        const defines = (name: string) => !!find()?.catalog.objects.some((o) => (o.kind === "fn" || o.kind === "proc") && o.name.toLowerCase() === name);
+        warnings.push(...tsqlHabits(message.text, defines));
+      }
+      return { id: message.id, warnings: warnings.sort((a, b) => a.start - b.start) };
+    }
   }
 }

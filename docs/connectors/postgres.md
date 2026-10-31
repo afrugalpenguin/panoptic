@@ -1,6 +1,6 @@
 # PostgreSQL connector
 
-Status: in progress. The design is in [docs/plans/2026-10-30-postgres-design.md](../plans/2026-10-30-postgres-design.md) (ADR 0015); this page describes the connector as it lands, pull request by pull request. The tree, sign-in and connection dialog (#116), and queries with the read-only guard (#117), are in, and so is IntelliSense (#118); the T-SQL habits warnings (#119) follow.
+Status: in progress. The design is in [docs/plans/2026-10-30-postgres-design.md](../plans/2026-10-30-postgres-design.md) (ADR 0015); this page describes the connector as it lands, pull request by pull request. The tree, sign-in and connection dialog (#116), and queries with the read-only guard (#117), are in, and so are IntelliSense (#118) and the T-SQL habits warnings (#119).
 
 Covers PostgreSQL and Azure Database for PostgreSQL Flexible Server. Backend: `apps/sidecar/Panoptic.Sidecar/Backends/PostgresBackend.cs`, using Npgsql.
 
@@ -77,7 +77,9 @@ On a read-only environment the session's `default_transaction_read_only` is on a
 
 ## Coming from SQL Server
 
-Once #119 lands, Panoptic's Postgres editor warns about the habits in the first table before you run, and offers a fix where there is one.
+Panoptic's Postgres editor underlines the habits in this table before you run, all but `IDENTITY` and `sp_help`, anywhere in the script, while IntelliSense is on. `TOP`, `[names]`, `GETDATE()`/`SYSDATETIME()`, `ISNULL`, `LEN` and `+` on text have a quick fix (the light bulb, or Ctrl+.); `TOP n` moves to a `LIMIT n` at the end of its query, or of its subquery. `@variables`, `#temp`, `NOLOCK` and `GO` are explained, with nothing to fix automatically.
+
+It stays quiet where the T-SQL reading would be wrong: array subscripts and `ARRAY[...]` are not names, `+` next to `'1 day'` or `date '2020-01-01'` is arithmetic, `x ISNULL` is Postgres's own operator, and a `getdate`, `isnull` or `len` function the database defines (a port's compatibility shim) is called as written. A `TOP` with `PERCENT`, `WITH TIES`, a variable, or a query that already has a `LIMIT` gets the explanation without a fix.
 
 | T-SQL | PostgreSQL |
 | --- | --- |

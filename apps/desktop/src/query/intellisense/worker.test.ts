@@ -105,6 +105,19 @@ describe("worker suggest and lint", () => {
     expect(handle({ type: "lint", id: 6, text: "select $$ from Contrcts $$", offset: 0, keys, language: "pgsql" })).toEqual({ id: 6, warnings: [] });
   });
 
+  it("adds T-SQL habit warnings for Postgres, with or without the unknown-name check", () => {
+    handle({ type: "catalog", key: "kShim", catalog: { stamp: "h", schemas: ["public"], types: [], objects: [
+      { name: "t", schema: "public", kind: "table", columns: [{ name: "a", type: "int", nullable: true }] },
+      { name: "isnull", schema: "public", kind: "fn", params: [] },
+    ] } });
+    const shim = { current: "kShim", databases: {} };
+    const text = "select top 1 isnull(a, 0), len(a) from tt";
+    const covered = (r: Response | undefined) => (r as { warnings: { start: number; end: number }[] }).warnings.map((w) => text.slice(w.start, w.end));
+    expect(covered(handle({ type: "lint", id: 7, text, offset: 0, keys: shim, language: "pgsql" }))).toEqual(["top 1", "len", "tt"]);
+    expect(covered(handle({ type: "lint", id: 8, text, offset: 0, keys: shim, language: "pgsql", unknownNames: false }))).toEqual(["top 1", "len"]);
+    expect(covered(handle({ type: "lint", id: 9, text: "select top 1 * from Contracts", offset: 0, keys }))).toEqual([]);
+  });
+
   it("suggests for Postgres SQLSTATEs: 42P01 an object, 42703 a column, 42883 a routine", () => {
     handle({ type: "catalog", key: "kPg", catalog: { stamp: "p", schemas: ["public"], types: [], objects: [
       { name: "customer", schema: "public", kind: "table", columns: [{ name: "full_name", type: "text", nullable: true }] },
