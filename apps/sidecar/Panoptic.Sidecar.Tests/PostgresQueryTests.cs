@@ -188,7 +188,7 @@ public class PostgresTemplateTests
 {
     private static readonly PostgresBackend Backend = new(new Credentials(_ => { }));
 
-    private static readonly NodePath Db = NodePath.Parse("env:e/conn:p/db:orders");
+    private static readonly NodePath Db = NodePath.Parse("conn:p/db:orders");
 
     [Theory]
     [InlineData("tables", new[] { "sales", "order" }, "SELECT *\nFROM sales.\"order\"\nLIMIT 1000;")]
@@ -207,7 +207,7 @@ public class PostgresTemplateTests
     [Fact]
     public void New_query_opens_empty_in_the_pgsql_language()
     {
-        Assert.Equal("", Backend.TemplateFor(NodePath.Parse("env:e/conn:p/db:orders"), "newQuery"));
+        Assert.Equal("", Backend.TemplateFor(NodePath.Parse("conn:p/db:orders"), "newQuery"));
         Assert.Equal("pgsql", Backend.EditorLanguage);
     }
 }

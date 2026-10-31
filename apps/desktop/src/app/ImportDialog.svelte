@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import type { Api, AppConfig, EnvironmentConfig, ImportCandidate, ImportSource } from "./api";
   import Dialog from "./Dialog.svelte";
+  import { NEW_ENV, NO_ENV, pickerOptions, toEnvironmentId } from "./env-picker";
   import { candidateKey, envStyleFor, planGroups, type PlanGroup } from "./import-plan";
 
   let { api, config, onImported, onClose }: { api: Api; config: AppConfig; onImported: (count: number) => void; onClose: () => void } =
@@ -49,9 +50,9 @@
   /** Builds the proposed groups and resets choices for them. */
   function replan() {
     plan = planGroups(sources, { byPattern });
+    // Environments are optional grouping: every group starts in none (docs/explorer-ux.md, "Grouping").
     for (const g of plan) {
-      const match = config.environments.find((e) => e.name.toLowerCase() === g.name.toLowerCase());
-      target[g.key] = match?.id ?? "new";
+      target[g.key] = NO_ENV;
       names[g.key] = g.name;
       g.candidates.forEach((c) => (selected[keyOf(c)] = !c.alreadyAdded));
     }
@@ -90,8 +91,8 @@
         const chosen = g.candidates.filter((c) => !c.alreadyAdded && selected[keyOf(c)]);
         if (chosen.length === 0) continue;
 
-        let envId = target[g.key];
-        if (envId === "new") {
+        let envId = toEnvironmentId(target[g.key]);
+        if (envId === NEW_ENV) {
           const name = (names[g.key] ?? g.name).trim() || g.name;
           const existing = config.environments.find((e) => e.name.toLowerCase() === name.toLowerCase());
           envId = existing?.id ?? created.get(name.toLowerCase()) ?? "";
@@ -146,7 +147,7 @@
     {:else}
       <p class="muted intro">
         Found {total} connection{total === 1 ? "" : "s"}. Passwords are never imported: SQL logins ask once when you first connect.
-        Environments marked <em>suggested</em> come from your server naming pattern; rename or retarget them as you like.
+        Groups marked <em>suggested</em> come from your server naming pattern; put them in an environment or leave them ungrouped.
       </p>
       {#if hasOwnGroups}
         <label class="pattern">
@@ -167,10 +168,9 @@
             />
             <span class="arrow">Into</span>
             <select bind:value={target[g.key]} aria-label="Target environment for {g.name}">
-              <option value="new">New environment</option>
-              {#each config.environments as env}<option value={env.id}>{env.name}</option>{/each}
+              {#each pickerOptions(config.environments) as o (o.value)}<option value={o.value}>{o.label}</option>{/each}
             </select>
-            {#if target[g.key] === "new"}
+            {#if target[g.key] === NEW_ENV}
               <input class="name" bind:value={names[g.key]} aria-label="New environment name" />
             {/if}
             {#if g.suggested}<span class="tag">suggested</span>{/if}

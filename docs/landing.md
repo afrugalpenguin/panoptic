@@ -1,6 +1,6 @@
 # Landing and Seek spec
 
-The empty workspace's start page ("C - Quiet wordmark") and Seek, the one box that finds environments, connections and recent objects. Seek lives in its own module (`apps/desktop/src/app/seek.ts`) so a later Ctrl+P palette reuses it unchanged.
+The empty workspace's start page ("C - Quiet wordmark") and Seek, the one box that finds environments, connections (in an environment or in none, docs/explorer-ux.md "Grouping") and recent objects. Seek lives in its own module (`apps/desktop/src/app/seek.ts`) so a later Ctrl+P palette reuses it unchanged.
 
 ## When it shows
 
@@ -12,8 +12,8 @@ A centred column, at most 460px wide:
 
 - Header: the 32px mark (`src-tauri/icons/icon.svg`), `PANOPTIC` (16px, 600, letter-spacing 2.4px, muted), the version in mono 11px on the right.
 - The Seek box: 56px tall, radius 12, a cyan border with a 4px cyan ring, placeholder "Seek anything, anywhere", a `Ctrl P` chip. Focused when the landing shows.
-- A muted line: "Objects across all N environments. Type a table, container, proc or host." ("No environments yet" with none.)
-- Actions, 44px rows with dividers: Reopen last session (amber clock and the last place in muted mono, only when there is one), New query `Ctrl N`, New connection `Ctrl Shift N` (with no environments yet it asks for one first; New environment stays in the explorer toolbar), Import `Ctrl I` (dimmed).
+- A muted line: "Objects across all N environments. Type a table, container, proc or host." ("Objects across 1 environment." when singular.) With no environments it counts connections instead: "Objects across all N connections." or "Objects across 1 connection.", and "No connections yet" with none.
+- Actions, 44px rows with dividers: Reopen last session (amber clock and the last place in muted mono, only when there is one), New query `Ctrl N`, New connection `Ctrl Shift N` (opens the connection dialog directly, its environment None; New environment stays in the explorer toolbar), Import `Ctrl I` (dimmed).
 - Bottom left, mono 11px: an amber dot, "Ready" and "opened in NNN ms" when the engine is up; "Starting database engine..."; or "Database engine stopped" and Restart.
 - Bottom right: a faded 300px "Panoptic" wordmark overflowing the corner, `aria-hidden`, behind everything.
 
@@ -21,21 +21,24 @@ The word "sidecar" never appears in user-facing text, here or in the status bar.
 
 ## Seek
 
-One index over the loaded environments, their connections and the recent objects in usage.
+One index over the loaded environments, their connections, the connections in no environment and the recent objects in usage. A connection in no environment ranks on its own name only and is never shown as, or under, an environment row.
 
-**Nothing typed:** "Pick up where you left off" (the last place, pre-selected), then environments by last use (use count breaks ties, then name), capped at 5 with a muted "N more, type to find" hint, then up to 3 recent objects. At most 9 selectable rows; the hint is not a row. No environments, no rows.
+**Nothing typed:** "Pick up where you left off" (the last place, pre-selected), then environments by last use (use count breaks ties, then name), capped at 5 with a muted "N more, type to find" hint, then connections in no environment (last used first, then by name), also capped at 5 with a hint, then up to 3 recent objects. At most 9 selectable rows; the hints are not rows. No environments and no connections, no rows.
 
 **Typed:** the query splits into tokens, and every token must match (AND). Matching is case-insensitive substring; a prefix of the text scores 3, the start of a word 2, anywhere 1.
 
 1. Environments where every token is in the environment's name or id, one of its hosts' names, or one of its recent objects' labels. Ranked by how well the tokens match the environment's own name, capped at 5 with a "more" hint.
 2. The top environment's connections whose name (with the environment's name) holds every token, by name.
-3. The top environment's recent objects whose label or host name (with the environment's name) holds every token, up to 3.
+3. Connections in no environment whose own name holds every token, best match first, then by name.
+4. Recent objects, up to 3: the top environment's whose label or host name (with the environment's name) holds every token, then those on connections in no environment whose label or host name holds every token.
+
+With no environment matching, the connections in no environment and their recent objects still show.
 
 So "uk prod" ranks Prod first with only its `uk-` hosts under it: "uk" is in neither `us-prod-sql-01` nor "Prod".
 
-**Connections only** (the unconnected tab's picker): every connection, the last used one first when nothing is typed; typed, tokens AND across the host and environment names, the host name counting double.
+**Connections only** (the unconnected tab's picker): every connection, the last used one first when nothing is typed; typed, tokens AND across the host and environment names, the host name counting double. A connection in no environment matches on its own name only.
 
-**Stale usage:** usage outlives config. A remembered place in an environment that has since been removed is never offered, in Seek or as Reopen last session.
+**Stale usage:** usage outlives config. A remembered place whose connection has since been removed is never offered, in Seek or as Reopen last session. A place's environment is looked up from its connection, not remembered, so a connection that moved keeps its places under its new environment (or none).
 
 ### Keys
 
@@ -57,7 +60,7 @@ Ctrl+N is New query: with a node selected that offers it, on that node, as befor
 
 Kept in local storage under `panoptic.usage`, on this machine only, never sent anywhere:
 
-- per environment, the last time a query tab was opened in it and how many times;
+- per environment, the last time a query tab was opened in it and how many times (a connection in no environment counts towards none);
 - the last place: the environment, connection and node of the last query tab opened;
 - recent objects: places below connection level (a database, table, view, procedure or container), newest first, 20 kept.
 

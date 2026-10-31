@@ -14,10 +14,11 @@
   import DetailPane from "./DetailPane.svelte";
   import EnvironmentDialog from "./EnvironmentDialog.svelte";
   import ImportDialog from "./ImportDialog.svelte";
+  import MoveDialog from "./MoveDialog.svelte";
   import IconButton from "./IconButton.svelte";
   import KindChips from "./KindChips.svelte";
   import Landing from "./Landing.svelte";
-  import type { SeekEnv, SeekHost, SeekIndex, SeekRow } from "./seek";
+  import { livePlace, type SeekEnv, type SeekHost, type SeekIndex, type SeekRow } from "./seek";
   import { globalShortcut } from "./shortcuts";
   import { loadUsage, recordUse, saveUsage, type Place } from "./usage";
   import { actionItems, actionLabel, queryItems, shortcutAction, type NodeActionHandlers } from "./node-menu";
@@ -28,7 +29,7 @@
   import SettingsDialog from "./SettingsDialog.svelte";
   import StatusBar from "./StatusBar.svelte";
   import Tree from "./Tree.svelte";
-  import { environmentOrder, moveEnvironment, TreeModel, type KindSummary, type LoadReport, type Row } from "./tree-model";
+  import { environmentOrder, moveEnvironment, TreeModel, UNGROUPED, type KindSummary, type LoadReport, type Row } from "./tree-model";
   import { errorText, type Problem } from "./problems";
 
   let { info }: { info: StartupInfo } = $props();
@@ -36,7 +37,7 @@
   let api = $state.raw<Api>();
   let sidecar = $state<"connecting" | "connected" | "disconnected">("connecting");
   let sidecarText = $state("Starting database engine...");
-  let config = $state<AppConfig>({ environments: [] });
+  let config = $state<AppConfig>({ environments: [], connections: [] });
   let rows = $state.raw<Row[]>([]);
   let problems = $state.raw<Problem[]>([]);
   let kinds = $state.raw<KindSummary[]>([]);
@@ -52,7 +53,8 @@
   let actionLabels = $state.raw<Record<string, string>>({});
   let dialog = $state<
     | { kind: "environment"; initial?: EnvironmentConfig }
-    | { kind: "connection"; environmentId: string; initial?: ConnectionConfig }
+    | { kind: "connection"; environmentId: string | null; initial?: ConnectionConfig }
+    | { kind: "move"; connection: ConnectionConfig; from?: string }
     | { kind: "import" }
     | { kind: "settings" }
   >();
@@ -97,7 +99,7 @@
   /** Loaded environments and their connections. Reads rows so it follows every tree change; preload loads all connections at start. */
   function seekEnvs(): SeekEnv[] {
     void rows;
-    return model.childIds("").flatMap((envId) => {
+    return model.envIds().flatMap((envId) => {
       const env = model.node(envId);
       if (!env) return [];
       const hosts: SeekHost[] = model
@@ -108,11 +110,19 @@
       return [{ id: envId, name: env.label, color: env.meta?.color, hosts }];
     });
   }
-  const seekIndex = $derived<SeekIndex>({ envs: seekEnvs(), usage });
+  /** Connections in no environment, for Seek. */
+  function seekHosts(): SeekHost[] {
+    void rows;
+    return model.looseIds().flatMap((id) => {
+      const n = model.node(id);
+      return n ? [{ id, name: n.label }] : [];
+    });
+  }
+  const seekIndex = $derived<SeekIndex>({ envs: seekEnvs(), hosts: seekHosts(), usage });
 
-  /** An environment node's colour band and read-only flag, as its rows get them. */
-  const envLook = (envId: string) => {
-    const meta = model.node(envId)?.meta;
+  /** An environment node's colour band and read-only flag, as its rows get them. None for a connection in no environment. */
+  const envLook = (envId: string | undefined) => {
+    const meta = envId ? model.node(envId)?.meta : undefined;
     return { envColor: meta?.color, readOnly: meta?.readOnly === "true" };
   };
 
@@ -203,7 +213,7 @@
     const sidecarReadyEpochMs = nowEpochMs();
     config = await api!.config();
     await model.loadRoot();
-    await model.preload(model.childIds(""));
+    await model.preload(model.envIds());
 
     const fcp = await firstPaintEpochMs();
     openedMs = Math.round(sidecarReadyEpochMs - info.mainStartEpochMs);
@@ -262,16 +272,20 @@
   async function configChanged(next?: AppConfig) {
     config = next ?? (await api!.config());
     await model.reload("");
-    for (const id of model.childIds("")) await model.reload(id);
-    await model.preload(model.childIds(""));
+    // Environments' connection lists only: reloading a loose connection's children would call its server.
+    for (const id of model.envIds()) await model.reload(id);
+    await model.preload(model.envIds());
   }
 
   const envOf = (id: string) => config.environments.find((e) => e.id === id);
-  const connectionOf = (id: string) => {
+  /** A connection and its environment, which is undefined for one in no environment. */
+  const connectionOf = (id: string): { env?: EnvironmentConfig; connection: ConnectionConfig } | undefined => {
     for (const env of config.environments) {
       const c = env.connections.find((x) => x.id === id);
       if (c) return { env, connection: c };
     }
+    const loose = config.connections.find((x) => x.id === id);
+    return loose && { connection: loose };
   };
 
   /** Runs an action a backend adds in the sidecar and copies the text it returns, if any. */
@@ -292,15 +306,27 @@
     );
   }
 
+  /** New connection: always the connection dialog, its environment None unless one is given (docs/explorer-ux.md). */
   function addConnection(environmentId?: string) {
-    const envId = environmentId ?? config.environments[0]?.id;
-    if (!envId) dialog = { kind: "environment" };
-    else dialog = { kind: "connection", environmentId: envId };
+    dialog = { kind: "connection", environmentId: environmentId ?? null };
+  }
+
+  /** Drag onto an environment, Move to environment... and Remove from environment (null): the connection keeps its id. */
+  async function moveConnection(connectionId: string, environmentId: string | null) {
+    const found = connectionOf(connectionId);
+    if (!found || (found.env?.id ?? null) === environmentId) return;
+    try {
+      await configChanged(await api!.saveConnection(environmentId, found.connection));
+    } catch (e) {
+      lastLoad = { id: "", label: found.connection.name, count: 0, ms: 0, error: e instanceof Error ? e.message : String(e) };
+    }
   }
 
   function openMenu(row: Row, x: number, y: number) {
     const items: (MenuItem | "separator")[] = [];
-    if (row.type === "error") {
+    if (row.type === "group" || row.type === "env-empty") {
+      // The Ungrouped header and the empty hint are not config of their own: nothing to edit or retry.
+    } else if (row.type === "error") {
       items.push({ label: "Copy error", run: () => navigator.clipboard.writeText(errorText(row.error)).catch(() => {}) });
       if (row.error.retryable) items.push({ label: "Retry", run: () => model.refresh(row.parentId) });
       items.push({ label: "Open Problems", run: () => openProblems(row.parentId) });
@@ -338,9 +364,11 @@
         const found = connectionOf(n.meta!.connectionId);
         items.push({
           label: "Edit connection...",
-          run: () => found && (dialog = { kind: "connection", environmentId: found.env.id, initial: found.connection }),
+          run: () => found && (dialog = { kind: "connection", environmentId: found.env?.id ?? null, initial: found.connection }),
         });
         items.push(...actionItems(n, actionLabels, { ...on, refresh: () => (model.refresh(n.id), refreshQueryTabs(n.id)) }));
+        items.push({ label: "Move to environment...", run: () => found && (dialog = { kind: "move", connection: found.connection, from: found.env?.id }) });
+        if (found?.env) items.push({ label: "Remove from environment", run: () => moveConnection(found.connection.id, null) });
         items.push("separator");
         items.push({
           label: "Remove connection",
@@ -398,7 +426,7 @@
     }
   }
 
-  /** The node's environment and connection, walking up the loaded tree; undefined above connection level. */
+  /** The node's connection and environment (if it is in one), walking up the loaded tree; undefined above connection level. */
   function placeFor(nodeId: string, label: string): Place | undefined {
     let host: TreeNode | undefined;
     let env: TreeNode | undefined;
@@ -407,8 +435,8 @@
       if (n?.kind === "connection") host = n;
       else if (n?.kind === "environment") env = n;
     }
-    if (!host || !env) return undefined;
-    return { envId: env.id, hostId: host.id, hostName: host.label, nodeId, label, kind: model.node(nodeId)?.kind ?? "object" };
+    if (!host) return undefined;
+    return { envId: env?.id, hostId: host.id, hostName: host.label, nodeId, label, kind: model.node(nodeId)?.kind ?? "object" };
   }
 
   function remember(nodeId: string, label: string) {
@@ -418,7 +446,10 @@
     saveUsage(usage);
   }
 
-  /** Reopen last session / Pick up where you left off: the place only, in the tree and in a new query tab. */
+  /**
+   * Reopen last session / Pick up where you left off: the place only, in the tree and in a new query tab. The place
+   * is a live one (seek's liveUsage), so its environment is where the connection is now.
+   */
   async function reopen(place: Place) {
     await model.focus(place.envId, place.hostId);
     selectedKey = place.hostId;
@@ -501,7 +532,8 @@
   }
 
   function activate(row: Row) {
-    if (row.type === "node" && row.node.hasChildren) model.toggle(row.node.id);
+    if (row.type === "group") model.toggle(UNGROUPED);
+    else if (row.type === "node" && row.node.hasChildren) model.toggle(row.node.id);
     else if (row.type === "error") openProblems(row.parentId);
   }
 
@@ -575,8 +607,8 @@
       />
     {/if}
     <div class="tree-host">
-      {#if sidecar === "connected" && config.environments.length === 0}
-        <p class="hint muted">No environments yet.</p>
+      {#if sidecar === "connected" && config.environments.length === 0 && config.connections.length === 0}
+        <p class="hint muted">No connections yet.</p>
       {/if}
       <Tree
         bind:this={tree}
@@ -586,6 +618,7 @@
         onContextMenu={openMenu}
         onActivate={activate}
         onOpenProblem={openProblems}
+        onMoveConnection={moveConnection}
         disconnected={sidecar === "disconnected"}
         showKindBadge={settings.explorer.showKindBadge}
         rowFont={settings.explorer.rowFont}
@@ -608,13 +641,17 @@
         bind:this={landing}
         index={seekIndex}
         envCount={config.environments.length}
+        connectionCount={config.connections.length + config.environments.reduce((n, e) => n + e.connections.length, 0)}
         {version}
         engine={sidecar}
         {openedMs}
         onSeekOpen={seekOpen}
         onSeekQuery={seekQuery}
         onSeekLeave={() => tree?.focus()}
-        onReopen={() => seekIndex.usage.last && reopen(seekIndex.usage.last)}
+        onReopen={() => {
+          const last = livePlace(seekIndex);
+          if (last) void reopen(last);
+        }}
         onNewQuery={() => workspace.openUnconnected()}
         onNewConnection={() => sidecar === "connected" && addConnection()}
         onImport={() => sidecar === "connected" && (dialog = { kind: "import" })}
@@ -665,6 +702,17 @@
     environmentId={dialog.environmentId}
     initial={dialog.initial}
     onSaved={() => configChanged()}
+    onEnvironmentCreated={configChanged}
+    onClose={() => (dialog = undefined)}
+  />
+{:else if dialog?.kind === "move" && api}
+  <MoveDialog
+    {api}
+    environments={config.environments}
+    connection={dialog.connection}
+    from={dialog.from}
+    onMove={(envId) => moveConnection(dialog?.kind === "move" ? dialog.connection.id : "", envId)}
+    onEnvironmentCreated={configChanged}
     onClose={() => (dialog = undefined)}
   />
 {/if}

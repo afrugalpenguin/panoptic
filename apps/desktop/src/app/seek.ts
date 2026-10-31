@@ -1,5 +1,6 @@
-// Seek (docs/landing.md, "Seek"): one index over environments, their connections and recent objects, ranked for a
-// query. Pure, so the landing box, the query tab's connection picker and a later Ctrl+P palette all share it.
+// Seek (docs/landing.md, "Seek"): one index over environments, their connections, connections in no environment
+// and recent objects, ranked for a query. Pure, so the landing box, the query tab's connection picker and a later
+// Ctrl+P palette all share it.
 
 import type { Place, Usage } from "./usage";
 
@@ -7,7 +8,8 @@ export interface SeekHost {
   /** The connection's node id. */
   id: string;
   name: string;
-  envId: string;
+  /** The environment's node id; absent for a connection in no environment. */
+  envId?: string;
 }
 
 export interface SeekEnv {
@@ -21,20 +23,25 @@ export interface SeekEnv {
 
 export interface SeekIndex {
   envs: SeekEnv[];
+  /** Connections in no environment. They rank on their own name only and never show as, or under, an environment. */
+  hosts?: SeekHost[];
   usage: Usage;
 }
 
 export type SeekRow =
   | { kind: "resume"; group: "resume"; place: Place }
   | { kind: "env"; group: "envs"; env: SeekEnv }
-  /** A hint, not selectable: how many environments the cap hid. */
-  | { kind: "more"; group: "envs"; count: number }
-  | { kind: "host"; group: "hosts"; host: SeekHost; env: SeekEnv }
+  /** A hint, not selectable: how many environments (or connections in none) the cap hid. */
+  | { kind: "more"; group: "envs" | "hosts"; count: number }
+  /** env is absent for a connection in no environment. */
+  | { kind: "host"; group: "hosts"; host: SeekHost; env?: SeekEnv }
   | { kind: "recent"; group: "recent"; place: Place };
 
 export const ENV_CAP = 5;
+/** Connections in no environment shown with nothing typed. */
+export const HOST_CAP = 5;
 export const RECENT_CAP = 3;
-/** Selectable rows; the "more" hint does not count. */
+/** Selectable rows; the "more" hints do not count. */
 export const MAX_ROWS = 9;
 
 export const selectable = (r: SeekRow) => r.kind !== "more";
@@ -68,29 +75,59 @@ function byUse(usage: Usage) {
     a.name.localeCompare(b.name);
 }
 
-/** The last place, unless its environment has since been removed from config: usage outlives config. */
-export function livePlace(index: SeekIndex): Place | undefined {
-  const last = index.usage.last;
-  return last && index.envs.some((e) => e.id === last.envId) ? last : undefined;
+/**
+ * Usage outlives config, and a connection can move: each remembered place takes its connection's current
+ * environment (none for a connection in none), and a place whose connection has been removed is dropped.
+ */
+export function liveUsage(index: SeekIndex): Usage {
+  const homes = new Map<string, string | undefined>();
+  for (const env of index.envs) for (const h of env.hosts) homes.set(h.id, env.id);
+  for (const h of index.hosts ?? []) homes.set(h.id, undefined);
+  const live = (p: Place): Place | undefined => (homes.has(p.hostId) ? { ...p, envId: homes.get(p.hostId) } : undefined);
+  return {
+    ...index.usage,
+    last: index.usage.last && live(index.usage.last),
+    recent: index.usage.recent.flatMap((r) => live(r) ?? []),
+  };
+}
+
+/** The last place, unless its connection has since been removed from config. */
+export const livePlace = (index: SeekIndex): Place | undefined => liveUsage(index).last;
+
+/** The landing's muted line: environments when there are any, otherwise connections. */
+export function seekSummary(envCount: number, connectionCount: number): string {
+  const hint = "Type a table, container, proc or host.";
+  if (envCount === 1) return `Objects across 1 environment. ${hint}`;
+  if (envCount) return `Objects across all ${envCount} environments. ${hint}`;
+  if (connectionCount === 1) return `Objects across 1 connection. ${hint}`;
+  if (connectionCount) return `Objects across all ${connectionCount} connections. ${hint}`;
+  return "No connections yet";
 }
 
 export function seek(index: SeekIndex, query: string, scope: "all" | "connections" = "all"): SeekRow[] {
   const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
-  // Usage outlives config: a place in an environment that has since been removed is dropped, never offered.
-  const known = new Set(index.envs.map((e) => e.id));
-  const usage: Usage = {
-    ...index.usage,
-    last: livePlace(index),
-    recent: index.usage.recent.filter((r) => known.has(r.envId)),
-  };
+  const usage = liveUsage(index);
+  const loose = index.hosts ?? [];
   const ordered = [...index.envs].sort(byUse(usage));
   const recentIn = (env: SeekEnv) => usage.recent.filter((r) => r.envId === env.id);
+  const looseRecent = usage.recent.filter((r) => r.envId === undefined);
+  // A connection in no environment matches on its own name only.
+  const looseScore = (h: SeekHost) => (tokens.every((t) => score(h.name, t) > 0) ? tokens.reduce((sum, t) => sum + score(h.name, t), 0) : 0);
+  const byName = (a: SeekHost, b: SeekHost) => a.name.localeCompare(b.name);
+  const looseRows = (hosts: SeekHost[]): SeekRow[] => hosts.map((host) => ({ kind: "host", group: "hosts", host }));
 
   if (scope === "connections") {
-    const hosts = ordered.flatMap((env) => env.hosts.map((host) => ({ host, env })));
+    const hosts: { host: SeekHost; env?: SeekEnv }[] = [...ordered.flatMap((env) => env.hosts.map((host) => ({ host, env }))), ...loose.map((host) => ({ host }))];
     const ranked = tokens.length
       ? hosts
-          .map((h) => ({ ...h, s: tokens.every((t) => best([h.host.name, h.env.name], t) > 0) ? tokens.reduce((sum, t) => sum + 2 * score(h.host.name, t) + score(h.env.name, t), 0) : 0 }))
+          .map((h) => ({
+            ...h,
+            s: h.env
+              ? tokens.every((t) => best([h.host.name, h.env!.name], t) > 0)
+                ? tokens.reduce((sum, t) => sum + 2 * score(h.host.name, t) + score(h.env!.name, t), 0)
+                : 0
+              : 2 * looseScore(h.host),
+          }))
           .filter((h) => h.s > 0)
           .sort((a, b) => b.s - a.s)
       : [...hosts].sort((a, b) => Number(b.host.id === usage.last?.hostId) - Number(a.host.id === usage.last?.hostId));
@@ -102,8 +139,14 @@ export function seek(index: SeekIndex, query: string, scope: "all" | "connection
     if (usage.last) rows.push({ kind: "resume", group: "resume", place: usage.last });
     for (const env of ordered.slice(0, ENV_CAP)) rows.push({ kind: "env", group: "envs", env });
     if (ordered.length > ENV_CAP) rows.push({ kind: "more", group: "envs", count: ordered.length - ENV_CAP });
+    // Connections in none: last used first (the last place, then recent objects), then by name.
+    const used = [usage.last, ...usage.recent].flatMap((p) => (p ? [p.hostId] : []));
+    const rank = (h: SeekHost) => (used.includes(h.id) ? used.indexOf(h.id) : Number.MAX_SAFE_INTEGER);
+    const hosts = [...loose].sort((a, b) => rank(a) - rank(b) || byName(a, b));
+    rows.push(...looseRows(hosts.slice(0, HOST_CAP)));
+    if (hosts.length > HOST_CAP) rows.push({ kind: "more", group: "hosts", count: hosts.length - HOST_CAP });
     for (const place of usage.recent.filter((r) => r.nodeId !== usage.last?.nodeId).slice(0, RECENT_CAP)) rows.push({ kind: "recent", group: "recent", place });
-    return index.envs.length ? cap(rows) : [];
+    return index.envs.length || loose.length ? cap(rows) : [];
   }
 
   // An environment matches when every token is in its name or id, a host's name, or a recent object's label in it.
@@ -115,15 +158,19 @@ export function seek(index: SeekIndex, query: string, scope: "all" | "connection
     })
     .filter((m) => m.s > 0)
     .sort((a, b) => b.s - a.s);
-  if (matched.length === 0) return [];
 
   const rows: SeekRow[] = matched.slice(0, ENV_CAP).map(({ env }) => ({ kind: "env", group: "envs", env }));
   if (matched.length > ENV_CAP) rows.push({ kind: "more", group: "envs", count: matched.length - ENV_CAP });
-  const top = matched[0].env;
-  const inTop = (texts: string[]) => tokens.every((t) => best([...texts, top.name, top.id], t) > 0);
-  for (const host of top.hosts.filter((h) => inTop([h.name])).sort((a, b) => a.name.localeCompare(b.name)))
-    rows.push({ kind: "host", group: "hosts", host, env: top });
-  for (const place of recentIn(top).filter((r) => inTop([r.label, r.hostName])).slice(0, RECENT_CAP)) rows.push({ kind: "recent", group: "recent", place });
+  const top = matched[0]?.env;
+  const inTop = (texts: string[]) => !!top && tokens.every((t) => best([...texts, top.name, top.id], t) > 0);
+  if (top) for (const host of top.hosts.filter((h) => inTop([h.name])).sort(byName)) rows.push({ kind: "host", group: "hosts", host, env: top });
+  const looseMatches = loose.map((h) => ({ h, s: looseScore(h) })).filter((m) => m.s > 0);
+  rows.push(...looseRows(looseMatches.sort((a, b) => b.s - a.s || byName(a.h, b.h)).map((m) => m.h)));
+  const recent = [
+    ...(top ? recentIn(top).filter((r) => inTop([r.label, r.hostName])) : []),
+    ...looseRecent.filter((r) => tokens.every((t) => best([r.label, r.hostName], t) > 0)),
+  ];
+  for (const place of recent.slice(0, RECENT_CAP)) rows.push({ kind: "recent", group: "recent", place });
   return cap(rows);
 }
 

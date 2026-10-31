@@ -1,7 +1,9 @@
 <script lang="ts">
   import { onDestroy } from "svelte";
-  import type { Api, AuthKind, ConnectionConfig, ConnectionKind, EnvironmentConfig, TestConnectionResult } from "./api";
+  import type { Api, AppConfig, AuthKind, ConnectionConfig, ConnectionKind, EnvironmentConfig, TestConnectionResult } from "./api";
   import Dialog from "./Dialog.svelte";
+  import { NEW_ENV, NO_ENV, toEnvironmentId } from "./env-picker";
+  import EnvPicker from "./EnvPicker.svelte";
 
   let {
     api,
@@ -9,13 +11,17 @@
     environmentId: initialEnvironmentId,
     initial,
     onSaved,
+    onEnvironmentCreated,
     onClose,
   }: {
     api: Api;
     environments: EnvironmentConfig[];
-    environmentId: string;
+    /** Preselected environment; null or absent preselects None. */
+    environmentId?: string | null;
     initial?: ConnectionConfig;
     onSaved: () => void;
+    /** New environment... saved one: the new config, so the picker lists it. */
+    onEnvironmentCreated: (config: AppConfig) => void | Promise<void>;
     onClose: () => void;
   } = $props();
 
@@ -29,7 +35,7 @@
   // svelte-ignore state_referenced_locally
   const editing = initial !== undefined;
   // svelte-ignore state_referenced_locally
-  let environmentId = $state(initialEnvironmentId);
+  let environment = $state(initialEnvironmentId ?? NO_ENV);
   // svelte-ignore state_referenced_locally
   let name = $state(initial?.name ?? "");
   // svelte-ignore state_referenced_locally
@@ -126,11 +132,11 @@
   }
 
   async function save() {
-    error = validate();
+    error = environment === NEW_ENV ? "Create the new environment, or pick another." : validate();
     if (error) return;
     busy = "saving";
     try {
-      await api.saveConnection(environmentId, config(), secretArg());
+      await api.saveConnection(toEnvironmentId(environment), config(), secretArg());
       onSaved();
       onClose();
     } catch (e) {
@@ -142,10 +148,8 @@
 </script>
 
 <Dialog title={editing ? "Edit connection" : "New connection"} {onClose}>
-  <label for="c-env">Environment</label>
-  <select id="c-env" bind:value={environmentId}>
-    {#each environments as env}<option value={env.id}>{env.name}</option>{/each}
-  </select>
+  <label for="c-env">Environment <span class="muted">(optional)</span></label>
+  <EnvPicker {api} {environments} bind:value={environment} id="c-env" onCreated={onEnvironmentCreated} />
 
   <label for="c-kind">Type</label>
   <select id="c-kind" bind:value={kind}>

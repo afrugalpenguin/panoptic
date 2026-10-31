@@ -52,8 +52,9 @@
   }
 
   const optionId = (i: number) => `${uid}-opt-${i}`;
-  const placePath = (p: { envId: string; hostName: string; label: string }) =>
-    [index.envs.find((e) => e.id === p.envId)?.name ?? p.envId, p.hostName, p.label].join(" / ");
+  /** Environment (when the connection is in one), connection and object. Places come from seek() already live. */
+  const placePath = (p: { envId?: string; hostName: string; label: string }) =>
+    [index.envs.find((e) => e.id === p.envId)?.name, p.hostName, p.label].filter(Boolean).join(" / ");
 
   function onkeydown(e: KeyboardEvent) {
     const r = seekKey(e, rows, active, query);
@@ -113,7 +114,7 @@
               <span class="main">{row.env.name}</span>
             {:else if row.kind === "host"}
               <span class="main mono">{row.host.name}</span>
-              <span class="sub">{row.env.name}</span>
+              {#if row.env}<span class="sub">{row.env.name}</span>{/if}
             {:else}
               <span class="main mono">{row.place.label}</span>
               <span class="sub mono">{row.place.hostName}</span>

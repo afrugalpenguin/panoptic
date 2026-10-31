@@ -62,12 +62,16 @@ public sealed record ConnectionConfig(
 
 public sealed record EnvironmentConfig(string Id, string Name, string Color, bool ReadOnly, List<ConnectionConfig> Connections);
 
-public sealed record AppConfig(List<EnvironmentConfig> Environments)
+/// <param name="Connections">Connections in no environment. Null in stores written before they existed.</param>
+public sealed record AppConfig(List<EnvironmentConfig> Environments, List<ConnectionConfig>? Connections = null)
 {
+    public List<ConnectionConfig> Connections { get; init; } = Connections ?? [];
+
     public static AppConfig Empty => new([]);
 }
 
-public sealed record SaveConnectionParams(string EnvironmentId, ConnectionConfig Connection, string? Secret);
+/// <param name="EnvironmentId">Null: the connection is in no environment.</param>
+public sealed record SaveConnectionParams(string? EnvironmentId, ConnectionConfig Connection, string? Secret);
 public sealed record TestConnectionParams(ConnectionConfig Connection, string? Secret);
 public sealed record IdParams(string Id);
 public sealed record TreeChildrenParams(string NodeId);
@@ -94,8 +98,13 @@ public sealed record NodeScopeParams(string NodeId);
 public sealed record NodeInvokeParams(string NodeId, string ActionId);
 /// <param name="Text">What the action produced, which the UI copies. Null: nothing to copy.</param>
 public sealed record NodeInvokeResult(string? Text);
-/// <summary>What a node id resolves to for running a query: its environment, connection and the database or container under it.</summary>
-public sealed record QueryTarget(EnvironmentConfig Environment, ConnectionConfig Connection, string? Database, string? Container);
+/// <summary>What a node id resolves to for running a query: its environment (null for a connection in none),
+/// connection and the database or container under it.</summary>
+public sealed record QueryTarget(EnvironmentConfig? Environment, ConnectionConfig Connection, string? Database, string? Container)
+{
+    /// <summary>Read-only is an environment's setting: a connection in no environment is never read-only.</summary>
+    public bool ReadOnly => Environment?.ReadOnly == true;
+}
 
 /// <summary>One server error in a failed query, sent with its query.message so the UI can place it in the editor.</summary>
 /// <param name="Number">The server's error number (208 invalid object name, 207 invalid column name, ...). 0 for a server

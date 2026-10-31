@@ -50,6 +50,8 @@ export interface EnvironmentConfig {
 
 export interface AppConfig {
   environments: EnvironmentConfig[];
+  /** Connections in no environment. */
+  connections: ConnectionConfig[];
 }
 
 /** Mirrors ExplorerSettings in the sidecar's Model.cs (docs/explorer-ux.md, "Settings"). */
@@ -120,8 +122,8 @@ export function createApi(rpc: RpcClient) {
     saveSettings: (settings: AppSettings) => rpc.request<AppSettings>("settings.save", settings),
     saveEnvironment: (env: EnvironmentConfig) => rpc.request<AppConfig>("config.saveEnvironment", env),
     deleteEnvironment: (id: string) => rpc.request<AppConfig>("config.deleteEnvironment", { id }),
-    /** secret: undefined keeps the stored one, "" clears it. */
-    saveConnection: (environmentId: string, connection: ConnectionConfig, secret?: string) =>
+    /** environmentId: null puts it in no environment; another one moves it. secret: undefined keeps the stored one, "" clears it. */
+    saveConnection: (environmentId: string | null, connection: ConnectionConfig, secret?: string) =>
       rpc.request<AppConfig>("config.saveConnection", { environmentId, connection, secret: secret ?? null }),
     deleteConnection: (id: string) => rpc.request<AppConfig>("config.deleteConnection", { id }),
     testConnection: (connection: ConnectionConfig, secret?: string, signal?: AbortSignal) =>

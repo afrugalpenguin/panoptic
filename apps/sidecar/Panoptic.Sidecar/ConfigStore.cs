@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace Panoptic.Sidecar;
 
 /// <summary>
-/// Environments, connections and their secrets, persisted as one DPAPI-encrypted file (current
+/// Environments, connections (in an environment or in none) and their secrets, persisted as one DPAPI-encrypted file (current
 /// user scope). Secrets never leave the sidecar: <see cref="Config"/> carries none.
 /// </summary>
 public sealed class ConfigStore
@@ -55,13 +55,16 @@ public sealed class ConfigStore
         lock (_lock) Commit(_file with { Settings = settings });
     }
 
-    public (EnvironmentConfig Environment, ConnectionConfig Connection)? FindConnection(string connectionId)
+    /// <summary>A connection and its environment, which is null for a connection in no environment.</summary>
+    public (EnvironmentConfig? Environment, ConnectionConfig Connection)? FindConnection(string connectionId)
     {
         lock (_lock)
         {
             foreach (var env in _file.Config.Environments)
                 foreach (var conn in env.Connections)
                     if (conn.Id == connectionId) return (env, conn);
+            foreach (var conn in _file.Config.Connections)
+                if (conn.Id == connectionId) return (null, conn);
             return null;
         }
     }
@@ -85,7 +88,7 @@ public sealed class ConfigStore
             var i = envs.FindIndex(e => e.Id == environment.Id);
             if (i >= 0) envs[i] = environment with { Connections = envs[i].Connections };
             else envs.Add(environment with { Connections = [] });
-            Commit(_file with { Config = new AppConfig(envs) });
+            Commit(_file with { Config = _file.Config with { Environments = envs } });
         }
     }
 
@@ -97,25 +100,31 @@ public sealed class ConfigStore
             if (env is null) return;
             var secrets = new Dictionary<string, string>(_file.Secrets);
             foreach (var c in env.Connections) secrets.Remove(c.Id);
-            Commit(_file with { Config = new AppConfig(_file.Config.Environments.Where(e => e.Id != environmentId).ToList()), Secrets = secrets });
+            Commit(_file with { Config = _file.Config with { Environments = _file.Config.Environments.Where(e => e.Id != environmentId).ToList() }, Secrets = secrets });
         }
     }
 
-    /// <summary>Adds or replaces a connection. A null secret keeps the stored one; empty clears it.</summary>
-    public void SaveConnection(string environmentId, ConnectionConfig connection, string? secret)
+    /// <summary>
+    /// Adds or replaces a connection, in an environment or (null) in none. Saving it somewhere else moves it. A null
+    /// secret keeps the stored one; empty clears it.
+    /// </summary>
+    public void SaveConnection(string? environmentId, ConnectionConfig connection, string? secret)
     {
         lock (_lock)
         {
             var envs = _file.Config.Environments.ToList();
-            var envIndex = envs.FindIndex(e => e.Id == environmentId);
-            if (envIndex < 0) throw new RpcException(RpcException.InvalidParams, $"Unknown environment: {environmentId}");
+            var envIndex = environmentId is null ? -1 : envs.FindIndex(e => e.Id == environmentId);
+            if (environmentId is not null && envIndex < 0) throw new RpcException(RpcException.InvalidParams, $"Unknown environment: {environmentId}");
 
-            // Edit in place within the same environment; otherwise remove it elsewhere and append here.
-            var position = envs[envIndex].Connections.FindIndex(c => c.Id == connection.Id);
+            // Edit in place within the same list; otherwise remove it elsewhere and append here.
+            var target = envIndex >= 0 ? envs[envIndex].Connections : _file.Config.Connections;
+            var position = target.FindIndex(c => c.Id == connection.Id);
             for (var i = 0; i < envs.Count; i++)
                 envs[i] = envs[i] with { Connections = envs[i].Connections.Where(c => c.Id != connection.Id).ToList() };
-            if (position >= 0) envs[envIndex].Connections.Insert(position, connection);
-            else envs[envIndex].Connections.Add(connection);
+            var loose = _file.Config.Connections.Where(c => c.Id != connection.Id).ToList();
+            var list = envIndex >= 0 ? envs[envIndex].Connections : loose;
+            if (position >= 0) list.Insert(position, connection);
+            else list.Add(connection);
 
             var secrets = new Dictionary<string, string>(_file.Secrets);
             if (secret is not null)
@@ -123,7 +132,7 @@ public sealed class ConfigStore
                 if (secret.Length == 0) secrets.Remove(connection.Id);
                 else secrets[connection.Id] = secret;
             }
-            Commit(_file with { Config = new AppConfig(envs), Secrets = secrets });
+            Commit(_file with { Config = new AppConfig(envs, loose), Secrets = secrets });
         }
     }
 
@@ -134,9 +143,10 @@ public sealed class ConfigStore
             var envs = _file.Config.Environments
                 .Select(e => e with { Connections = e.Connections.Where(c => c.Id != connectionId).ToList() })
                 .ToList();
+            var loose = _file.Config.Connections.Where(c => c.Id != connectionId).ToList();
             var secrets = new Dictionary<string, string>(_file.Secrets);
             secrets.Remove(connectionId);
-            Commit(_file with { Config = new AppConfig(envs), Secrets = secrets });
+            Commit(_file with { Config = new AppConfig(envs, loose), Secrets = secrets });
         }
     }
 

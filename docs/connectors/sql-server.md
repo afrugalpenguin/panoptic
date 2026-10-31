@@ -50,7 +50,8 @@ Server
     Synonyms              type SN, with the base object (not shown for Synapse)
 ```
 
-Node ids are opaque paths such as `env:<id>/conn:<id>/db:Orders/f:tables/o:sales%1FOrder`; the
+Node ids are opaque paths such as `conn:<id>/db:Orders/f:tables/o:sales%1FOrder` (no environment
+segment, so moving a connection keeps its ids); the
 schema and object name are joined with the unit-separator character so that names containing dots
 or slashes round-trip safely. Only the sidecar parses them.
 

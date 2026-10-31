@@ -22,7 +22,8 @@ scope; SSMS stays the tool for those.
 
 - **Explorer.** One tree with every environment, and SQL Server, Azure SQL, Synapse, Cosmos DB and
   PostgreSQL connections side by side. Filter by engine, expand or collapse every environment at
-  once, and reorder environments from their right-click menu.
+  once, and reorder environments from their right-click menu. Environments are optional: drag a
+  connection onto one to group it, or leave it ungrouped.
 - **Start page.** Seek finds environments, connections and recent objects from one box (Ctrl+P),
   and Reopen last session picks up where you left off.
 - **Query editor.** T-SQL, Cosmos SQL and PostgreSQL, with results streamed into a grid, several

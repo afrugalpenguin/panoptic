@@ -3,8 +3,8 @@ using Panoptic.Sidecar.Backends;
 namespace Panoptic.Sidecar;
 
 /// <summary>
-/// Serves the node contract: environments and connections from the store, everything below a
-/// connection from that connection's backend.
+/// Serves the node contract: environments and connections (in an environment or in none) from the store, everything
+/// below a connection from that connection's backend.
 /// </summary>
 public sealed class TreeService(ConfigStore store, IReadOnlyDictionary<string, IBackend> backends)
 {
@@ -12,23 +12,22 @@ public sealed class TreeService(ConfigStore store, IReadOnlyDictionary<string, I
     {
         var path = NodePath.Parse(nodeId);
 
+        // Environments, then the connections in no environment.
         if (path.Count == 0)
-            return store.Config.Environments.Select(EnvironmentNode).ToArray();
+            return [.. store.Config.Environments.Select(EnvironmentNode), .. store.Config.Connections.Select(ConnectionNode)];
 
-        if (path[0].Type != "env") throw new RpcException(RpcException.InvalidParams, $"Unknown node: {nodeId}");
-        var env = store.FindEnvironment(path[0].Value) ?? throw new RpcException(RpcException.OperationFailed, "Environment no longer exists");
+        if (path[0].Type == "env")
+        {
+            if (path.Count != 1) throw new RpcException(RpcException.InvalidParams, $"Unknown node: {nodeId}");
+            var env = store.FindEnvironment(path[0].Value) ?? throw new RpcException(RpcException.OperationFailed, "Environment no longer exists");
+            return env.Connections.Select(ConnectionNode).ToArray();
+        }
 
-        if (path.Count == 1)
-            return env.Connections.Select(c => ConnectionNode(path, c, backends.GetValueOrDefault(c.Kind) is IQueryBackend)).ToArray();
-
-        if (path[1].Type != "conn") throw new RpcException(RpcException.InvalidParams, $"Unknown node: {nodeId}");
-        var connection = env.Connections.FirstOrDefault(c => c.Id == path[1].Value)
-            ?? throw new RpcException(RpcException.OperationFailed, "Connection no longer exists");
-
+        var connection = ConnectionAt(path, nodeId);
         var backend = BackendFor(connection);
         try
         {
-            var nodes = await backend.ChildrenAsync(connection, store.GetSecret(connection.Id), path, 2, cancellationToken);
+            var nodes = await backend.ChildrenAsync(connection, store.GetSecret(connection.Id), path, 1, cancellationToken);
             // Checked here, not left to each backend: only a query backend's nodes may offer query tabs.
             return backend is IQueryBackend ? nodes : nodes.Select(WithoutQueryActions).ToArray();
         }
@@ -41,7 +40,17 @@ public sealed class TreeService(ConfigStore store, IReadOnlyDictionary<string, I
         }
     }
 
-    /// <summary>The environment, connection and database (and Cosmos container) a node belongs to.</summary>
+    /// <summary>
+    /// The connection a node id starts with. Connection ids carry no environment (<c>conn:id/...</c>), so moving a
+    /// connection between environments, or out of one, never changes the ids of its nodes.
+    /// </summary>
+    private ConnectionConfig ConnectionAt(NodePath path, string nodeId)
+    {
+        if (path.Count == 0 || path[0].Type != "conn") throw new RpcException(RpcException.InvalidParams, $"Unknown node: {nodeId}");
+        return store.FindConnection(path[0].Value)?.Connection ?? throw new RpcException(RpcException.OperationFailed, "Connection no longer exists");
+    }
+
+    /// <summary>The environment (null for a connection in none), connection and database (and Cosmos container) a node belongs to.</summary>
     /// <param name="database">Overrides the node's database (a query tab's database picker). It only ever reaches
     /// SqlConnectionStringBuilder.InitialCatalog or the Cosmos SDK, never SQL text, but is still bounded here.</param>
     public QueryTarget ResolveTarget(string nodeId, string? database = null)
@@ -49,12 +58,10 @@ public sealed class TreeService(ConfigStore store, IReadOnlyDictionary<string, I
         if (database is not null && (database.Length is 0 or > 128 || database.Any(char.IsControl)))
             throw new RpcException(RpcException.InvalidParams, "Invalid database name");
         var path = NodePath.Parse(nodeId);
-        if (path.Count < 2 || path[0].Type != "env" || path[1].Type != "conn")
+        if (path.Count == 0 || path[0].Type != "conn")
             throw new RpcException(RpcException.InvalidParams, "Select a connection, database or object to query.");
-        var env = store.FindEnvironment(path[0].Value) ?? throw new RpcException(RpcException.OperationFailed, "Environment no longer exists");
-        var connection = env.Connections.FirstOrDefault(c => c.Id == path[1].Value)
-            ?? throw new RpcException(RpcException.OperationFailed, "Connection no longer exists");
-        var segment = (string type) => path.Segments.Skip(2).FirstOrDefault(s => s.Type == type).Value;
+        var (env, connection) = store.FindConnection(path[0].Value) ?? throw new RpcException(RpcException.OperationFailed, "Connection no longer exists");
+        var segment = (string type) => path.Segments.Skip(1).FirstOrDefault(s => s.Type == type).Value;
         var nodeDatabase = segment("db") ?? connection.Database;
         // A container belongs to the node's database; switching database leaves none selected.
         var container = database is null || database == nodeDatabase ? segment("c") : null;
@@ -69,9 +76,9 @@ public sealed class TreeService(ConfigStore store, IReadOnlyDictionary<string, I
     {
         var target = ResolveTarget(nodeId);
         var path = NodePath.Parse(nodeId);
-        var segment = (string type) => path.Segments.Skip(2).FirstOrDefault(s => s.Type == type).Value;
+        var segment = (string type) => path.Segments.Skip(1).FirstOrDefault(s => s.Type == type).Value;
         var (database, container) = (segment("db"), segment("c"));
-        return new QueryScope(NodePath.Root.Child("env", target.Environment.Id).Child("conn", target.Connection.Id).Id,
+        return new QueryScope(NodePath.Root.Child("conn", target.Connection.Id).Id,
             database, container, container ?? database ?? target.Connection.Name, target.Connection.Name);
     }
 
@@ -84,8 +91,8 @@ public sealed class TreeService(ConfigStore store, IReadOnlyDictionary<string, I
         var path = NodePath.Parse(nodeId);
         if (path.Count == 1 && path[0].Type == "env") return Nodes.InvokeDefault(actionId);
         var target = ResolveTarget(nodeId);
-        if (path.Count == 2) return Nodes.InvokeDefault(actionId);
-        return await BackendFor(target.Connection).InvokeAsync(target.Connection, store.GetSecret(target.Connection.Id), path, 2, actionId, cancellationToken);
+        if (path.Count == 1) return Nodes.InvokeDefault(actionId);
+        return await BackendFor(target.Connection).InvokeAsync(target.Connection, store.GetSecret(target.Connection.Id), path, 1, actionId, cancellationToken);
     }
 
     /// <summary>Menu labels for every action id a node can carry: the shared ones, then any a backend adds.</summary>
@@ -139,12 +146,12 @@ public sealed class TreeService(ConfigStore store, IReadOnlyDictionary<string, I
     private static TreeNode WithoutQueryActions(TreeNode node) =>
         node.Actions.Any(Nodes.QueryActions.Contains) ? node with { Actions = node.Actions.Except(Nodes.QueryActions).ToArray() } : node;
 
-    private static TreeNode ConnectionNode(NodePath envPath, ConnectionConfig c, bool queryable) => new(
-        envPath.Child("conn", c.Id).Id,
+    private TreeNode ConnectionNode(ConnectionConfig c) => new(
+        NodePath.Root.Child("conn", c.Id).Id,
         "connection",
         c.Name,
         c.Kind,
         true,
-        queryable ? Nodes.Queryable : Nodes.Browse,
+        backends.GetValueOrDefault(c.Kind) is IQueryBackend ? Nodes.Queryable : Nodes.Browse,
         new() { ["connectionKind"] = c.Kind, ["endpoint"] = c.Endpoint, ["connectionId"] = c.Id, ["copyText"] = c.Name });
 }
