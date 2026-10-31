@@ -180,6 +180,13 @@ export class TreeModel {
     this.onChange();
   }
 
+  /** Seek's Enter: only this environment open, and the connection in it when given (docs/landing.md). */
+  async focus(envId: string, id?: string): Promise<void> {
+    for (const other of this.childIds("")) if (other !== envId && this.expanded.has(other)) this.collapse(other);
+    await this.expand(envId);
+    if (id && id !== envId) await this.expand(id);
+  }
+
   /** The status bar's cancel: stops a node's load and collapses it, as if it had never been expanded. */
   cancel(id: string): void {
     if (this.expanded.has(id)) this.collapse(id);
