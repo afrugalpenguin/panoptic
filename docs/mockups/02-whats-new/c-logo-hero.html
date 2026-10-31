@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1100">
+<title>C. Logo-colour hero</title>
+<style>
+body{margin:0}
+a{color:#4c8dff}a:hover{color:#7aa9ff}
+</style>
+</head>
+<body>
+<div style="width: 1100px; height: 640px; box-sizing: border-box; display: flex; background: #17181b; color: #e6e7ea; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; font-size: 13px; overflow: hidden;">
+  <div style="width: 220px; flex-shrink: 0; box-sizing: border-box; border-right: 1px solid #2f333a; background: #1d1f23; display: flex; flex-direction: column;">
+    <div style="height: 40px; box-sizing: border-box; padding: 0 12px; display: flex; align-items: center; border-bottom: 1px solid #2f333a; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #9198a1;">Explorer</div>
+    <div style="padding: 8px 10px; display: flex; gap: 6px;">
+      <span style="padding: 2px 8px; border: 1px solid #2f333a; border-radius: 10px; font-size: 11px; color: #9198a1;">Cosmos 4</span>
+      <span style="padding: 2px 8px; border: 1px solid #2f333a; border-radius: 10px; font-size: 11px; color: #9198a1;">Synapse 1</span>
+    </div>
+    <div style="display: flex; flex-direction: column;">
+      <div style="height: 28px; background: #1f2a1f; border-left: 3px solid #3fb950;"></div>
+      <div style="height: 28px; background: #2a2416; border-left: 3px solid #d29922;"></div>
+      <div style="height: 28px; background: #2a1c1c; border-left: 3px solid #f85149;"></div>
+      <div style="height: 28px; background: #1f2a1f; border-left: 3px solid #3fb950;"></div>
+      <div style="height: 28px; background: #26292e; border-left: 3px solid #9198a1;"></div>
+    </div>
+  </div>
+  <div style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
+    <div style="height: 36px; box-sizing: border-box; display: flex; align-items: stretch; border-bottom: 1px solid #2f333a; background: #17181b;">
+      <div style="padding: 0 14px; display: flex; align-items: center; gap: 10px; background: #1d1f23; border-right: 1px solid #2f333a; font-size: 12px;">
+        <span>What's new in v0.2.44</span><span style="color: #9198a1;">x</span>
+      </div>
+    </div>
+    <div style="flex: 1; overflow: hidden; display: flex; flex-direction: column;">
+      <div style="position: relative; box-sizing: border-box; padding: 34px 40px 30px; display: flex; align-items: center; gap: 24px; background: #1d1f23; border-bottom: 1px solid #2f333a; overflow: hidden;">
+        <div style="position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: #26c6da;"></div>
+        <div style="position: absolute; left: 4px; top: 0; bottom: 0; width: 4px; background: #ffc107;"></div>
+        <img src="../assets/logo-rings.png" alt="" style="width: 72px; height: 72px;">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <div style="font-size: 28px; font-weight: 600; line-height: 1.15;">Panoptic <span style="color: #ffc107;">0.2.44</span></div>
+          <div style="font-size: 13px; color: #9198a1;">Installed today. Here is what changed since v0.2.41.</div>
+        </div>
+        <div style="flex: 1;"></div>
+        <div style="display: flex; gap: 8px;">
+          <a href="https://github.com/afrugalpenguin/panoptic/releases" style="padding: 7px 14px; border: 1px solid #2f333a; border-radius: 6px; background: #17181b; color: #e6e7ea; font-size: 12px; text-decoration: none;">Releases on GitHub</a>
+          <button style="padding: 7px 14px; border: 1px solid #26c6da; border-radius: 6px; background: #26c6da; color: #0d2a2e; font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer;">Got it</button>
+        </div>
+      </div>
+      <div style="box-sizing: border-box; padding: 24px 40px; display: flex; gap: 28px;">
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 8px;">
+          <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #3fb950;">Added</div>
+          <div style="line-height: 1.6; color: #9198a1;">Nothing new in these releases.</div>
+        </div>
+        <div style="flex: 1.6; display: flex; flex-direction: column; gap: 8px;">
+          <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #ffc107;">Changed</div>
+          <div style="line-height: 1.6;">The What's new tab now uses the full width of the workspace, opens with the Panoptic logo and the current version, and spaces out the list of changes so it is easier to read. <span style="color: #6a6a6a; font-size: 11px;">0.2.44</span></div>
+          <div style="line-height: 1.6;"><strong>Copy name</strong> no longer appears on folders, view and procedure <strong>Definition</strong> entries, or Cosmos throughput and indexing policy. <span style="color: #6a6a6a; font-size: 11px;">0.2.43</span></div>
+        </div>
+        <div style="flex: 1.6; display: flex; flex-direction: column; gap: 8px;">
+          <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #26c6da;">Fixed</div>
+          <div style="line-height: 1.6;"><strong>Copy name</strong> on Cosmos nodes copies the name (a container id, <code style="padding: 0 4px; border-radius: 3px; background: #26292e; font-family: 'Cascadia Mono', Consolas, monospace; font-size: 12px;">udf.name</code> for a UDF, the partition key path) instead of the tree label. SQL names copy bracketed like table names. <span style="color: #6a6a6a; font-size: 11px;">0.2.43</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

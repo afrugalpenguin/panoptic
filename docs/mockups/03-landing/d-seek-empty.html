@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>Panoptic landing - Seek first, nothing typed</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+body{margin:0;background:#191a1d;font-family:'Instrument Sans',system-ui,sans-serif;color:#d4d7dc}
+a{color:#9ec1ff}a:hover{color:#c7dbff}
+.row{display:flex;align-items:center;gap:8px;height:30px;padding:0 10px 0 18px;font-family:'JetBrains Mono',monospace;font-size:12px;color:#8b9099;white-space:nowrap;overflow:hidden}
+.row b{color:#e3e6ea;font-weight:600}
+.env{display:flex;align-items:center;gap:8px;height:28px;padding:0 10px;font-size:12.5px;font-weight:700;color:#e3e6ea}
+.env span.n{margin-left:auto;font-size:11px;font-weight:500;color:#8b9099}
+.chip{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px 0 5px;border-radius:11px;border:1px solid #2d3037;font-size:11.5px;color:#aeb3bb;background:#1f2126}
+.k{display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:5px;border:1px solid #363941;border-bottom-width:2px;background:#22242a;font-family:'JetBrains Mono',monospace;font-size:11px;color:#c9ccd1}
+.g{display:flex;align-items:center;gap:8px;padding:12px 16px 6px;font-size:10.5px;letter-spacing:1.2px;font-weight:600;color:#6f747d}
+.g span{margin-left:auto;font-weight:500;letter-spacing:0;color:#50545c}
+.hit{display:flex;align-items:center;gap:12px;height:42px;padding:0 16px;border:0;background:none;width:100%;box-sizing:border-box;font:inherit;font-size:13.5px;color:#d4d7dc;cursor:pointer;text-align:left}
+.hit:hover{background:#22242b}
+.hit.on{background:#1d2a44}
+.hit .host{font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#9aa0a8}
+.hit .host b{color:#f2f3f5;font-weight:600}
+.hit .tag{font-size:10.5px;letter-spacing:.8px;font-weight:600;padding:2px 6px;border-radius:4px}
+.hit .r{margin-left:auto;font-size:11.5px;color:#6f747d;display:flex;align-items:center;gap:10px}
+.sw{width:10px;height:10px;border-radius:5px;flex:none}
+.ki{width:14px;height:14px;border-radius:3px;font-size:9px;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;flex:none}
+</style>
+</head>
+<body>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; display: flex; background: #191a1d; overflow: hidden">
+
+  <aside style="width: 300px; flex: none; background: #1c1d22; border-right: 1px solid #26282e; display: flex; flex-direction: column">
+    <div style="display: flex; align-items: center; height: 36px; padding: 0 10px; font-size: 10.5px; letter-spacing: 1.2px; color: #8b9099; font-weight: 600">EXPLORER</div>
+    <div style="display: flex; gap: 6px; padding: 2px 10px 8px">
+      <span class="chip" style="padding-left: 9px; border-color: #3b82f6; color: #e3e6ea">All</span>
+      <span class="chip"><i style="width: 13px; height: 13px; border-radius: 3px; background: #2f6fed; color: #fff; font-style: normal; font-size: 9px; display: flex; align-items: center; justify-content: center; font-weight: 700">S</i>SQL <em style="font-style: normal; color: #6f747d">14</em></span>
+      <span class="chip"><i style="width: 13px; height: 13px; border-radius: 7px; background: #1aa3a3; color: #fff; font-style: normal; font-size: 9px; display: flex; align-items: center; justify-content: center; font-weight: 700">C</i>Cosmos <em style="font-style: normal; color: #6f747d">4</em></span>
+      <span class="chip"><i style="width: 13px; height: 13px; border-radius: 3px; background: #7c5cff; color: #fff; font-style: normal; font-size: 8px; display: flex; align-items: center; justify-content: center; font-weight: 700">Sy</i>Synapse <em style="font-style: normal; color: #6f747d">1</em></span>
+    </div>
+    <div class="env" style="background: rgba(190,150,60,.16)">UAT<span class="n">6</span></div>
+    <div class="row">▸ <i style="width: 12px; height: 12px; border-radius: 6px; background: #1aa3a3; font-style: normal; flex: none"></i>https://fabrikam-db-<b>uat-uk</b>.document…</div>
+    <div class="env" style="background: rgba(200,70,70,.16)">Prod <span style="font-size: 9px; letter-spacing: .8px; color: #ff6b6b; border: 1px solid #ff6b6b; border-radius: 3px; padding: 1px 5px; margin-left: 2px">READ ONLY</span><span class="n">6</span></div>
+    <div class="row">▸ <i style="width: 12px; height: 12px; border-radius: 6px; background: #1aa3a3; font-style: normal; flex: none"></i>https://fabrikam-db-<b>uk</b>.documents.az…</div>
+    <div class="env" style="background: rgba(190,110,70,.16)">Stage<span class="n">4</span></div>
+    <div class="row">▸ <i style="width: 12px; height: 12px; border-radius: 6px; background: #1aa3a3; font-style: normal; flex: none"></i>https://fabrikam-db-<b>stage-uk</b>.docume…</div>
+    <div class="env" style="background: rgba(90,170,90,.16)">Support<span class="n">3</span></div>
+    <div class="row">▸ <i style="width: 12px; height: 12px; border-radius: 6px; background: #1aa3a3; font-style: normal; flex: none"></i>https://fabrikam-db-<b>support</b>.documen…</div>
+  </aside>
+
+  <main style="flex: 1; position: relative; display: flex; flex-direction: column; align-items: center; padding-top: 150px; box-sizing: border-box; overflow: hidden">
+
+    <div aria-hidden="true" style="position: absolute; right: -24px; bottom: -62px; font-size: 300px; font-weight: 700; letter-spacing: -14px; line-height: 1; color: #1e2024; user-select: none; white-space: nowrap">Panoptic</div>
+
+    <div style="position: relative; width: 640px; display: flex; flex-direction: column">
+      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 22px">
+        <svg width="26" height="26" viewBox="0 0 40 40" fill="none" role="img" aria-label="Panoptic mark">
+          <circle cx="20" cy="20" r="18" stroke="#3b82f6" stroke-width="2"/>
+          <path d="M20 6a14 14 0 0 1 12.1 7" stroke="#e3e6ea" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M33.3 24.7A14 14 0 0 1 12 32.6" stroke="#e3e6ea" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M7.9 29.3A14 14 0 0 1 8.6 13" stroke="#e3e6ea" stroke-width="2.5" stroke-linecap="round"/>
+          <circle cx="20" cy="20" r="5" fill="#3b82f6"/>
+        </svg>
+        <span style="font-size: 15px; font-weight: 600; letter-spacing: 2.4px; color: #9aa0a8">PANOPTIC</span>
+        <span style="margin-left: auto; font-size: 12.5px; color: #6f747d">Where to?</span>
+      </div>
+
+      <div style="border-radius: 14px; border: 1px solid #3b82f6; background: #1d1f24; box-shadow: 0 0 0 4px rgba(59,130,246,.12), 0 24px 60px rgba(0,0,0,.45); overflow: hidden">
+        <label for="seek4" style="display: flex; align-items: center; gap: 14px; height: 60px; padding: 0 20px; border-bottom: 1px solid #26282e; cursor: text">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+          <input id="seek4" type="text" placeholder="Environment, host or object" style="flex: 1; background: none; border: 0; outline: 0; color: #f2f3f5; font: inherit; font-size: 18px; font-family: 'JetBrains Mono', monospace">
+          <span class="k">Ctrl P</span>
+        </label>
+
+        <div class="g">PICK UP WHERE YOU LEFT OFF</div>
+        <button class="hit on">
+          <span class="sw" style="background: #c0a040"></span>
+          <span style="font-weight: 600; color: #f2f3f5">UAT</span>
+          <span class="host" style="color: #6f747d">fabrikam-db-uat-uk · <b style="color: #9aa0a8; font-weight: 500">accounts</b></span>
+          <span class="r">2 min ago ↵</span>
+        </button>
+
+        <div class="g">ENVIRONMENTS <span>type to narrow</span></div>
+        <button class="hit"><span class="sw" style="background: #c0a040"></span><span style="font-weight: 600; color: #f2f3f5; width: 72px">UAT</span><span class="host" style="color: #6f747d">6 connections</span><span class="r">uat-uk</span></button>
+        <button class="hit"><span class="sw" style="background: #d95c5c"></span><span style="font-weight: 600; color: #f2f3f5; width: 72px">Prod</span><span class="tag" style="color: #ff6b6b; border: 1px solid #ff6b6b">READ ONLY</span><span class="host" style="color: #6f747d">6 connections</span><span class="r">uk</span></button>
+        <button class="hit"><span class="sw" style="background: #c57a4a"></span><span style="font-weight: 600; color: #f2f3f5; width: 72px">Stage</span><span class="host" style="color: #6f747d">4 connections</span><span class="r">stage-uk</span></button>
+        <button class="hit"><span class="sw" style="background: #5aaa5a"></span><span style="font-weight: 600; color: #f2f3f5; width: 72px">Support</span><span class="host" style="color: #6f747d">3 connections</span><span class="r">support</span></button>
+
+        <div class="g">RECENT</div>
+        <button class="hit"><span class="sw" style="background: #d95c5c"></span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9aa0a8" stroke-width="2" aria-hidden="true"><path d="M3 5h18M3 12h18M3 19h18"/></svg><span class="host"><b>dbo.Customer</b></span><span class="host" style="font-size: 11.5px">prod · sql-fabrikam-uk</span><span class="r">Yesterday</span></button>
+        <button class="hit"><span class="sw" style="background: #5aaa5a"></span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9aa0a8" stroke-width="2" aria-hidden="true"><path d="M4 7a8 3 0 0 1 16 0v10a8 3 0 0 1-16 0zM4 7a8 3 0 0 0 16 0"/></svg><span class="host"><b>ledger</b></span><span class="host" style="font-size: 11.5px">support · fabrikam-db-support</span><span class="r">Tue</span></button>
+        <button class="hit" style="padding-bottom: 2px"><span class="sw" style="background: #c57a4a"></span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9aa0a8" stroke-width="2" aria-hidden="true"><path d="M3 5h18M3 12h18M3 19h18"/></svg><span class="host"><b>dbo.Shipment</b></span><span class="host" style="font-size: 11.5px">stage · sql-fabrikam-stage-uk</span><span class="r">Mon</span></button>
+
+        <div style="display: flex; align-items: center; gap: 16px; padding: 10px 16px 12px; border-top: 1px solid #26282e; font-size: 11.5px; color: #6f747d; margin-top: 6px">
+          <span><span class="k">↑↓</span> move</span>
+          <span><span class="k">↵</span> open</span>
+          <span><span class="k">Ctrl ↵</span> new query there</span>
+          <span><span class="k">Esc</span> just show the tree</span>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 22px; margin-top: 26px; padding: 0 4px; font-size: 13px; color: #6f747d">
+        <a href="#import" style="color: #9aa0a8; text-decoration: none; display: inline-flex; align-items: center; gap: 7px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 3v12m-5-5l5 5 5-5M4 21h16"/></svg>Import from SSMS</a>
+        <a href="#new" style="color: #9aa0a8; text-decoration: none; display: inline-flex; align-items: center; gap: 7px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>New environment</a>
+        <a href="#query" style="color: #9aa0a8; text-decoration: none; display: inline-flex; align-items: center; gap: 7px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h7"/></svg>New query</a>
+        <span style="margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 11px">opened in 212 ms</span>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

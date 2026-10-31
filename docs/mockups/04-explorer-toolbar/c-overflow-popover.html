@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=250">
+<title>Explorer C narrow, 15 engines collapsed</title>
+<style>
+body{margin:0;background:#1a1a1e;color:#e4e4ea;font-family:"Segoe UI",system-ui,sans-serif;font-size:12px}
+a{color:#9db4ff}a:hover{color:#c6d4ff}
+.fbox{display:flex;align-items:center;gap:6px;height:36px;padding:0 8px;background:#232327;border-bottom:1px solid #2e2e34;position:relative}
+.inp{flex:1;display:flex;align-items:center;gap:6px;height:24px;padding:0 8px;border-radius:4px;border:1px solid #3a3a42;background:#1a1a1e;color:#8a8a96;font-size:11.5px;min-width:0}
+.inp input{border:0;background:transparent;color:#e4e4ea;font:inherit;flex:1;min-width:0;outline:0}
+.kb{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 6px 0 8px;border-radius:4px;border:1px solid #4c6ef5;background:#2a3356;color:#fff;font-size:11px;cursor:pointer;white-space:nowrap}
+.kb .n{color:#9db4ff;font-size:10px}
+.pop{position:absolute;top:34px;right:6px;width:214px;background:#26262c;border:1px solid #3e3e46;border-radius:6px;box-shadow:0 10px 28px rgba(0,0,0,.55);z-index:5;display:flex;flex-direction:column}
+.ps{display:flex;align-items:center;gap:6px;margin:6px;height:24px;padding:0 8px;border-radius:4px;border:1px solid #3a3a42;background:#1a1a1e;color:#8a8a96;font-size:11px}
+.ps input{border:0;background:transparent;color:#e4e4ea;font:inherit;flex:1;min-width:0;outline:0}
+.pa{display:flex;gap:10px;padding:0 10px 4px;font-size:10.5px}
+.pl{display:flex;flex-direction:column;padding:2px 4px 4px}
+.mi{display:flex;align-items:center;gap:7px;height:23px;padding:0 6px;border-radius:4px;font-size:11.5px;color:#d8d8e0}
+.mi.off{color:#7a7a86}
+.cb{width:12px;height:12px;border-radius:3px;border:1px solid #5a5a64;flex:none;display:inline-flex;align-items:center;justify-content:center}
+.cb.on{background:#4c6ef5;border-color:#4c6ef5}
+.k{width:14px;height:14px;border-radius:3px;font-size:8.5px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;color:#fff;flex:none;font-family:"Segoe UI",system-ui,sans-serif}
+.k.s{background:#2f6fd6}.k.az{background:#1f78c8}.k.sy{background:#7c4dbd}.k.fb{background:#3b8f7a}.k.c{background:#2a9d8f}.k.pg{background:#2f8f5f}.k.my{background:#c47a1f}.k.ma{background:#a0652a}.k.or{background:#b43a2e}.k.sf{background:#2d9bd3}.k.bq{background:#3f6fbf}.k.rs{background:#7b3fb0}.k.dd{background:#5a5a2e}.k.sl{background:#4c7a9c}.k.mg{background:#3f8f3a}
+.cnt{color:#8a8a96;font-size:10px;margin-left:auto}
+.ib{width:26px;height:26px;border:0;background:transparent;color:#b8b8c2;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;padding:0;cursor:pointer}
+.tree{flex:1;position:relative;overflow:hidden}
+.env{display:flex;align-items:center;height:26px;padding:0 10px 0 8px;font-weight:600;border-left:3px solid;gap:6px}
+.env.prod{border-color:#d9534f;background:#2a1d1d}
+.env.uat{border-color:#e0a030;background:#2a2518}
+.env.test{border-color:#1971c2;background:#1a2432}
+.env.dim{opacity:.35}
+.tri{color:#8a8a96;font-size:9px;width:8px}
+.ro{font-size:9px;font-weight:700;color:#e5484d;border:1px solid #5a2a2c;border-radius:3px;padding:1px 4px;letter-spacing:.05em}
+.row{display:flex;align-items:center;height:24px;padding-left:20px;gap:6px;font-family:"Cascadia Code",Consolas,monospace;font-size:11.5px;border-left:3px solid;white-space:nowrap;overflow:hidden}
+.row.prod{border-color:#d9534f}.row.uat{border-color:#e0a030}.row.test{border-color:#1971c2}
+.row.dim{opacity:.35}
+.row .d{color:#6a6a76}
+.foot{position:absolute;left:0;right:0;bottom:0;height:30px;display:flex;align-items:center;gap:1px;padding:0 4px;background:rgba(28,28,33,.9);border-top:1px solid #2e2e34;backdrop-filter:blur(4px)}
+.sep{width:1px;height:16px;background:#3a3a42;margin:0 4px}
+.sum{margin-left:auto;color:#8a8a96;font-size:10.5px;padding-right:4px}
+</style>
+</head>
+<body>
+<div style="width: 250px; height: 560px; box-sizing: border-box; display: flex; flex-direction: column; background: #1a1a1e">
+  <div class="fbox">
+    <label class="inp" for="f3">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
+      <input id="f3" placeholder="Filter">
+    </label>
+    <button class="kb" aria-label="Engine filter, 12 of 15 selected" aria-expanded="true">Engine <span class="n">12/15</span><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button>
+    <div class="pop" role="group" aria-label="Engines">
+      <label class="ps" for="f4"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg><input id="f4" placeholder="Find an engine"></label>
+      <div class="pa"><a href="#all">All</a><a href="#none">None</a><a href="#invert">Invert</a></div>
+      <div class="pl">
+        <div class="mi"><span class="cb on" aria-hidden="true"></span><span class="k s">S</span>SQL Server<span class="cnt">84</span></div>
+        <div class="mi"><span class="cb on" aria-hidden="true"></span><span class="k az">A</span>Azure SQL<span class="cnt">31</span></div>
+        <div class="mi"><span class="cb on" aria-hidden="true"></span><span class="k sy">Sy</span>Synapse<span class="cnt">12</span></div>
+        <div class="mi"><span class="cb on" aria-hidden="true"></span><span class="k fb">F</span>Fabric SQL<span class="cnt">6</span></div>
+        <div class="mi"><span class="cb on" aria-hidden="true"></span><span class="k c">C</span>Cosmos<span class="cnt">27</span></div>
+        <div class="mi"><span class="cb on" aria-hidden="true"></span><span class="k pg">PG</span>Postgres<span class="cnt">40</span></div>
+        <div class="mi"><span class="cb on" aria-hidden="true"></span><span class="k my">My</span>MySQL<span class="cnt">9</span></div>
+        <div class="mi off"><span class="cb" aria-hidden="true"></span><span class="k ma">Ma</span>MariaDB<span class="cnt">3</span></div>
+        <div class="mi"><span class="cb on" aria-hidden="true"></span><span class="k or">O</span>Oracle<span class="cnt">14</span></div>
+        <div class="mi"><span class="cb on" aria-hidden="true"></span><span class="k sf">Sf</span>Snowflake<span class="cnt">5</span></div>
+        <div class="mi"><span class="cb on" aria-hidden="true"></span><span class="k bq">BQ</span>BigQuery<span class="cnt">4</span></div>
+        <div class="mi off"><span class="cb" aria-hidden="true"></span><span class="k rs">RS</span>Redshift<span class="cnt">2</span></div>
+        <div class="mi"><span class="cb on" aria-hidden="true"></span><span class="k dd">D</span>DuckDB<span class="cnt">7</span></div>
+        <div class="mi off"><span class="cb" aria-hidden="true"></span><span class="k sl">SL</span>SQLite<span class="cnt">11</span></div>
+        <div class="mi"><span class="cb on" aria-hidden="true"></span><span class="k mg">M</span>MongoDB<span class="cnt">8</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="tree">
+    <div class="env prod dim"><span class="tri">&#9656;</span>Prod EU <span class="ro">READ ONLY</span><span class="cnt">41</span></div>
+    <div class="env prod dim"><span class="tri">&#9656;</span>Prod US <span class="ro">READ ONLY</span><span class="cnt">38</span></div>
+    <div class="env prod dim"><span class="tri">&#9656;</span>Prod APAC <span class="ro">READ ONLY</span><span class="cnt">22</span></div>
+    <div class="env uat dim"><span class="tri">&#9662;</span>UAT EU<span class="cnt">36</span></div>
+    <div class="row uat dim"><span class="tri">&#9656;</span><span class="k s">S</span><span class="d">eu-uat-</span>sql-01<span class="d">.example.test</span></div>
+    <div class="row uat dim"><span class="tri">&#9656;</span><span class="k az">A</span><span class="d">eu-uat-</span>azsql-01<span class="d">.example.t</span></div>
+    <div class="row uat dim"><span class="tri">&#9656;</span><span class="k pg">PG</span><span class="d">eu-uat-</span>pg-01<span class="d">.example.test</span></div>
+    <div class="row uat dim"><span class="tri">&#9656;</span><span class="k or">O</span><span class="d">eu-uat-</span>ora-01<span class="d">.example.test</span></div>
+    <div class="row uat dim"><span class="tri">&#9656;</span><span class="k sf">Sf</span><span class="d">eu-uat-</span>snow<span class="d">.example.test</span></div>
+    <div class="row uat dim"><span class="tri">&#9656;</span><span class="k mg">M</span><span class="d">eu-uat-</span>mongo-01<span class="d">.example.te</span></div>
+    <div class="env uat dim"><span class="tri">&#9656;</span>UAT US<span class="cnt">33</span></div>
+    <div class="env test dim"><span class="tri">&#9656;</span>Test<span class="cnt">19</span></div>
+    <div class="env test dim"><span class="tri">&#9656;</span>Sandbox - Acme<span class="cnt">12</span></div>
+    <div class="env test dim"><span class="tri">&#9656;</span>Sandbox - Globex<span class="cnt">9</span></div>
+    <div class="env test dim"><span class="tri">&#9656;</span>Sandbox - Initech<span class="cnt">14</span></div>
+    <div class="foot">
+      <button class="ib" aria-label="New connection"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg></button>
+      <button class="ib" aria-label="New environment"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M2 4.5h4l1.5 1.5H14v7H2z"/></svg></button>
+      <button class="ib" aria-label="Import"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v8M5 7l3 3 3-3M3 13h10"/></svg></button>
+      <span class="sep"></span>
+      <button class="ib" aria-label="Collapse all"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7l4-3 4 3M4 12l4-3 4 3"/></svg></button>
+      <button class="ib" aria-label="Expand all"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4l4 3 4-3M4 9l4 3 4-3"/></svg></button>
+      <span class="sum">247 / 263</span>
+    </div>
+  </div>
+</div>
+</body>
+</html>

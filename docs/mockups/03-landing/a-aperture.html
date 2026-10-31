@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>Panoptic landing - Aperture</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+body{margin:0;background:#191a1d;font-family:'Instrument Sans',system-ui,sans-serif;color:#d4d7dc}
+a{color:#9ec1ff}a:hover{color:#c7dbff}
+.row{display:flex;align-items:center;gap:8px;height:30px;padding:0 10px 0 18px;font-family:'JetBrains Mono',monospace;font-size:12px;color:#8b9099;white-space:nowrap;overflow:hidden}
+.row b{color:#e3e6ea;font-weight:600}
+.env{display:flex;align-items:center;gap:8px;height:28px;padding:0 10px;font-size:12.5px;font-weight:700;color:#e3e6ea}
+.env span.n{margin-left:auto;font-size:11px;font-weight:500;color:#8b9099}
+.chip{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px 0 5px;border-radius:11px;border:1px solid #2d3037;font-size:11.5px;color:#aeb3bb;background:#1f2126}
+.k{display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:5px;border:1px solid #363941;border-bottom-width:2px;background:#22242a;font-family:'JetBrains Mono',monospace;font-size:11px;color:#c9ccd1}
+.act{display:flex;align-items:center;gap:14px;height:52px;padding:0 16px;border-radius:10px;border:1px solid #2a2d34;background:#1e2026;color:#e3e6ea;font:inherit;font-size:14px;font-weight:600;cursor:pointer;text-align:left;width:100%;box-sizing:border-box}
+.act:hover{border-color:#3b4049;background:#23262d}
+.act small{display:block;margin-top:2px;font-size:12px;font-weight:400;color:#8b9099}
+.act .ic{width:34px;height:34px;border-radius:8px;background:#262932;display:flex;align-items:center;justify-content:center;flex:none}
+.rc{display:flex;align-items:center;gap:12px;height:40px;padding:0 10px;border-radius:8px;font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#aeb3bb}
+.rc:hover{background:#1f2126}
+.rc .dot{width:8px;height:8px;border-radius:4px;flex:none}
+.rc .t{color:#e3e6ea}
+.rc .m{margin-left:auto;font-size:11px;color:#6f747d;font-family:'Instrument Sans',sans-serif}
+</style>
+</head>
+<body>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; display: flex; background: #191a1d; overflow: hidden">
+
+  <!-- Explorer -->
+  <aside style="width: 300px; flex: none; background: #1c1d22; border-right: 1px solid #26282e; display: flex; flex-direction: column">
+    <div style="display: flex; align-items: center; height: 36px; padding: 0 10px; font-size: 10.5px; letter-spacing: 1.2px; color: #8b9099; font-weight: 600">EXPLORER
+      <span style="margin-left: auto; display: flex; gap: 12px; color: #6f747d">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M7 7l5 5 5-5M7 13l5 5 5-5"/></svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M7 17l5-5 5 5M7 11l5-5 5 5"/></svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12m-5-5l5 5 5-5M4 21h16"/></svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/></svg>
+      </span>
+    </div>
+    <div style="display: flex; gap: 6px; padding: 2px 10px 8px">
+      <span class="chip" style="padding-left: 9px">All</span>
+      <span class="chip"><i style="width: 13px; height: 13px; border-radius: 3px; background: #2f6fed; color: #fff; font-style: normal; font-size: 9px; display: flex; align-items: center; justify-content: center; font-weight: 700">S</i>SQL <em style="font-style: normal; color: #6f747d">14</em></span>
+      <span class="chip" style="border-color: #3b82f6; color: #e3e6ea"><i style="width: 13px; height: 13px; border-radius: 7px; background: #1aa3a3; color: #fff; font-style: normal; font-size: 9px; display: flex; align-items: center; justify-content: center; font-weight: 700">C</i>Cosmos <em style="font-style: normal; color: #6f747d">4</em></span>
+      <span class="chip"><i style="width: 13px; height: 13px; border-radius: 3px; background: #7c5cff; color: #fff; font-style: normal; font-size: 8px; display: flex; align-items: center; justify-content: center; font-weight: 700">Sy</i>Synapse <em style="font-style: normal; color: #6f747d">1</em></span>
+    </div>
+    <div class="env" style="background: rgba(190,150,60,.16)">UAT<span class="n">1</span></div>
+    <div class="row">▸ <i style="width: 12px; height: 12px; border-radius: 6px; background: #1aa3a3; font-style: normal; flex: none"></i>https://fabrikam-db-<b>uat-uk</b>.document…</div>
+    <div class="env" style="background: rgba(200,70,70,.16)">Prod <span style="font-size: 9px; letter-spacing: .8px; color: #ff6b6b; border: 1px solid #ff6b6b; border-radius: 3px; padding: 1px 5px; margin-left: 2px">READ ONLY</span><span class="n">1</span></div>
+    <div class="row">▸ <i style="width: 12px; height: 12px; border-radius: 6px; background: #1aa3a3; font-style: normal; flex: none"></i>https://fabrikam-db-<b>uk</b>.documents.az…</div>
+    <div class="env" style="background: rgba(190,110,70,.16)">Stage<span class="n">1</span></div>
+    <div class="row">▸ <i style="width: 12px; height: 12px; border-radius: 6px; background: #1aa3a3; font-style: normal; flex: none"></i>https://fabrikam-db-<b>stage-uk</b>.docume…</div>
+    <div class="env" style="background: rgba(90,170,90,.16)">Support<span class="n">1</span></div>
+    <div class="row">▸ <i style="width: 12px; height: 12px; border-radius: 6px; background: #1aa3a3; font-style: normal; flex: none"></i>https://fabrikam-db-<b>support</b>.documen…</div>
+  </aside>
+
+  <!-- Workspace -->
+  <main style="flex: 1; position: relative; display: flex; flex-direction: column; padding: 64px 80px; box-sizing: border-box; background-image: radial-gradient(rgba(255,255,255,.055) 1px, transparent 1px); background-size: 28px 28px; background-position: 14px 14px">
+
+    <div style="display: flex; align-items: center; gap: 14px">
+      <svg width="40" height="40" viewBox="0 0 40 40" fill="none" role="img" aria-label="Panoptic mark">
+        <circle cx="20" cy="20" r="18" stroke="#3b82f6" stroke-width="2"/>
+        <path d="M20 6a14 14 0 0 1 12.1 7" stroke="#e3e6ea" stroke-width="2.5" stroke-linecap="round"/>
+        <path d="M33.3 24.7A14 14 0 0 1 12 32.6" stroke="#e3e6ea" stroke-width="2.5" stroke-linecap="round"/>
+        <path d="M7.9 29.3A14 14 0 0 1 8.6 13" stroke="#e3e6ea" stroke-width="2.5" stroke-linecap="round"/>
+        <circle cx="20" cy="20" r="5" fill="#3b82f6"/>
+      </svg>
+      <span style="font-size: 22px; font-weight: 700; letter-spacing: -.3px; color: #f2f3f5">Panoptic</span>
+      <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #6f747d; margin-left: 4px">v0.2.25</span>
+    </div>
+
+    <div style="display: flex; gap: 72px; margin-top: 96px; flex: 1">
+      <div style="flex: 1; max-width: 560px; display: flex; flex-direction: column">
+        <h1 style="margin: 0; font-size: 54px; line-height: 1.02; font-weight: 700; letter-spacing: -1.6px; color: #f2f3f5">Every environment.<br>One tree.</h1>
+        <p style="margin: 22px 0 0; font-size: 16px; line-height: 1.55; color: #9aa0a8; max-width: 440px">SQL Server, Azure SQL, Synapse and Cosmos side by side, in the shape SSMS taught you, at the speed it never had.</p>
+
+        <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 40px; max-width: 420px">
+          <button class="act" style="border-color: #3b82f6; background: #1d2a44">
+            <span class="ic" style="background: #3b82f6; color: #fff"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 3v12m-5-5l5 5 5-5M4 21h16"/></svg></span>
+            <span>Import from SSMS<small>Registered servers and saved connections, read once</small></span>
+            <span class="k" style="margin-left: auto">Ctrl I</span>
+          </button>
+          <button class="act">
+            <span class="ic" style="color: #e3e6ea"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span>
+            <span>New environment<small>Group connections by UAT, Prod, Stage or anything you like</small></span>
+            <span class="k" style="margin-left: auto">Ctrl N</span>
+          </button>
+          <button class="act">
+            <span class="ic" style="color: #e3e6ea"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></span>
+            <span>Seek<small>Jump to any object in any environment</small></span>
+            <span class="k" style="margin-left: auto">Ctrl P</span>
+          </button>
+        </div>
+      </div>
+
+      <div style="width: 380px; display: flex; flex-direction: column; gap: 28px; padding-top: 10px">
+        <div>
+          <div style="font-size: 10.5px; letter-spacing: 1.2px; font-weight: 600; color: #6f747d; margin-bottom: 10px">RECENT</div>
+          <div style="display: flex; flex-direction: column; gap: 2px">
+            <a class="rc" href="#recent"><span class="dot" style="background: #c0a040"></span><span class="t">accounts</span><span>uat-uk</span><span class="m">2 min</span></a>
+            <a class="rc" href="#recent"><span class="dot" style="background: #d95c5c"></span><span class="t">dbo.Customer</span><span>prod</span><span class="m">Yesterday</span></a>
+            <a class="rc" href="#recent"><span class="dot" style="background: #5aaa5a"></span><span class="t">ledger</span><span>support</span><span class="m">Tue</span></a>
+            <a class="rc" href="#recent"><span class="dot" style="background: #c57a4a"></span><span class="t">dbo.Shipment</span><span>stage-uk</span><span class="m">Mon</span></a>
+          </div>
+        </div>
+        <div>
+          <div style="font-size: 10.5px; letter-spacing: 1.2px; font-weight: 600; color: #6f747d; margin-bottom: 10px">KEYS</div>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 20px; font-size: 12.5px; color: #9aa0a8">
+            <div style="display: flex; align-items: center; justify-content: space-between"><span>Move</span><span class="k">↑ ↓</span></div>
+            <div style="display: flex; align-items: center; justify-content: space-between"><span>Expand / collapse</span><span class="k">→ ←</span></div>
+            <div style="display: flex; align-items: center; justify-content: space-between"><span>Type to jump</span><span class="k">a-z</span></div>
+            <div style="display: flex; align-items: center; justify-content: space-between"><span>Refresh</span><span class="k">F5</span></div>
+            <div style="display: flex; align-items: center; justify-content: space-between"><span>New query</span><span class="k">Ctrl Q</span></div>
+            <div style="display: flex; align-items: center; justify-content: space-between"><span>Actions</span><span class="k">Menu</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 18px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #6f747d">
+      <span><i style="display: inline-block; width: 6px; height: 6px; border-radius: 3px; background: #4ade80; margin-right: 7px; font-style: normal"></i>Ready</span>
+      <span>opened in 212 ms</span>
+      <span>4 environments · 19 connections</span>
+    </div>
+  </main>
+</div>
+</body>
+</html>

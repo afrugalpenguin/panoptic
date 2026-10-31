@@ -63,8 +63,9 @@ scope; SSMS stays the tool for those.
 
 What comes next is in [docs/plan.md](docs/plan.md) and the
 [open issues](https://github.com/afrugalpenguin/panoptic/issues). Decisions are in
-[docs/adr/](docs/adr/), each connector is described in [docs/connectors/](docs/connectors/), and
-measurements are in [docs/benchmarks.md](docs/benchmarks.md).
+[docs/adr/](docs/adr/), each connector is described in [docs/connectors/](docs/connectors/),
+measurements are in [docs/benchmarks.md](docs/benchmarks.md), and the design rounds behind the
+UI, with every option that was drawn, are in [docs/mockups/](docs/mockups/).
 
 Windows only until v1. The stack (Tauri and .NET) can reach Mac and Linux later, but Windows is
 the only tested target.
