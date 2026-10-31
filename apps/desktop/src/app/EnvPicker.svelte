@@ -31,7 +31,7 @@
   let busy = $state(false);
 
   async function create() {
-    const result = newEnvironment(name, environments);
+    const result = newEnvironment(name, environments, undefined, exclude);
     if ("error" in result) {
       error = result.error;
       return;
