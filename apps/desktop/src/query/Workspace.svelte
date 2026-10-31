@@ -24,11 +24,11 @@
         role="tab"
         tabindex="0"
         aria-selected={tab.id === workspace.activeId}
-        style:--band={tab.kind === "query" ? (tab.target.envColor ?? "transparent") : "transparent"}
+        style:--band={tab.kind === "query" ? (tab.target?.envColor ?? "transparent") : "transparent"}
         onclick={() => (workspace.activeId = tab.id)}
         onkeydown={(e) => e.key === "Enter" && (workspace.activeId = tab.id)}
         onauxclick={(e) => e.button === 1 && workspace.close(tab.id)}
-        title={tab.kind === "query" ? `${tab.target.connection} / ${tab.target.label}` : tab.title}
+        title={tab.kind === "query" && tab.target ? `${tab.target.connection} / ${tab.target.label}` : tab.title}
       >
         {#if tab.kind === "query" && tab.running}<span class="spinner"></span>{/if}
         {#if tab.kind === "whats-new"}<img class="icon" src={logo} alt="" />{/if}

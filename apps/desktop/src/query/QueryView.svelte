@@ -76,14 +76,14 @@
     {:else}
       <button class="primary" onclick={() => workspace.run(tab)} title="Run (F5 or Ctrl+Enter); runs the selection if there is one">Run</button>
     {/if}
-    <span class="target" style:--band={tab.target.envColor ?? "transparent"}>
+    {#if tab.target}<span class="target" style:--band={tab.target.envColor ?? "transparent"}>
       {tab.target.connection} / {tab.target.label}
       {#if tab.target.readOnly}<span
           class="ro"
           title="SQL runs in a transaction that is rolled back at the end. A COMMIT in the script ends it early (the remaining batches are then skipped), and side effects outside the database transaction (xp_cmdshell, sp_send_dbmail, linked servers) are not rolled back. A read-only login is the real protection."
           >read-only</span
         >{/if}
-    </span>
+    </span>{/if}
     {#if databaseOptions.length > 0}
       <select
         class="database"
@@ -116,7 +116,7 @@
   <div class="editor-host">
     <QueryEditor
       bind:text={tab.text}
-      language={tab.target.language}
+      language={tab.target?.language ?? "sql"}
       {intellisense}
       onRun={(selection, offset) => workspace.run(tab, selection, offset)}
       messages={tab.messages}

@@ -79,7 +79,8 @@ export class ResultSet {
 export class QueryTab {
   readonly id = crypto.randomUUID();
   readonly kind = "query" as const;
-  readonly target: QueryTarget;
+  /** Undefined for an unconnected "Query N" tab until its picker connects it (docs/query-editor.md). */
+  target = $state<QueryTarget>();
   title = $state("");
   text = $state("");
   running = $state(false);
@@ -104,7 +105,7 @@ export class QueryTab {
   catalogKey = $state<string>();
   catalogError = $state<string>();
 
-  constructor(target: QueryTarget, text: string, title: string) {
+  constructor(target: QueryTarget | undefined, text: string, title: string) {
     this.target = target;
     this.text = text;
     this.title = title;
@@ -150,6 +151,7 @@ export class QueryWorkspace {
   activeId = $state<string>();
   private readonly byQuery = new Map<string, QueryTab>();
   private untitled = 0;
+  private unconnected = 0;
 
   constructor(private readonly api: QueryApi) {}
 
@@ -172,6 +174,21 @@ export class QueryWorkspace {
     return tab;
   }
 
+  /** New query with nothing chosen: a "Query N" tab with no connection. No catalog or database load until connect. */
+  openUnconnected(): QueryTab {
+    this.tabs.push(new QueryTab(undefined, "", `Query ${++this.unconnected}`));
+    const tab = this.tabs[this.tabs.length - 1] as QueryTab;
+    this.activeId = tab.id;
+    return tab;
+  }
+
+  /** The picker's choice: the tab keeps its title and text, and loads what a connected tab loads on open. */
+  connect(tab: QueryTab, target: QueryTarget): void {
+    tab.target = target;
+    void this.loadCatalog(tab);
+    void this.loadDatabases(tab);
+  }
+
   /** The tab's connection, database and container: the sidecar's scope, else read from the node id. */
   private scopeOf(target: QueryTarget): QueryScope {
     return target.scope ?? nodeParts(target.nodeId);
@@ -179,23 +196,24 @@ export class QueryWorkspace {
 
   /** The database the tab runs against: the picker's choice, else the node's own (undefined: the connection default). */
   databaseOf(tab: QueryTab): string | undefined {
-    return tab.database ?? this.scopeOf(tab.target).database;
+    return tab.database ?? (tab.target && this.scopeOf(tab.target).database);
   }
 
   setDatabase(tab: QueryTab, database: string): void {
+    if (!tab.target) return;
     tab.database = database === this.scopeOf(tab.target).database ? undefined : database;
     tab.catalogKey = undefined;
     void this.loadCatalog(tab);
   }
 
   private remember(tab: QueryTab, database: string | undefined, key: string): void {
-    if (!database) return;
+    if (!database || !tab.target) return;
     const connection = this.scopeOf(tab.target).connection;
     this.databaseKeys.set(connection, { ...this.databaseKeys.get(connection), [database.toLowerCase()]: key });
   }
 
   private async loadCatalog(tab: QueryTab): Promise<void> {
-    if (!this.api.catalogGet || !this.editor.intellisense) return;
+    if (!this.api.catalogGet || !this.editor.intellisense || !tab.target) return;
     tab.catalogError = undefined;
     try {
       const result = await this.api.catalogGet(tab.target.nodeId, tab.database);
@@ -208,7 +226,7 @@ export class QueryWorkspace {
   }
 
   private async loadDatabases(tab: QueryTab): Promise<void> {
-    if (!this.api.databases || tab.target.language === "cosmos") return;
+    if (!this.api.databases || !tab.target || tab.target.language === "cosmos") return;
     try {
       tab.databases = await this.api.databases(this.scopeOf(tab.target).connection);
     } catch {
@@ -218,6 +236,7 @@ export class QueryWorkspace {
 
   /** A database named in the text (USE x, x.schema.) has no catalog yet: fetch it once, in the background. */
   private async fetchDatabase(tab: QueryTab, database: string): Promise<void> {
+    if (!tab.target) return;
     const connection = this.scopeOf(tab.target).connection;
     const marker = `${connection}|${database.toLowerCase()}`;
     if (!this.api.catalogGet || this.databaseKeys.get(connection)?.[database.toLowerCase()] || this.fetching.has(marker)) return;
@@ -237,7 +256,7 @@ export class QueryWorkspace {
   /** What the tab's editor completes against; undefined when IntelliSense is off. Read on every request. */
   intellisense(tab: QueryTab): () => ModelInfo | undefined {
     return () => {
-      if (!this.editor.intellisense) return undefined;
+      if (!this.editor.intellisense || !tab.target) return undefined;
       const parts = this.scopeOf(tab.target);
       const databases = this.databaseKeys.get(parts.connection) ?? {};
       const keys = [...new Set([tab.catalogKey, ...Object.values(databases)])].filter((k): k is string => !!k);
@@ -260,6 +279,7 @@ export class QueryWorkspace {
 
   intellisenseStatus(tab: QueryTab): { text: string; title?: string } {
     if (!this.editor.intellisense) return { text: "IntelliSense: off" };
+    if (!tab.target) return { text: "IntelliSense: off until connected" };
     if (tab.catalogError) return { text: "IntelliSense: error", title: tab.catalogError };
     const entry = tab.catalogKey ? this.catalogs.get(tab.catalogKey) : undefined;
     if (!entry) return { text: "IntelliSense: building" };
@@ -288,14 +308,14 @@ export class QueryWorkspace {
   refreshForScope(node: QueryScope): void {
     this.forgetFailed(node.connection, node.database);
     for (const t of this.tabs) {
-      if (t.kind !== "query" || this.scopeOf(t.target).connection !== node.connection) continue;
+      if (t.kind !== "query" || !t.target || this.scopeOf(t.target).connection !== node.connection) continue;
       if (node.database === undefined || node.database.toLowerCase() === this.databaseOf(t)?.toLowerCase()) this.refreshCatalog(t);
     }
   }
 
   /** Refresh IntelliSense: rebuilds the tab's catalog whatever its stamp says. */
   refreshCatalog(tab: QueryTab): void {
-    if (!this.api.catalogRefresh || !this.editor.intellisense) return;
+    if (!this.api.catalogRefresh || !this.editor.intellisense || !tab.target) return;
     this.api.catalogRefresh(tab.target.nodeId, tab.database).then(
       (r) => this.catalogs.apply(r),
       () => {},
@@ -343,7 +363,7 @@ export class QueryWorkspace {
 
   /** Runs the tab's text, or only `selection` (which starts at `offset` in it) when the user has selected some. Never throws. */
   async run(tab: QueryTab, selection?: string, offset = 0): Promise<void> {
-    if (tab.running) return;
+    if (tab.running || !tab.target) return;
     const text = selection?.trim() ? selection : tab.text;
     if (!text.trim()) return;
     tab.runText = text;
@@ -408,8 +428,8 @@ export class QueryWorkspace {
 
   private addMessage(tab: QueryTab, p: MessageNotification): void {
     const message: QueryMessage = { id: ++nextMessageId, kind: p.kind, text: p.text, elapsedMs: p.elapsedMs };
-    if (p.kind === "error" && p.line !== undefined && tab.target.language === "pgsql") this.placeAt(tab, message, p.line, p.column);
-    const found = p.kind === "error" && p.line !== undefined && tab.target.language === "sql" ? this.place(tab, message, p.line, p.number) : undefined;
+    if (p.kind === "error" && p.line !== undefined && tab.target?.language === "pgsql") this.placeAt(tab, message, p.line, p.column);
+    const found = p.kind === "error" && p.line !== undefined && tab.target?.language === "sql" ? this.place(tab, message, p.line, p.number) : undefined;
     // The pushed row is a reactive proxy; a suggestion arriving later must update that, not the plain object.
     const row = tab.messages[tab.messages.push(message) - 1];
     if (found && p.number !== undefined && p.line !== undefined) void this.suggestFor(tab, row, p.number, p.line, found);

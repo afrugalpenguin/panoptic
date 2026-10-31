@@ -480,6 +480,34 @@ describe("QueryWorkspace: IntelliSense", () => {
     expect(ws.intellisense(tab)()).toBeUndefined();
     expect(ws.intellisenseStatus(tab).text).toBe("IntelliSense: off");
   });
+
+  describe("QueryWorkspace: unconnected tabs", () => {
+    it("opens Query N, not connected: no catalog, no run, IntelliSense off", async () => {
+      const { ws, api } = setupCatalog();
+      const a = ws.openUnconnected();
+      const b = ws.openUnconnected();
+      expect([a.title, b.title]).toEqual(["Query 1", "Query 2"]);
+      expect(a.target).toBeUndefined();
+      await settle();
+      expect(api.catalogGet).not.toHaveBeenCalled();
+      a.text = "select 1";
+      await ws.run(a);
+      expect(api.executeQuery).not.toHaveBeenCalled();
+      expect(ws.intellisense(a)()).toBeUndefined();
+      expect(ws.intellisenseStatus(a).text).toBe("IntelliSense: off until connected");
+    });
+
+    it("connect gives the tab its target, keeps its title and text, and loads the catalog", async () => {
+      const { ws, api } = setupCatalog();
+      const tab = ws.openUnconnected();
+      tab.text = "select 1";
+      ws.connect(tab, target);
+      await settle();
+      expect(tab.target).toEqual(target);
+      expect([tab.title, tab.text]).toEqual(["Query 1", "select 1"]);
+      expect(api.catalogGet).toHaveBeenCalledWith(target.nodeId, undefined);
+    });
+  });
 });
 
 describe("QueryWorkspace: explorer refresh", () => {
