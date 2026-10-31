@@ -1,14 +1,18 @@
 // Dev-only preview of the landing with synthetic data, for screenshots (docs/plans/2026-10-31-landing.md, Task 12).
 // Query string: ?q=<text> types into Seek, ?envs=0 shows no environments, ?engine=connecting|disconnected.
 // ?app=start|explorer|query|messages mounts the whole App on a fake sidecar instead (README screenshots).
+// ?state=flat|mixed|empty-env shows the tree beside the landing with connections in no environment
+// (docs/plans/2026-10-31-loose-connections.md, Task 9).
 import { mount } from "svelte";
 import "../app/app.css";
+import type { TreeNode } from "../app/api";
 import App from "../app/App.svelte";
 import Landing from "../app/Landing.svelte";
-import type { SeekEnv, SeekIndex } from "../app/seek";
+import type { SeekEnv, SeekHost, SeekIndex } from "../app/seek";
 import type { Place } from "../app/usage";
+import Preview from "./Preview.svelte";
 
-const host = (env: string, name: string) => ({ id: `env:${env}/conn:${name}`, name, envId: `env:${env}` });
+const host = (env: string, name: string) => ({ id: `conn:${name}`, name, envId: `env:${env}` });
 const env = (id: string, name: string, color: string, hosts: string[]): SeekEnv => ({ id: `env:${id}`, name, color, hosts: hosts.map((h) => host(id, h)) });
 
 // Synthetic names only (no real servers or tenants).
@@ -22,15 +26,69 @@ const envs: SeekEnv[] = [
   env("sandbox", "Sandbox", "#0c8599", ["sbx-pg-01"]),
 ];
 const place = (envId: string, hostName: string, nodeId: string, label: string, kind = "table"): Place => ({
-  envId: `env:${envId}`, hostId: `env:${envId}/conn:${hostName}`, hostName, nodeId, label, kind,
+  envId: `env:${envId}`, hostId: `conn:${hostName}`, hostName, nodeId, label, kind,
 });
 const orders = place("prod", "uk-prod-sql-01", "n1", "dbo.Orders");
 const recent = [orders, place("prod", "uk-prod-sql-02", "n2", "dbo.OrderLines"), place("dev", "uk-dev-pg", "n3", "public.customers"), place("uat", "uat-sql-01", "n4", "dbo.usp_Settle", "proc")];
 
 const params = new URLSearchParams(location.search);
 const app = params.get("app");
+const state = params.get("state");
 if (app) await mountApp(app);
+else if (state) mountState(state);
 else mountLanding();
+
+/** The real tree beside the landing, on synthetic nodes, with connections in no environment. */
+function mountState(name: string) {
+  type Conn = [string, string];
+  const states: Record<string, { envs: { id: string; name: string; color: string; hosts: Conn[] }[]; loose: Conn[]; expand: string[] }> = {
+    flat: {
+      envs: [],
+      loose: [["orders-sql", "sql"], ["billing-sql", "sql"], ["catalog-cosmos", "cosmos"], ["reports-pg", "postgres"]],
+      expand: [],
+    },
+    mixed: {
+      envs: [
+        { id: "dev", name: "Dev", color: "#2f9e44", hosts: [["dev-sql-01", "sql"], ["dev-pg-01", "postgres"]] },
+        { id: "prod", name: "Prod", color: "#e03131", hosts: [["uk-prod-sql-01", "sql"], ["uk-prod-sql-02", "sql"]] },
+      ],
+      loose: [["scratch-sql", "sql"], ["catalog-cosmos", "cosmos"]],
+      expand: ["env:dev"],
+    },
+    "empty-env": {
+      envs: [{ id: "staging", name: "Staging", color: "#7048e8", hosts: [] }],
+      loose: [["orders-sql", "sql"], ["catalog-cosmos", "cosmos"]],
+      expand: [],
+    },
+  };
+  const state = states[name];
+  if (!state) return mountLanding();
+  const endpoint = (h: string, kind: string) => (kind === "cosmos" ? `https://${h}.documents.azure.com:443/` : `${h}.example.net`);
+  const conn = ([h, kind]: Conn): TreeNode => ({
+    id: `conn:${h}`, kind: "connection", label: h, icon: kind, hasChildren: true, actions: [],
+    meta: { endpoint: endpoint(h, kind), connectionKind: kind, connectionId: h },
+  });
+  const nodes: Record<string, TreeNode[]> = {
+    "": [
+      ...state.envs.map((e): TreeNode => ({
+        id: `env:${e.id}`, kind: "environment", label: e.name, icon: "environment", hasChildren: e.hosts.length > 0, actions: [],
+        meta: { environmentId: e.id, color: e.color, readOnly: "false", connectionCount: String(e.hosts.length) },
+      })),
+      ...state.loose.map(conn),
+    ],
+    ...Object.fromEntries(state.envs.map((e) => [`env:${e.id}`, e.hosts.map(conn)])),
+  };
+  const looseHosts: SeekHost[] = state.loose.map(([h]) => ({ id: `conn:${h}`, name: h }));
+  const index: SeekIndex = {
+    envs: state.envs.map((e) => env(e.id, e.name, e.color, e.hosts.map(([h]) => h))),
+    hosts: looseHosts,
+    usage: { envs: {}, recent: [] },
+  };
+  const connectionCount = state.loose.length + state.envs.reduce((n, e) => n + e.hosts.length, 0);
+  const target = document.getElementById("host")!;
+  target.style.height = "100vh";
+  mount(Preview, { target, props: { nodes, expand: state.expand, index, envCount: state.envs.length, connectionCount } });
+}
 
 /** The whole App on the fake sidecar, driven through the DOM to the state asked for. */
 async function mountApp(state: string) {
