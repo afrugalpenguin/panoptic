@@ -3,6 +3,7 @@
 
 import type { CatalogObject, ContainerRef, DatabaseCatalog, PathRef } from "../catalog.svelte";
 import { COSMOS_FUNCTIONS, COSMOS_KEYWORDS } from "./cosmos-words";
+import { mdCode, mdText } from "./markdown";
 import { PGSQL_FUNCTIONS, PGSQL_KEYWORDS, PGSQL_TYPES } from "./pgsql-words";
 import { statementTokens, tablesAt, type Context, type Language, type TableRef, type Token } from "./scanner";
 import { TSQL_FUNCTIONS, TSQL_KEYWORDS, TSQL_TYPES } from "./tsql-words";
@@ -260,12 +261,12 @@ const isName = (t: Token | undefined) => !!t && (t.type === "word" || t.type ===
 
 function objectMarkdown(o: CatalogObject): string {
   const lines = [
-    ...(o.columns ?? []).map((c) => `\`${c.name}\` ${c.type}, ${c.nullable ? "null" : "not null"}`),
-    ...(o.params ?? []).map((p) => `\`${p.name}\` ${p.type}${p.output ? " output" : ""}`),
+    ...(o.columns ?? []).map((c) => `${mdCode(c.name)} ${mdText(c.type)}, ${c.nullable ? "null" : "not null"}`),
+    ...(o.params ?? []).map((p) => `${mdCode(p.name)} ${mdText(p.type)}${p.output ? " output" : ""}`),
   ];
   const shown = lines.slice(0, 40);
   if (lines.length > shown.length) shown.push(`and ${lines.length - shown.length} more`);
-  return [`**${o.schema}.${o.name}** ${o.kind}`, ...(shown.length ? ["", shown.join("  \n")] : [])].join("\n");
+  return [`**${mdText(`${o.schema}.${o.name}`)}** ${o.kind}`, ...(shown.length ? ["", shown.join("  \n")] : [])].join("\n");
 }
 
 /** Markdown for the name under the cursor: an object, a column, or a Cosmos path. Null when there is nothing to say. */
@@ -281,7 +282,7 @@ export function hover(lookup: Lookup, text: string, offset: number, options: Pic
     const path = parts.slice(1).join(".");
     for (const c of containersFor(lookup, options)) {
       const found = c.paths.find((p) => p.path === path);
-      if (found) return `**${path}** ${found.types.join(" | ")}`;
+      if (found) return `**${mdText(path)}** ${found.types.map(mdText).join(" | ")}`;
     }
     return null;
   }
@@ -299,7 +300,7 @@ export function hover(lookup: Lookup, text: string, offset: number, options: Pic
   for (const ref of candidates) {
     const owner = resolve(lookup, ref, options.language);
     const column = owner?.columns?.find((c) => eq(c.name, name));
-    if (owner && column) return `**${column.name}** ${column.type}, ${column.nullable ? "null" : "not null"} (${owner.schema}.${owner.name})`;
+    if (owner && column) return `**${mdText(column.name)}** ${mdText(column.type)}, ${column.nullable ? "null" : "not null"} (${mdText(`${owner.schema}.${owner.name}`)})`;
   }
   return null;
 }

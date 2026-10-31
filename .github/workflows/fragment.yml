@@ -8,6 +8,9 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, edited]
 
+permissions:
+  contents: read
+
 concurrency:
   group: fragment-${{ github.ref }}
   cancel-in-progress: true
