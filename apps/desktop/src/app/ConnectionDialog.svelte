@@ -105,6 +105,12 @@
     if (!authOptions.some((o) => o.value === auth)) auth = authOptions[0].value;
   });
 
+  // A test result describes the settings it ran with: any edit to them makes it stale, so it goes (#263).
+  $effect(() => {
+    void [kind, endpoint, auth, user, database, tenantId, trust, secret];
+    test = null;
+  });
+
   function config(): ConnectionConfig {
     return {
       id: initial?.id ?? crypto.randomUUID(),
@@ -150,10 +156,10 @@
   }
 
   async function runTest() {
+    test = null;
     error = validate();
     if (error) return;
     busy = "testing";
-    test = null;
     try {
       test = await api.testConnection(config(), secretArg(), testAbort.signal);
     } catch (e) {
