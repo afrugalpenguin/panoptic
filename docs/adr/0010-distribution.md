@@ -1,11 +1,11 @@
 # 0010. Per-user installer with auto-update from GitHub Releases
 
 - Status: Accepted
-- Date: 2026-10-29
+- Recorded: 2026-10-29
 
 ## Context
 
-The work laptop is the real test bed for Entra, Intune and real data. Copying installers by hand after every build would stop it being used daily. This was planned for the final milestone and moved to M0.
+A managed machine is the real test bed for Entra, Intune and real data. Copying installers by hand after every build would stop it being used daily. This was planned for the final milestone and moved to M0.
 
 ## Decision
 

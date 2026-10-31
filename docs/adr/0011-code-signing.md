@@ -1,11 +1,11 @@
 # 0011. Unsigned installer for M0
 
 - Status: Accepted
-- Date: 2026-10-29
+- Recorded: 2026-10-29
 
 ## Context
 
-Authenticode signing costs money and identity validation time. Whether SmartScreen and Intune block an unsigned per-user installer on the work laptop is unknown.
+Authenticode signing costs money and identity validation time. Whether SmartScreen and Intune block an unsigned per-user installer on a managed machine is unknown.
 
 ## Decision
 

@@ -2,6 +2,8 @@
 
 One ADR per decision in the plan's decisions table. Write the ADR before the code that depends on it.
 
+ADRs 0001 to 0011 were written up on 2026-10-29, when the repository was set up, for decisions that had already been made; their Recorded line gives that date, not the date of the decision. Later ADRs carry the date they were decided.
+
 | ADR | Decision | Status |
 | --- | --- | --- |
 | [0001](0001-stack.md) | Tauri 2 shell, TypeScript UI, .NET 10 sidecar | Accepted |

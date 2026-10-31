@@ -7,17 +7,17 @@
 
 ADR 0011 shipped unsigned installers in M0 to find out what SmartScreen and Intune do. The answer is in docs/benchmarks.md (Install and Defender), and it is worse than a SmartScreen prompt:
 
-- Home machine, v0.1.0: Defender quarantined `panoptic.exe` as `Trojan:Win32/Bearfoos.A!ml` as the NSIS installer wrote it. Static scans of the exe, the sidecar and the installer were clean, and the same exe copied or run from the repo was not flagged, so the trigger was the install behaviour, not the file on its own.
-- Managed work laptop, v0.2.0: the install itself succeeded with no SmartScreen prompt, but some time later Defender quarantined the installed `panoptic.exe` with the same detection, consistent with a cloud verdict on an unknown unsigned file.
-- In both cases a Defender folder exclusion for `%LOCALAPPDATA%\Panoptic` kept the app alive, and on the work laptop the excluded copy auto-updated in place.
+- Unmanaged machine, v0.1.0: Defender quarantined `panoptic.exe` as `Trojan:Win32/Bearfoos.A!ml` as the NSIS installer wrote it. Static scans of the exe, the sidecar and the installer were clean, and the same exe copied or run from the repo was not flagged, so the trigger was the install behaviour, not the file on its own.
+- Managed machine, v0.2.0: the install itself succeeded with no SmartScreen prompt, but some time later Defender quarantined the installed `panoptic.exe` with the same detection, consistent with a cloud verdict on an unknown unsigned file.
+- In both cases a Defender folder exclusion for `%LOCALAPPDATA%\Panoptic` kept the app alive, and on the managed machine the excluded copy auto-updated in place.
 
-Every merge to main is a release (ADR 0010), so every release is a new unknown hash and the reputation never builds up. A folder exclusion is fine on a home machine but is not something to ask of users on managed machines, so unsigned builds cannot be used there.
+Every merge to main is a release (ADR 0010), so every release is a new unknown hash and the reputation never builds up. A folder exclusion is fine on a personal machine but is not something to ask of users on managed machines, so unsigned builds cannot be used there.
 
 ## Decision
 
 Sign the installer and every executable we ship with Authenticode before the next daily-use trial on a managed machine, rather than waiting for v1 as 0011 and the plan's decisions table said.
 
-Open question for the owner: Azure Trusted Signing (now called Azure Artifact Signing; a monthly subscription, identity validation, no hardware token, short-lived certificates) or a purchased code-signing certificate (an annual cost, key held in a cloud HSM or token).
+Still to decide: Azure Trusted Signing (now called Azure Artifact Signing; a monthly subscription, identity validation, no hardware token, short-lived certificates) or a purchased code-signing certificate (an annual cost, key held in a cloud HSM or token).
 
 The release workflow change is deferred until that question is answered, because the secrets and the sign command depend on it. The intended shape:
 
@@ -29,6 +29,6 @@ The release workflow change is deferred until that question is answered, because
 
 ## Consequences
 
-Signing adds a recurring cost and a dependency on the signing service for every release when it is on. Signed builds start building reputation with SmartScreen and Defender, and a managed machine should be able to run Panoptic without a local exclusion; that needs confirming on the work laptop and recording in docs/benchmarks.md. Until signing lands, the README tells users about the quarantine and the folder exclusion. Updater integrity still rests on the Tauri updater key (ADR 0010); Authenticode is in addition to it, not a replacement.
+Signing adds a recurring cost and a dependency on the signing service for every release when it is on. Signed builds start building reputation with SmartScreen and Defender, and a managed machine should be able to run Panoptic without a local exclusion; that needs confirming on a managed machine and recording in docs/benchmarks.md. Until signing lands, the README tells users about the quarantine and the folder exclusion. Updater integrity still rests on the Tauri updater key (ADR 0010); Authenticode is in addition to it, not a replacement.
 
 When this ADR is accepted, 0011's status becomes "Superseded by 0014".
