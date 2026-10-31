@@ -40,14 +40,3 @@ export function newEnvironment(
   if (same) return { environment: same, created: false };
   return { environment: { id, name: trimmed, ...envStyleFor(trimmed, existing.length), connections: [] }, created: true };
 }
-
-/**
- * Read-only is an environment's setting, so moving a connection out of a read-only environment (into a writable one
- * or none) quietly lifts the guard. Returns the question to ask first, or undefined when the move needs no asking.
- */
-export function readOnlyMoveWarning(connection: string, from: EnvironmentConfig | undefined, to: EnvironmentConfig | undefined): string | undefined {
-  if (!from?.readOnly || to?.readOnly) return undefined;
-  return to
-    ? `Move "${connection}" from ${from.name} to ${to.name}? ${from.name} is read-only and ${to.name} is not, so its queries will no longer be rolled back.`
-    : `Move "${connection}" out of ${from.name}? ${from.name} is read-only, so its queries will no longer be rolled back.`;
-}

@@ -10,14 +10,13 @@
   import { parseChangelog, sectionsSince, type ChangelogSection } from "../whats-new";
   import { createApi, type Api, type AppConfig, type AppSettings, type ConnectionConfig, type DeviceCodePrompt, type EnvironmentConfig, type TreeNode } from "./api";
   import ConfirmDialog from "./ConfirmDialog.svelte";
-  import { confirmText, type ConfirmText } from "./confirm";
+  import { confirmText, readOnlyMoveText, type ConfirmText } from "./confirm";
   import ConnectionDialog from "./ConnectionDialog.svelte";
   import ContextMenu, { type MenuItem } from "./ContextMenu.svelte";
   import DetailPane from "./DetailPane.svelte";
   import EnvironmentDialog from "./EnvironmentDialog.svelte";
   import ImportDialog from "./ImportDialog.svelte";
   import MoveDialog from "./MoveDialog.svelte";
-  import { readOnlyMoveWarning } from "./env-picker";
   import IconButton from "./IconButton.svelte";
   import KindChips from "./KindChips.svelte";
   import Landing from "./Landing.svelte";
@@ -335,8 +334,8 @@
   async function moveConnection(connectionId: string, environmentId: string | null) {
     const found = connectionOf(connectionId);
     if (!found || (found.env?.id ?? null) === environmentId) return;
-    const warning = readOnlyMoveWarning(found.connection.name, found.env, environmentId ? envOf(environmentId) : undefined);
-    if (warning && !confirm(warning)) return;
+    const leaving = readOnlyMoveText(found.connection.name, found.env, environmentId ? envOf(environmentId) : undefined);
+    if (leaving && !(await ask(leaving))) return;
     try {
       await configChanged(await api!.saveConnection(environmentId, found.connection));
     } catch (e) {

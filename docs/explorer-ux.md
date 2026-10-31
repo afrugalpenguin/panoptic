@@ -91,6 +91,8 @@ No layout mode setting. L2 (kind tabs) and L3 (stacked sections) are rejected.
 
 Delete environment and Remove connection ask first in `ConfirmDialog` (`apps/desktop/src/app/ConfirmDialog.svelte`): a title, one line saying what goes ("Delete "Prod" and its 3 connections?"), Cancel and a red action button. Cancel has focus, so Enter, Esc and a click on the backdrop all cancel. After the delete the status bar shows "Deleted environment Prod - Undo" (or "Removed connection ...") for ten seconds, and Undo writes back the config from before the delete. The sidecar keeps the deleted connections' secrets until that window closes, so an undone connection still signs in. A second delete, or any other config change, makes the pending one stand at once. If Panoptic closes during the window the delete stands and the secrets are dropped at the next start. Never use `window.confirm`, `alert` or `prompt`: Tauri's webview does not implement them, so the action ran with no prompt. `apps/desktop/src/no-native-dialogs.test.ts` fails on any call to them.
 
+Moving a connection out of a read-only environment, into a writable one or none, asks the same way ("Leave read-only", action Move), whether by drag, Move to environment... or Remove from environment, because its queries stop being rolled back. Other moves do not ask.
+
 ## Keys
 
 Up/Down, Page Up/Down, Home/End move. Right expands (or steps into), Left collapses (or steps to the parent). Enter toggles, F5 refreshes, typing jumps to a matching row, the context-menu key or right-click opens actions. Esc clears the selection, which brings back the landing when no tab is open (docs/landing.md).
