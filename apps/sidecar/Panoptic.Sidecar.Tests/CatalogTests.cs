@@ -157,9 +157,45 @@ public sealed class CatalogCacheTests : IDisposable
         var key = CatalogCache.KeyOf("conn1", "Orders");
         Assert.DoesNotContain("conn1", key);
         Assert.DoesNotContain("Orders", key, StringComparison.OrdinalIgnoreCase);
-        Assert.Matches("^[0-9a-f]{32}$", key);
+        Assert.Matches("^[0-9a-f]{16}-[0-9a-f]{32}$", key);
         Assert.NotEqual(key, CatalogCache.KeyOf("conn1", "Other"));
         Assert.NotEqual(key, CatalogCache.KeyOf("conn2", "Orders"));
+    }
+
+    [Fact]
+    public void Prune_deletes_snapshots_of_connections_that_are_no_longer_saved()
+    {
+        var cache = new CatalogCache(_folder);
+        cache.Write(CatalogCache.KeyOf("gone", "Orders"), Sample);
+        cache.Write(CatalogCache.KeyOf("gone", "Inventory"), Sample);
+        cache.Write(CatalogCache.KeyOf("kept", "Orders"), Sample);
+
+        cache.Prune(["kept"]);
+
+        Assert.Null(cache.Read(CatalogCache.KeyOf("gone", "Orders")));
+        Assert.Null(cache.Read(CatalogCache.KeyOf("gone", "Inventory")));
+        Assert.NotNull(cache.Read(CatalogCache.KeyOf("kept", "Orders")));
+        Assert.Single(Directory.GetFiles(_folder));
+    }
+
+    [Fact]
+    public void Prune_deletes_files_in_the_old_layout_and_stray_temp_files()
+    {
+        Directory.CreateDirectory(_folder);
+        File.WriteAllBytes(Path.Combine(_folder, new string('a', 32) + ".bin"), [1]);
+        File.WriteAllBytes(Path.Combine(_folder, "x.bin." + Guid.NewGuid().ToString("N") + ".tmp"), [1]);
+
+        new CatalogCache(_folder).Prune([]);
+
+        Assert.Empty(Directory.GetFiles(_folder));
+    }
+
+    [Fact]
+    public void Prune_of_a_missing_folder_does_nothing()
+    {
+        new CatalogCache(_folder).Prune(["any"]);
+
+        Assert.False(Directory.Exists(_folder));
     }
 }
 

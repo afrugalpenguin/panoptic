@@ -82,6 +82,19 @@ describe("editing a saved connection's password binding", () => {
     expect(document.body.textContent).toContain("Enter the password again");
   });
 
+  it("drops an earlier test result once the connection is edited (#263)", async () => {
+    const d = open();
+    d.clickTest();
+    await vi.waitFor(() => expect(document.body.textContent).toContain("Connected in 1 ms"));
+
+    d.type("c-endpoint", "orders.fabrikam-lookalike.test");
+    expect(document.body.textContent).not.toContain("Connected in");
+
+    d.clickTest();
+    expect(document.body.textContent).not.toContain("Connected in");
+    expect(document.body.textContent).toContain("Enter the password again");
+  });
+
   it("sends the newly typed password with a changed server", async () => {
     const d = open();
     d.type("c-endpoint", "orders-new.fabrikam.test");

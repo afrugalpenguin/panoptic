@@ -4,6 +4,7 @@
   import Dialog from "./Dialog.svelte";
   import { NEW_ENV, NO_ENV, toEnvironmentId } from "./env-picker";
   import EnvPicker from "./EnvPicker.svelte";
+  import { isLoopback } from "./loopback";
 
   let {
     api,
@@ -88,9 +89,26 @@
   /** Postgres signs Entra users in under their Entra name; blank means the name from the sign-in. */
   const entraUser = $derived(kind === "postgres" && auth === "entra");
   const placeholder = $derived(KINDS.find((k) => k.value === kind)!.placeholder);
+  /** Cosmos allows skipping the check for a localhost emulator only (the sidecar refuses otherwise). */
+  const trustWarning = $derived.by(() => {
+    if (!trust || kind === "cosmos" || !endpoint.trim() || isLoopback(endpoint)) return "";
+    const what =
+      auth === "entra"
+        ? "your Microsoft Entra sign-in token, which could then be used against other Azure databases for up to an hour"
+        : auth === "windows"
+          ? "your queries and their results"
+          : "the password";
+    return `The certificate of ${endpoint.trim()} won't be checked, so anyone able to intercept the connection could pose as it and capture ${what}. Only trust certificates for servers you control.`;
+  });
 
   $effect(() => {
     if (!authOptions.some((o) => o.value === auth)) auth = authOptions[0].value;
+  });
+
+  // A test result describes the settings it ran with: any edit to them makes it stale, so it goes (#263).
+  $effect(() => {
+    void [kind, endpoint, auth, user, database, tenantId, trust, secret];
+    test = null;
   });
 
   function config(): ConnectionConfig {
@@ -138,10 +156,10 @@
   }
 
   async function runTest() {
+    test = null;
     error = validate();
     if (error) return;
     busy = "testing";
-    test = null;
     try {
       test = await api.testConnection(config(), secretArg(), testAbort.signal);
     } catch (e) {
@@ -221,6 +239,7 @@
     <input type="checkbox" bind:checked={trust} />
     {kind === "cosmos" ? "Skip certificate validation (localhost emulator only)" : "Trust server certificate"}
   </label>
+  {#if trustWarning}<p class="full trust-warning">{trustWarning}</p>{/if}
 
   {#if test}
     <p class="full result" class:ok={test.ok}>
@@ -244,6 +263,14 @@
     gap: 6px;
     align-items: center;
     color: var(--text) !important;
+  }
+  .trust-warning {
+    margin: 0;
+    padding: 6px 10px;
+    border-radius: 4px;
+    color: var(--text);
+    background: color-mix(in srgb, var(--warn) 14%, transparent);
+    border-left: 3px solid var(--warn);
   }
   .result {
     margin: 0;

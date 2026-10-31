@@ -153,5 +153,13 @@ public sealed class TreeService(ConfigStore store, IReadOnlyDictionary<string, I
         c.Kind,
         true,
         backends.GetValueOrDefault(c.Kind) is IQueryBackend ? Nodes.Queryable : Nodes.Browse,
-        new() { ["connectionKind"] = c.Kind, ["endpoint"] = c.Endpoint, ["connectionId"] = c.Id, ["copyText"] = c.Name });
+        Meta(c));
+
+    private static Dictionary<string, string> Meta(ConnectionConfig c)
+    {
+        var meta = new Dictionary<string, string> { ["connectionKind"] = c.Kind, ["endpoint"] = c.Endpoint, ["connectionId"] = c.Id, ["copyText"] = c.Name };
+        // The tree marks connections that skip certificate validation (issue #174), every session, not just in the dialog.
+        if (c.TrustServerCertificate) meta["trustServerCertificate"] = "true";
+        return meta;
+    }
 }

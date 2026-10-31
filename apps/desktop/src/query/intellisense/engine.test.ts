@@ -130,23 +130,50 @@ describe("hover", () => {
 
   it("an object shows its kind, schema and columns", () => {
     const md = at("select * from sales.Or|der o")!;
-    expect(md).toContain("**sales.Order**");
+    expect(md).toContain("**sales\\.Order**");
     expect(md).toContain("table");
     expect(md).toContain("`CustomerId` int, not null");
   });
 
   it("a column shows its type and nullability", () => {
-    expect(at("select c.Na|me from dbo.Customer c")).toBe("**Name** nvarchar(50), null (dbo.Customer)");
-    expect(at("select Tot|al from sales.[Order]")).toBe("**Total** decimal(18, 2), not null (sales.Order)");
+    expect(at("select c.Na|me from dbo.Customer c")).toBe("**Name** nvarchar\\(50\\), null (dbo\\.Customer)");
+    expect(at("select Tot|al from sales.[Order]")).toBe("**Total** decimal\\(18\\, 2\\), not null (sales\\.Order)");
   });
 
   it("a Cosmos path shows the types seen", () => {
-    expect(at("select c.address.zi|p from c", "cosmos-sql", "cosmos", "orders")).toBe("**address.zip** number | string");
+    expect(at("select c.address.zi|p from c", "cosmos-sql", "cosmos", "orders")).toBe("**address\\.zip** number | string");
   });
 
   it("nothing for a keyword or an unknown name", () => {
     expect(at("sel|ect 1")).toBeNull();
     expect(at("select * from nope|")).toBeNull();
+  });
+
+  describe("catalog text cannot inject markdown (links, emphasis, HTML)", () => {
+    const crafted: DatabaseCatalog = {
+      stamp: "x", schemas: ["dbo"], types: [],
+      objects: [{ name: "T", schema: "dbo", kind: "table", columns: [
+        { name: "a*b", type: "x<img src=y>", nullable: true },
+        { name: "x` [c](https://evil.example) `y", type: "int", nullable: false },
+      ] }],
+      containers: [{ name: "c1", partitionKey: "/id", paths: [{ path: "tenant_id_", types: ["string"] }] }],
+    };
+    const craftedLookup: Lookup = () => new Index(crafted);
+    const hoverAt = (source: string, language: Options["language"] = "tsql", container?: string) =>
+      hover(craftedLookup, source.replace("|", ""), source.indexOf("|"), { language, container });
+
+    it("escapes a column name and type", () => {
+      expect(hoverAt("select t.[a*b|] from dbo.T t")).toBe("**a\\*b** x\\<img src\\=y\\>, null (dbo\\.T)");
+    });
+
+    it("escapes a Cosmos path", () => {
+      expect(hoverAt("select c.tenant_id_| from c", "cosmos-sql", "c1")).toBe("**tenant\\_id\\_** string");
+    });
+
+    it("fences a column name holding backticks so it stays code", () => {
+      const md = hoverAt("select * from dbo.T|")!;
+      expect(md).toContain("``x` [c](https://evil.example) `y`` int, not null");
+    });
   });
 });
 
@@ -204,6 +231,6 @@ describe("pgsql dialect", () => {
 
   it("hovers a table in public", () => {
     const text = "select * from customer";
-    expect(hover(pgLookup, text, text.length, pgsql)).toContain("**public.customer** table");
+    expect(hover(pgLookup, text, text.length, pgsql)).toContain("**public\\.customer** table");
   });
 });
