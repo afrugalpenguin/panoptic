@@ -189,6 +189,19 @@ export class QueryWorkspace {
     void this.loadDatabases(tab);
   }
 
+  /**
+   * After a config change: each open tab takes its connection's current environment colour and read-only flag, since
+   * a connection can move while tabs are open and the engine decides read-only from where it is now. look returns
+   * undefined for a connection it does not know (removed), whose tabs keep what they had.
+   */
+  restyle(look: (connection: string) => { envColor?: string; readOnly: boolean } | undefined): void {
+    for (const t of this.tabs) {
+      if (t.kind !== "query" || !t.target) continue;
+      const now = look(this.scopeOf(t.target).connection);
+      if (now && (now.envColor !== t.target.envColor || now.readOnly !== t.target.readOnly)) t.target = { ...t.target, ...now };
+    }
+  }
+
   /** The tab's connection, database and container: the sidecar's scope, else read from the node id. */
   private scopeOf(target: QueryTarget): QueryScope {
     return target.scope ?? nodeParts(target.nodeId);

@@ -294,6 +294,12 @@
     // Environments' connection lists only: reloading a loose connection's children would call its server.
     for (const id of model.envIds()) await model.reload(id);
     await model.preload(model.envIds());
+    // Open tabs follow their connection: a move, or an edited environment, changes their colour and read-only flag.
+    workspace.restyle((connection) => {
+      const parent = model.parentOf(connection);
+      if (parent === undefined || !model.childIds(parent).includes(connection)) return undefined;
+      return envLook(parent || undefined);
+    });
   }
 
   const envOf = (id: string) => config.environments.find((e) => e.id === id);
