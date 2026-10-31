@@ -31,7 +31,9 @@ $modeArgs = @(switch ($Mode) {
     'aot' { @('-p:PublishAot=true') }
     'jit' { @('--self-contained', '-p:PublishSingleFile=true', '-p:IncludeNativeLibrariesForSelfExtract=true') }
     'r2r' { @('--self-contained', '-p:PublishSingleFile=true', '-p:PublishReadyToRun=true', '-p:IncludeNativeLibrariesForSelfExtract=true') }
-    'fdd' { @('--no-self-contained', '-p:PublishSingleFile=true') }
+    # Native libraries (SqlClient's SNI, msalruntime for WAM) must be bundled here too: only the exe is
+    # copied to binaries, and without SNI every SQL Server and Synapse connect fails.
+    'fdd' { @('--no-self-contained', '-p:PublishSingleFile=true', '-p:IncludeNativeLibrariesForSelfExtract=true') }
 })
 
 Write-Host "Publishing sidecar ($Mode)..."

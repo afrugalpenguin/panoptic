@@ -96,6 +96,26 @@ jobs:
           restore-keys: nuget-${{ runner.os }}-
       # Detailed, so skipped tests and their reasons (the opt-in integration tests) show in the log.
       - run: dotnet test apps/sidecar --logger "console;verbosity=detailed"
+      # The dev build (pnpm dev) ships the exe alone, so its native libraries must be inside it (#167).
+      # SqlClient fails to load SNI before any network I/O, so a closed local port tells the two apart:
+      # a network error passes, "type initializer for ... TdsParser" fails.
+      - name: Dev sidecar connects on its own
+        shell: pwsh
+        run: |
+          ./scripts/build-sidecar.ps1 -Mode fdd
+          $work = Join-Path $env:RUNNER_TEMP 'sidecar-smoke'
+          New-Item -ItemType Directory -Force $work | Out-Null
+          Copy-Item apps/desktop/src-tauri/binaries/panoptic-sidecar-x86_64-pc-windows-msvc.exe (Join-Path $work 'panoptic-sidecar.exe')
+          $env:PANOPTIC_STORE = Join-Path $work 'store.bin'
+          $env:PANOPTIC_CATALOG = Join-Path $work 'catalog'
+          $request = @{ jsonrpc = '2.0'; id = 1; method = 'connection.test'; params = @{
+              connection = @{ id = 'smoke'; name = 'smoke'; kind = 'sql'; endpoint = '127.0.0.1,1'; auth = 'sql'; user = 'sa' }
+              secret = 'unused' } } | ConvertTo-Json -Depth 5 -Compress
+          $response = $request | & (Join-Path $work 'panoptic-sidecar.exe') | Select-Object -First 1
+          Write-Output $response
+          $result = ($response | ConvertFrom-Json).result
+          if (-not $result) { throw 'connection.test returned no result.' }
+          if ($result.error -match 'type initializer') { throw 'The dev sidecar cannot load its native libraries: see the error above.' }
       - name: Audit NuGet dependencies (including transitive)
         shell: pwsh
         run: |
