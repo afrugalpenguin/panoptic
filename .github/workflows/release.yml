@@ -149,4 +149,5 @@ jobs:
           if ($LASTEXITCODE -ne 0) { Write-Host "No draft to delete"; exit 0 }
           # Never delete a published release, whatever happened above.
           if ($isDraft -ne 'true') { throw "v${env:VERSION} is not a draft; refusing to delete it" }
-          gh release delete "v${env:VERSION}" --yes --cleanup-tag
+          # No --cleanup-tag: a draft has no tag (it is created on publish), and deleting a missing one fails.
+          gh release delete "v${env:VERSION}" --yes
