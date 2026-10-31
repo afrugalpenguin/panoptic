@@ -1,0 +1,1 @@
+Added: The PostgreSQL editor warns about T-SQL habits before you run (`TOP`, `[names]`, `GETDATE()`, `ISNULL`, `LEN`, `+` on text, `@variables`, `#temp` tables, `NOLOCK` and `GO`) and offers a quick fix to the Postgres form where there is one.

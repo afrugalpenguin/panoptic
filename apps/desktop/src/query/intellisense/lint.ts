@@ -13,6 +13,8 @@ export interface Warning {
   start: number;
   end: number;
   message: string;
+  /** A quick fix: what it changes to (shown as "Change to <label>") and the edits that make it, in text offsets. */
+  fix?: { label: string; edits: { start: number; end: number; text: string }[] };
 }
 
 /** Words that can stand where a column does without being one. */

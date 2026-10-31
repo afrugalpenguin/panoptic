@@ -118,6 +118,8 @@ Warnings before running, in the `pgsql` editor only, through the existing lint a
 | `WITH (NOLOCK)` | explained: readers never block writers in Postgres | no |
 | `GO` | explained: not a Postgres batch separator | no |
 
+As built (`habits.ts`): the check runs on the whole script, not just the statement at the cursor, in the worker's lint request, whenever IntelliSense is on (it needs no catalog, so it does not follow the unknown-name setting). `SYSDATETIME()` is fixed like `GETDATE()`. A lint warning can carry a fix of several edits (TOP removes the clause and appends the LIMIT at the end of its query or subquery, in the case TOP was written); the editor offers lint fixes only while the text is the version they were computed for. Left alone, because they are valid Postgres: `[` after a name, `)`, `]` or `ARRAY` (subscripts and constructors), `+` beside a literal that starts with a digit or follows a type word (`'1 day'`, `date '2020-01-01'`) or is cast with `::`, `ISNULL` not followed by `(`, and `getdate`, `isnull` or `len` when the catalog has a function of that name.
+
 ## Testing
 
 - Sidecar unit tests: identifier quoting, SQLSTATE mapping, position to line and column, value rendering, the auth allowlist.

@@ -39,6 +39,8 @@
   let loading = $state(true);
   /** Run error marks: message id to the decoration that tracks its range through edits. */
   let marks = new Map<number, string>();
+  /** Fixes from the last lint (T-SQL habits), valid only while the text is the version they were computed for. */
+  let lintFixes: { version: number; fixes: QuickFix[] } | undefined;
 
   onMount(() => {
     let disposed = false;
@@ -76,13 +78,24 @@
         timer = setTimeout(async () => {
           if (!editor || !model || model.isDisposed()) return;
           const info = intellisense?.();
-          if (!info?.enabled || !info.warnUnknownNames) return monaco!.editor.setModelMarkers(model, "panoptic-lint", []);
+          // Postgres tabs always get the T-SQL habit warnings; the setting covers the unknown-name check.
+          const habits = info?.options.language === "pgsql";
+          if (!info?.enabled || (!info.warnUnknownNames && !habits)) {
+            lintFixes = undefined;
+            return monaco!.editor.setModelMarkers(model, "panoptic-lint", []);
+          }
           for (const c of info.catalogs) client.sync(c.key, c.catalog, c.version);
           const version = model.getVersionId();
           const position = editor.getPosition();
           if (!position) return;
-          const { warnings } = await client.lint(model.getValue(), model.getOffsetAt(position), info.keys, info.options.language);
+          const { warnings } = await client.lint(model.getValue(), model.getOffsetAt(position), info.keys, info.options.language, info.warnUnknownNames);
           if (model.isDisposed() || model.getVersionId() !== version) return;
+          lintFixes = {
+            version,
+            fixes: warnings.flatMap((w) =>
+              w.fix ? [{ range: range(model, w.start, w.end), label: w.fix.label, edits: w.fix.edits.map((e) => ({ range: range(model, e.start, e.end), text: e.text })) }] : [],
+            ),
+          };
           monaco!.editor.setModelMarkers(model, "panoptic-lint", warnings.map((w) => ({ ...range(model, w.start, w.end), severity: monaco!.MarkerSeverity.Warning, message: w.message })));
         }, LINT_DELAY_MS);
       };
@@ -126,14 +139,15 @@
   /** The error messages that have a place in the editor. */
   const placed = $derived(messages.filter((m) => m.kind === "error" && m.at));
 
-  /** Fixes for the current marks, at the ranges their decorations have moved to. */
+  /** Fixes for the current marks, at the ranges their decorations have moved to, and the last lint's if still current. */
   function fixes(): QuickFix[] {
     const model = editor?.getModel();
     if (!model) return [];
-    return placed.flatMap((m) => {
+    const errors = placed.flatMap((m) => {
       const range = m.fix && marks.has(m.id) ? model.getDecorationRange(marks.get(m.id)!) : null;
-      return range && m.fix ? [{ range, label: m.fix.label, insertText: m.fix.insertText }] : [];
+      return range && m.fix ? [{ range, label: m.fix.label, edits: [{ range, text: m.fix.insertText }] }] : [];
     });
+    return lintFixes?.version === model.getVersionId() ? [...errors, ...lintFixes.fixes] : errors;
   }
 
   /**

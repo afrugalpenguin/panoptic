@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type * as Monaco from "monaco-editor/editor/editor.api";
 import type { IntelliSenseClient } from "./client";
-import { registerIntelliSense, registerQuickFixes, shouldSuggestAfterSpace, toMonacoItem } from "./providers";
+import { quickFixes, registerIntelliSense, registerQuickFixes, shouldSuggestAfterSpace, toMonacoItem } from "./providers";
 
 const kinds = { Struct: 1, Field: 2, Keyword: 3, Function: 4, Method: 5, Variable: 6, Module: 7, TypeParameter: 8, Interface: 9, Reference: 10, Property: 11, Folder: 12 };
 const range = { startLineNumber: 1, startColumn: 15, endLineNumber: 1, endColumn: 18 };
@@ -57,5 +57,23 @@ describe("registration", () => {
   it("opens the list after CALL and RETURNING", () => {
     expect(shouldSuggestAfterSpace("call ")).toBe(true);
     expect(shouldSuggestAfterSpace("delete from t returning ")).toBe(true);
+  });
+});
+
+describe("quick fixes", () => {
+  it("apply every edit of a fix whose mark touches the range", () => {
+    let provider: Monaco.languages.CodeActionProvider | undefined;
+    const monaco = { languages: { registerCodeActionProvider: (_: string, p: Monaco.languages.CodeActionProvider) => void (provider = p) } } as unknown as typeof Monaco;
+    registerQuickFixes(monaco);
+    const at = (line: number, start: number, end: number) => ({ startLineNumber: line, startColumn: start, endLineNumber: line, endColumn: end });
+    const model = { uri: "file:///q" };
+    quickFixes.set(model, () => [
+      { range: at(1, 8, 14), label: "limit 10", edits: [{ range: at(1, 8, 15), text: "" }, { range: at(1, 30, 30), text: " limit 10" }] },
+      { range: at(3, 1, 3), label: "now()", edits: [{ range: at(3, 1, 3), text: "now()" }] },
+    ]);
+    const result = provider!.provideCodeActions(model as never, at(1, 9, 9) as never, { markers: [] } as never, {} as never) as Monaco.languages.CodeActionList;
+    expect(result.actions.map((a) => [a.title, a.edit!.edits.map((e) => (e as Monaco.languages.IWorkspaceTextEdit).textEdit.text)])).toEqual([
+      ["Change to limit 10", ["", " limit 10"]],
+    ]);
   });
 });

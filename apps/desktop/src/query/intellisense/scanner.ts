@@ -198,7 +198,7 @@ function lex(
 const lower = (t: Token | undefined) => (t?.type === "word" ? t.text.toLowerCase() : "");
 
 /** A GO batch separator: the word GO alone on its line. */
-function isGo(text: string, start: number, end: number): boolean {
+export function isGo(text: string, start: number, end: number): boolean {
   if (end - start !== 2 || text.slice(start, end).toLowerCase() !== "go") return false;
   const lineStart = text.lastIndexOf("\n", start - 1) + 1;
   const lineEnd = text.indexOf("\n", end);

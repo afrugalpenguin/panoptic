@@ -22,21 +22,24 @@ export interface ModelInfo {
 /** Set by QueryEditor for each model it creates. */
 export const models = new WeakMap<object, () => ModelInfo | undefined>();
 
-/** A quick fix on a run error's mark: replace the name at range with the suggestion. */
+/** A quick fix on a mark (a run error's name, or a lint warning): offered where range is, applied as edits. */
 export interface QuickFix {
   range: Monaco.IRange;
   label: string;
-  insertText: string;
+  edits: { range: Monaco.IRange; text: string }[];
 }
 
-/** Set by QueryEditor for each model: the fixes for its current error marks, at their current ranges. */
+/** Set by QueryEditor for each model: the fixes for its current error marks and warnings, at their current ranges. */
 export const quickFixes = new WeakMap<object, () => QuickFix[]>();
 
 const touches = (a: Monaco.IRange, b: Monaco.IRange) =>
   !(a.endLineNumber < b.startLineNumber || (a.endLineNumber === b.startLineNumber && a.endColumn < b.startColumn) ||
     b.endLineNumber < a.startLineNumber || (b.endLineNumber === a.startLineNumber && b.endColumn < a.startColumn));
 
-/** "Did you mean" fixes from run errors (docs/query-editor.md, "Error location"), offered on the error's mark. */
+/**
+ * "Did you mean" fixes from run errors (docs/query-editor.md, "Error location") and the Postgres T-SQL habit fixes,
+ * offered on their marks.
+ */
 export function registerQuickFixes(monaco: typeof Monaco): void {
   for (const language of ["tsql", "pgsql"]) {
     monaco.languages.registerCodeActionProvider(language, {
@@ -48,7 +51,7 @@ export function registerQuickFixes(monaco: typeof Monaco): void {
             kind: "quickfix",
             isPreferred: true,
             diagnostics: context.markers.filter((m) => touches(m, f.range)),
-            edit: { edits: [{ resource: model.uri, textEdit: { range: f.range, text: f.insertText }, versionId: undefined }] },
+            edit: { edits: f.edits.map((e) => ({ resource: model.uri, textEdit: { range: e.range, text: e.text }, versionId: undefined })) },
           }));
         return { actions, dispose() {} };
       },
