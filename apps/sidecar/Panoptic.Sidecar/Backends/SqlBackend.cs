@@ -150,12 +150,25 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
 
     /// <summary>
     /// Runs the text batch by batch (GO separates batches). In read-only environments it runs inside a transaction
-    /// that is rolled back at the end. That is a guard, not a permission boundary: a COMMIT in the script ends it
-    /// (reported as Committed, and the remaining batches are skipped), and side effects outside the transaction
-    /// (xp_cmdshell, sp_send_dbmail, linked servers) are never rolled back.
+    /// that is rolled back at the end, in two layers:
+    /// <list type="bullet">
+    /// <item>Scripts with COMMIT, ROLLBACK, SET IMPLICIT_TRANSACTIONS or dynamic SQL are refused before they run
+    /// (<see cref="ReadOnlyScript"/>).</item>
+    /// <item>The guard runs with IMPLICIT_TRANSACTIONS ON, so its transaction starts two levels deep: a procedure's
+    /// unbalanced COMMIT only takes it to one, and any statement after a full commit opens a new transaction that
+    /// is rolled back too.</item>
+    /// </list>
+    /// That is a guard, not a permission boundary. A procedure written to commit every level still commits what ran
+    /// before it (reported as Committed, and the remaining batches are skipped), and side effects outside the
+    /// transaction (xp_cmdshell, sp_send_dbmail, linked servers, identity and sequence values) are never rolled back.
     /// </summary>
     public async Task ExecuteAsync(QueryTarget target, string? secret, string text, IQuerySink sink, CancellationToken ct)
     {
+        if (target.ReadOnly && ReadOnlyScript.FindForbidden(text) is { } forbidden)
+            throw new RpcException(RpcException.InvalidParams,
+                $"{target.Environment!.Name} is read-only, and line {forbidden.Line} has {forbidden.Statement}, which would end Panoptic's rollback guard. "
+                + "A read-only run is already one transaction that is rolled back, so remove it, or clear the environment's read-only flag.");
+
         await using var conn = await OpenAsync(target.Connection, secret, target.Database, ct);
         conn.InfoMessage += (_, e) =>
         {
@@ -170,7 +183,18 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
                     $"{target.Environment!.Name} is read-only, but Synapse serverless pools do not support transactions, so Panoptic cannot roll queries back here. Use a read-only login, or clear the environment's read-only flag.");
         }
 
+        if (target.ReadOnly)
+        {
+            await using var implicitOn = new SqlCommand("SET IMPLICIT_TRANSACTIONS ON", conn) { CommandTimeout = 30 };
+            await implicitOn.ExecuteNonQueryAsync(ct);
+        }
         await using var tx = target.ReadOnly ? conn.BeginTransaction() : null;
+        if (tx is not null)
+        {
+            // SqlClient's BeginTransaction opens one level; a second means one stray COMMIT cannot end the guard.
+            await using var nest = new SqlCommand("BEGIN TRANSACTION", conn, tx) { CommandTimeout = 30 };
+            await nest.ExecuteNonQueryAsync(ct);
+        }
         var committed = false;
         var failed = false;
         var batchLine = 1;
@@ -207,6 +231,7 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
         }
         finally
         {
+            // IMPLICIT_TRANSACTIONS needs no reset: the pool's sp_reset_connection clears it on reuse.
             if (tx is not null) await EndReadOnly(sink, target, conn, tx, committed, failed);
         }
     }
