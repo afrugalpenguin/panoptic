@@ -59,7 +59,8 @@ A serverless account reads `serverless`, and anything else that fails reads `unk
 Items are the first 100 ids the query returns, in no particular order; the leaf shows the id only,
 not the document. Stored procedures, triggers and UDFs show their names only, not their bodies.
 
-Node ids are opaque paths such as `env:<id>/conn:<id>/db:Orders/c:Orders/f:items/item:<id>`, with
+Node ids are opaque paths such as `conn:<id>/db:Orders/c:Orders/f:items/item:<id>` (a connection's id never
+includes its environment, so moving it keeps every id below it), with
 each value URI-escaped. Only the sidecar parses them.
 
 ### Errors
