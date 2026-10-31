@@ -14,6 +14,8 @@ export interface SeekEnv {
   /** The environment's node id. */
   id: string;
   name: string;
+  /** The environment's colour from config, for the row's swatch. */
+  color?: string;
   hosts: SeekHost[];
 }
 
