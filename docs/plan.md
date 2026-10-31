@@ -61,7 +61,7 @@ The tree is environment-first, and every backend presents the same node contract
 
 **Hierarchy**
 
-1. Environment (dev, UAT, prod, a client sandbox): a colour band and a name, user-defined, with an optional read-only flag that disables every write action beneath it.
+1. Environment (dev, UAT, prod, a client sandbox): a colour band and a name, user-defined, with an optional read-only flag that guards against writes beneath it (queries rolled back and transaction control refused on SQL Server, enforced by the server on PostgreSQL; a read-only login is the real boundary).
 2. Connection: a SQL Server instance, a Cosmos account or a Synapse SQL endpoint (dedicated or serverless). Several per environment.
 3. SQL Server: Databases, then per database Tables, Views, Programmability (procs, functions, types), Synonyms, Security (read-only listing only). Synapse: as SQL Server, plus External tables. Cosmos: Databases, then per database Containers, then per container Items (sampled), Indexing policy, Stored procedures, Triggers, UDFs, Partition key and throughput as leaf properties.
 4. Leaf objects: Table has Columns, Keys, Indexes, Constraints, Triggers; Proc and View have a Definition leaf that opens in Monaco read-only.
