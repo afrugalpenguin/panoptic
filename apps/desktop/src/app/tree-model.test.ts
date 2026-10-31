@@ -415,7 +415,7 @@ describe("TreeModel", () => {
     });
   });
 
-  describe("kind filter", () => {
+  describe("engine and text filters", () => {
     const conn = (id: string, kind: string): TreeNode => ({
       id, kind: "connection", label: id, icon: kind, hasChildren: true, actions: [],
       meta: { endpoint: `${id}.x.com`, connectionKind: kind },
@@ -438,28 +438,95 @@ describe("TreeModel", () => {
       expect(model.rows().map((r) => r.key)).toEqual(["dev", "prod"]);
     });
 
-    it("derives chips from the loaded connections", async () => {
-      expect((await loaded()).kinds()).toEqual([
+    it("derives engines from the loaded connections", async () => {
+      expect((await loaded()).engines()).toEqual([
         { kind: "sql", badge: { letters: "S", color: "#2d5aa0", name: "SQL" }, count: 3 },
         { kind: "cosmos", badge: { letters: "C", color: "#1f7a74", name: "Cosmos" }, count: 1 },
       ]);
     });
 
-    it("filters to one kind, hides environments with none, and counts what is shown", async () => {
+    it("hides engines, hides environments left with none, and counts what is shown", async () => {
       const model = await loaded();
       await model.toggle("dev");
       await model.toggle("prod");
-      model.setKindFilter("cosmos");
+      model.setHiddenEngines(["sql"]);
       const rows = model.rows();
       expect(rows.map((r) => r.key)).toEqual(["dev", "dev/c1"]);
       expect(rows[0].type === "node" && rows[0].count).toBe(1);
 
-      model.setKindFilter(undefined);
+      model.setHiddenEngines([]);
       expect(model.rows().map((r) => r.key)).toEqual(["dev", "dev/s1", "dev/s2", "dev/c1", "prod", "prod/s1"]);
+    });
+
+    it("keeps several engines on at once", async () => {
+      const model = await loaded();
+      await model.toggle("dev");
+      model.setHiddenEngines(["cosmos"]);
+      expect(model.rows().map((r) => r.key)).toEqual(["dev", "dev/s1", "dev/s2", "prod"]);
+      model.setHiddenEngines(["cosmos", "sql"]);
+      expect(model.rows().map((r) => r.key)).toEqual([]);
+    });
+
+    it("forgets a hidden engine once no connection has it", async () => {
+      const model = await loaded();
+      model.setHiddenEngines(["cosmos", "mongo"]);
+      expect([...model.hiddenEngines()]).toEqual(["cosmos"]);
+    });
+
+    it("text filter matches endpoint or environment name, substring, ignoring case, and expands nothing", async () => {
+      const model = await loaded();
+      await model.toggle("dev");
+      model.setTextFilter("S2.X");
+      expect(model.rows().map((r) => r.key)).toEqual(["dev", "dev/s2"]);
+      expect(model.rows()[0]).toMatchObject({ count: 1 });
+
+      // Environment name: every connection in it matches, but a collapsed environment stays collapsed.
+      model.setTextFilter("PRO");
+      expect(model.rows().map((r) => r.key)).toEqual(["prod"]);
+      expect(model.rows()[0]).toMatchObject({ count: 1 });
+
+      model.setTextFilter("nothing-like-this");
+      expect(model.rows()).toEqual([]);
+      model.setTextFilter("");
+      expect(model.rows().map((r) => r.key)).toEqual(["dev", "dev/s1", "dev/s2", "dev/c1", "prod"]);
+    });
+
+    it("text and engine filters combine", async () => {
+      const model = await loaded();
+      await model.toggle("dev");
+      model.setTextFilter("dev");
+      model.setHiddenEngines(["sql"]);
+      expect(model.rows().map((r) => r.key)).toEqual(["dev", "dev/c1"]);
+    });
+
+    it("filtering reads the built model: no loads and no new label build", async () => {
+      const { model, load } = fixture({
+        "": [env("dev"), env("prod")],
+        dev: [conn("dev/s1", "sql"), conn("dev/c1", "cosmos")],
+        prod: [conn("prod/s1", "sql")],
+      });
+      await model.loadRoot();
+      await model.preload(["dev", "prod"]);
+      const calls = load.mock.calls.length;
+      const engines = model.engines();
+      model.setTextFilter("s1");
+      model.setHiddenEngines(["cosmos"]);
+      model.rows();
+      expect(load.mock.calls.length).toBe(calls);
+      expect(model.engines()).toBe(engines);
+    });
+
+    it("summarises environments and connections, and what matches when anything is hidden", async () => {
+      const model = await loaded();
+      expect(model.summary()).toEqual({ environments: 2, connections: 4, matching: 4 });
+      model.setTextFilter("dev");
+      expect(model.summary()).toEqual({ environments: 2, connections: 4, matching: 3 });
+      model.setHiddenEngines(["cosmos"]);
+      expect(model.summary()).toEqual({ environments: 2, connections: 4, matching: 2 });
     });
   });
 
-  it("drops a deleted environment's connections from the kind chips", async () => {
+  it("drops a deleted environment's connections from the engines", async () => {
     const conn = (id: string, kind: string): TreeNode => ({
       id, kind: "connection", label: id, icon: kind, hasChildren: true, actions: [], meta: { endpoint: `${id}.x.com`, connectionKind: kind },
     });
@@ -468,11 +535,11 @@ describe("TreeModel", () => {
     const { model } = fixture(children);
     await model.loadRoot();
     await model.preload(["dev", "old"]);
-    expect(model.kinds().map((k) => k.kind)).toEqual(["sql", "cosmos"]);
+    expect(model.engines().map((k) => k.kind)).toEqual(["sql", "cosmos"]);
 
     children[""] = [env("dev")];
     await model.reload("");
-    expect(model.kinds().map((k) => k.kind)).toEqual(["sql"]);
+    expect(model.engines().map((k) => k.kind)).toEqual(["sql"]);
   });
 
   it("orders environments by explorer.envOrder, the rest in order added, with one change notification", async () => {
@@ -618,13 +685,22 @@ describe("connections without an environment", () => {
     expect(load.mock.calls.length).toBe(calls);
   });
 
-  it("filters by kind: the group needs a loose connection of that kind, an empty environment always hides", async () => {
+  it("filters by engine: the group needs a loose connection of a shown engine, an empty environment always hides", async () => {
     const { model } = await mixed();
-    model.setKindFilter("cosmos");
+    model.setHiddenEngines(["sql"]);
     expect(labels(model)).toEqual(["<group>", "  conn:b"]);
     expect(byKey(model.rows())[UNGROUPED]).toMatchObject({ count: 1 });
-    model.setKindFilter("sql");
+    model.setHiddenEngines(["cosmos"]);
     expect(labels(model)).toEqual(["dev", "<group>", "  conn:a"]);
+  });
+
+  it("filters loose connections by text; no environment name to match, an empty environment always hides", async () => {
+    const { model } = await mixed();
+    model.setTextFilter("conn:b");
+    expect(labels(model)).toEqual(["<group>", "  conn:b"]);
+    model.setTextFilter("empty");
+    expect(labels(model)).toEqual([]);
+    expect(model.summary()).toEqual({ environments: 2, connections: 3, matching: 0 });
   });
 
   it("orders environments by envOrder and keeps the group last", async () => {

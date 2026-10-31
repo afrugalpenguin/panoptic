@@ -34,3 +34,6 @@ apps/desktop/src-tauri/CHANGELOG.md
 
 # Local dev database secrets
 docker/.env
+
+# Vitest browser-mode failure screenshots
+.vitest/

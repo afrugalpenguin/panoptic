@@ -13,7 +13,6 @@
 <style>
   .segmented {
     overflow: hidden;
-    text-overflow: ellipsis;
     white-space: nowrap;
     min-width: 0;
   }

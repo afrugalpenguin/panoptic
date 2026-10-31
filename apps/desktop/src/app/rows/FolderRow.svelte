@@ -26,7 +26,6 @@
     color: var(--tree-folder);
     font: 12.5px/1 var(--font-ui);
     overflow: hidden;
-    text-overflow: ellipsis;
     white-space: nowrap;
   }
   .count {

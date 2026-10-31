@@ -106,7 +106,7 @@
   <h3 class="full">Explorer</h3>
 
   <span></span>
-  <label class="check"><input type="checkbox" bind:checked={showKindBadge} /> Show kind badges (S, C, Sy...) on connections</label>
+  <label class="check"><input type="checkbox" bind:checked={showKindBadge} /> Show engine badges (S, C, Sy...) on connections</label>
 
   <label for="s-font">Row font</label>
   <select id="s-font" bind:value={rowFont}>

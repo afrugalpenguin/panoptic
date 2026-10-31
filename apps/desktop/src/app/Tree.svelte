@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { dropTarget, selectableRow, UNGROUPED, type Row, type TreeModel } from "./tree-model";
+  import type { Snippet } from "svelte";
+  import { dropTarget, ROW_HEIGHT, selectableRow, UNGROUPED, type Row, type TreeModel } from "./tree-model";
   import ConnectionRow from "./rows/ConnectionRow.svelte";
   import EnvHeaderRow from "./rows/EnvHeaderRow.svelte";
   import GroupHeaderRow from "./rows/GroupHeaderRow.svelte";
@@ -10,6 +11,10 @@
   /** A connection being dragged onto an environment (docs/explorer-ux.md, "Grouping"). Carries the connection id. */
   const CONNECTION_MIME = "application/x-panoptic-connection";
   const TYPE_TO_JUMP_MS = 700;
+  /** The explorer footer sits over the bottom of the tree (docs/explorer-ux.md, "Footer"). */
+  const FOOTER_HEIGHT = 30;
+  /** The scrollbar thumb stays visible this long after the last scroll. */
+  const SCROLLING_MS = 800;
 
   let {
     model,
@@ -22,6 +27,7 @@
     disconnected = false,
     showKindBadge = true,
     rowFont = "mono",
+    footer,
   }: {
     model: TreeModel;
     rows: Row[];
@@ -37,6 +43,8 @@
     /** explorer.showKindBadge and explorer.rowFont: CSS switches on the tree, no row recomputation. */
     showKindBadge?: boolean;
     rowFont?: "mono" | "ui";
+    /** Drawn in a 30px bar stuck to the bottom of the scroll area, always present so the layout never jumps. */
+    footer?: Snippet;
   } = $props();
 
   let scroller: HTMLDivElement;
@@ -47,6 +55,9 @@
   let typedAt = 0;
   /** The row a connection is being dragged over, highlighted as the drop target. */
   let dropKey = $state<string>();
+  /** Shows the scrollbar thumb while scrolling. */
+  let scrolling = $state(false);
+  let scrollingTimer: ReturnType<typeof setTimeout> | undefined;
 
   const totalHeight = $derived(rows.length ? rows[rows.length - 1].top + rows[rows.length - 1].height : 0);
   const selectedIndex = $derived(rows.findIndex((r) => r.key === selectedKey));
@@ -79,6 +90,30 @@
   });
   const windowTop = $derived(start < rows.length ? rows[start].top - rows[start].gapBefore : 0);
 
+  /** Index of each group's header row (environment or Ungrouped), in tree order. Flat trees have none. */
+  const headers = $derived(rows.flatMap((r, i) => (r.rowKind === "header" ? [i] : [])));
+  const headerOf = $derived(new Map(headers.map((i) => [rows[i].envId, i])));
+
+  /**
+   * Sticky environment header (docs/explorer-ux.md, "Tree"): the header of the group at the top of the viewport,
+   * pinned while its children scroll, and pushed up by the next group's header as it arrives.
+   */
+  const pinned = $derived.by(() => {
+    const top = rows[firstBelow(scrollTop)];
+    const at = top && headerOf.get(top.envId);
+    if (at === undefined || rows[at].top >= scrollTop) return undefined;
+    const next = rows[headers[headers.indexOf(at) + 1]];
+    const offset = next ? Math.min(0, next.top - next.gapBefore - scrollTop - rows[at].height) : 0;
+    return { row: rows[at], offset };
+  });
+
+  function onScroll() {
+    scrollTop = scroller.scrollTop;
+    scrolling = true;
+    clearTimeout(scrollingTimer);
+    scrollingTimer = setTimeout(() => (scrolling = false), SCROLLING_MS);
+  }
+
   /** Selects the row at index, or the nearest selectable one in direction dir (then the other way). */
   function select(index: number, dir: 1 | -1 = 1) {
     if (rows.length === 0) return;
@@ -88,9 +123,12 @@
     if (!rows[i]) for (i = from; rows[i] && !selectableRow(rows[i]); ) i -= dir;
     if (!rows[i]) return;
     selectedKey = rows[i].key;
-    const { top, height: h } = rows[i];
-    if (top < scroller.scrollTop) scroller.scrollTop = top;
-    else if (top + h > scroller.scrollTop + scroller.clientHeight) scroller.scrollTop = top + h - scroller.clientHeight;
+    const { top, height: h, rowKind, envId } = rows[i];
+    // Keep the row clear of the pinned header above and the footer below.
+    const above = rowKind !== "header" && headerOf.has(envId) ? ROW_HEIGHT.header : 0;
+    const below = footer ? FOOTER_HEIGHT : 0;
+    if (top - above < scroller.scrollTop) scroller.scrollTop = top - above;
+    else if (top + h > scroller.scrollTop + scroller.clientHeight - below) scroller.scrollTop = top + h - scroller.clientHeight + below;
   }
 
   /** Seek's Esc (docs/landing.md) hands focus here. */
@@ -241,79 +279,149 @@
   }
 </script>
 
+<!-- One row's markup, drawn by the virtualiser and again for the pinned header (the same row, not a copy). -->
+{#snippet treeRow(row: Row, pin: boolean)}
+  <!-- Keys are handled once on the tree (Enter on an error row opens Problems). -->
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <div
+    class="tree-row {row.rowKind}"
+    class:selected={row.key === selectedKey}
+    class:drop-over={row.key === dropKey}
+    role="treeitem"
+    tabindex="-1"
+    aria-selected={row.key === selectedKey}
+    aria-expanded={row.type === "group" || (row.type === "node" && row.node.hasChildren) ? row.expanded : undefined}
+    style:height="{row.height}px"
+    style:margin-top="{pin ? 0 : row.gapBefore}px"
+    style:padding-left="{row.indent + 4 + (row.rowKind === "header" ? 6 : 0)}px"
+    draggable={row.type === "node"}
+    ondragstart={(e) => onRowDragStart(e, row)}
+    ondragover={(e) => onRowDragOver(e, row)}
+    ondragleave={() => onRowDragLeave(row)}
+    ondrop={(e) => onRowDrop(e, row)}
+    onmousedown={(e) => onRowMouseDown(e, row)}
+    onclick={() => row.type === "error" && onOpenProblem(row.parentId)}
+    ondblclick={() => onActivate(row)}
+    oncontextmenu={(e) => {
+      e.preventDefault();
+      if (!selectableRow(row)) return;
+      selectedKey = row.key;
+      onContextMenu(row, e.clientX, e.clientY);
+    }}
+  >
+    {#if row.type === "group"}
+      <GroupHeaderRow {row} />
+    {:else if row.type === "node" && row.rowKind === "header"}
+      <EnvHeaderRow {row} />
+    {:else if row.type === "node" && row.rowKind === "connection"}
+      <ConnectionRow {row} {disconnected} />
+    {:else if row.type === "node" && row.rowKind === "folder"}
+      <FolderRow {row} />
+    {:else}
+      <LeafRow {row} />
+    {/if}
+  </div>
+{/snippet}
+
 <div
   class="tree"
   class:focused
+  class:scrolling
   class:no-badge={!showKindBadge}
   class:font-ui={rowFont === "ui"}
   role="tree"
   tabindex="0"
   bind:this={scroller}
   bind:clientHeight={height}
-  onscroll={() => (scrollTop = scroller.scrollTop)}
+  onscroll={onScroll}
   onkeydown={onKeydown}
   onfocus={() => (focused = true)}
   onblur={() => (focused = false)}
 >
-  <div class="spacer" style:height="{totalHeight}px">
+  {#if pinned}
+    <!-- The real header row is still in the list below (scrolled up out of view), so this copy is hidden from
+         assistive tech; the mouse uses it like the row itself. -->
+    <div class="pin" aria-hidden="true">
+      <div
+        class="env-group pinned"
+        class:loose={pinned.row.loose}
+        style:--env={pinned.row.envColor ?? "var(--text-muted)"}
+        style:transform="translateY({pinned.offset}px)"
+      >
+        {@render treeRow(pinned.row, true)}
+      </div>
+    </div>
+  {/if}
+  <div class="spacer" style:min-height="{totalHeight}px">
     <div class="window" style:transform="translateY({windowTop}px)">
       <!-- Environments are contiguous in the tree, so an env id appears at most once among the visible groups. -->
       {#each groups as group (group.envId)}
         <div class="env-group" class:loose={group.loose} style:--env={group.color ?? "var(--text-muted)"}>
           {#each group.rows as row (row.key)}
-            <!-- Keys are handled once on the tree (Enter on an error row opens Problems). -->
-            <!-- svelte-ignore a11y_click_events_have_key_events -->
-            <div
-              class="tree-row {row.rowKind}"
-              class:selected={row.key === selectedKey}
-              class:drop-over={row.key === dropKey}
-              role="treeitem"
-              tabindex="-1"
-              aria-selected={row.key === selectedKey}
-              aria-expanded={row.type === "group" || (row.type === "node" && row.node.hasChildren) ? row.expanded : undefined}
-              style:height="{row.height}px"
-              style:margin-top="{row.gapBefore}px"
-              style:padding-left="{row.indent + 4 + (row.rowKind === "header" ? 6 : 0)}px"
-              draggable={row.type === "node"}
-              ondragstart={(e) => onRowDragStart(e, row)}
-              ondragover={(e) => onRowDragOver(e, row)}
-              ondragleave={() => onRowDragLeave(row)}
-              ondrop={(e) => onRowDrop(e, row)}
-              onmousedown={(e) => onRowMouseDown(e, row)}
-              onclick={() => row.type === "error" && onOpenProblem(row.parentId)}
-              ondblclick={() => onActivate(row)}
-              oncontextmenu={(e) => {
-                e.preventDefault();
-                if (!selectableRow(row)) return;
-                selectedKey = row.key;
-                onContextMenu(row, e.clientX, e.clientY);
-              }}
-            >
-              {#if row.type === "group"}
-                <GroupHeaderRow {row} />
-              {:else if row.type === "node" && row.rowKind === "header"}
-                <EnvHeaderRow {row} />
-              {:else if row.type === "node" && row.rowKind === "connection"}
-                <ConnectionRow {row} {disconnected} />
-              {:else if row.type === "node" && row.rowKind === "folder"}
-                <FolderRow {row} />
-              {:else}
-                <LeafRow {row} />
-              {/if}
-            </div>
+            {@render treeRow(row, false)}
           {/each}
         </div>
       {/each}
     </div>
   </div>
+  {#if footer}
+    <div class="tree-footer" style:height="{FOOTER_HEIGHT}px">{@render footer()}</div>
+  {/if}
 </div>
 
 <style>
   .tree {
+    display: flex;
+    flex-direction: column;
     height: 100%;
-    overflow: auto;
+    /* Vertical only: nothing in the explorer scrolls sideways (docs/explorer-ux.md, "Principles"). */
+    overflow-x: hidden;
+    overflow-y: auto;
     outline: none;
     contain: strict;
+  }
+  /* A 6px thumb on a transparent track with no arrow buttons, shown on hover or while scrolling. WebView2 is
+     Chromium; scrollbar-width and scrollbar-color are left unset because they switch these rules off. */
+  .tree::-webkit-scrollbar {
+    width: 6px;
+    height: 0;
+  }
+  .tree::-webkit-scrollbar-track,
+  .tree::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  .tree::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+  .tree::-webkit-scrollbar-thumb {
+    border-radius: 3px;
+    background: transparent;
+  }
+  .tree:hover::-webkit-scrollbar-thumb,
+  .tree.scrolling::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+  }
+  .pin {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    height: 0;
+  }
+  .pinned {
+    background: var(--bg-pane);
+    box-shadow: 0 4px 4px -2px var(--explorer-sticky-shadow);
+  }
+  .tree-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 3;
+    flex: none;
+    box-sizing: border-box;
+    border-top: 1px solid var(--border);
+    background: var(--explorer-footer-bg);
+    backdrop-filter: blur(4px);
   }
   /* Hidden badges leave no gap: display none removes the flex item and its gap. */
   .tree.no-badge :global(.kind-badge) {
@@ -324,6 +432,8 @@
   }
   .spacer {
     position: relative;
+    /* Fills a short tree so the footer stays at the bottom. */
+    flex: 1 0 auto;
   }
   .window {
     position: absolute;
@@ -337,6 +447,8 @@
     box-sizing: border-box;
     padding-right: 10px;
     white-space: nowrap;
+    /* Long labels are clipped at the panel edge, no ellipsis: the dim suffix goes first. */
+    overflow: clip;
     cursor: default;
     /* Every row continues the group's bar: solid env colour on headers, darkened elsewhere. */
     box-shadow: inset 4px 0 0 var(--env-dark);
