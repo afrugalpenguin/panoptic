@@ -293,58 +293,79 @@ public sealed class QueryIntegrationTests : IDisposable
         Assert.DoesNotContain(texts, t => t!.Contains("rolled back"));
     }
 
-    /// <summary>Runs <paramref name="script"/> ({T} stands for a scratch table) in a read-only environment; returns the summary and the rows left in {T}.</summary>
-    private async Task<(QuerySummary Summary, int[] Rows)> RunReadOnly(string script)
+    /// <summary>
+    /// Runs <paramref name="script"/> in a read-only environment and returns the summary and the rows left in {T}.
+    /// {T} stands for a scratch table and {P} for a scratch procedure name; <paramref name="setup"/> runs first,
+    /// outside the guard (to create procedures).
+    /// </summary>
+    private async Task<(QuerySummary Summary, int[] Rows)> RunReadOnly(string script, string? setup = null)
     {
-        var table = $"dbo.zz_ro_guard_{Guid.NewGuid():N}";
-        await Service().ExecuteAsync(new QueryRequest("setup", "conn:sql1/db:Orders", $"CREATE TABLE {table} (x int)"), default);
+        var id = Guid.NewGuid().ToString("N");
+        string Fill(string s) => s.Replace("{T}", $"dbo.zz_ro_guard_{id}").Replace("{P}", $"dbo.zz_ro_proc_{id}");
+        await Service().ExecuteAsync(new QueryRequest("setup", "conn:sql1/db:Orders", Fill("CREATE TABLE {T} (x int)")), default);
         try
         {
-            var summary = await Service(readOnly: true).ExecuteAsync(new QueryRequest("ro", "conn:sql1/db:Orders", script.Replace("{T}", table)), default);
-            await Service().ExecuteAsync(new QueryRequest("check", "conn:sql1/db:Orders", $"SELECT x FROM {table} ORDER BY x"), default);
+            if (setup is not null) await Service().ExecuteAsync(new QueryRequest("setup2", "conn:sql1/db:Orders", Fill(setup)), default);
+            var summary = await Service(readOnly: true).ExecuteAsync(new QueryRequest("ro", "conn:sql1/db:Orders", Fill(script)), default);
+            await Service().ExecuteAsync(new QueryRequest("check", "conn:sql1/db:Orders", Fill("SELECT x FROM {T} ORDER BY x")), default);
             var rows = Notes("query.rows").Last(n => n.GetProperty("queryId").GetString() == "check").GetProperty("rows").EnumerateArray().Select(r => r[0].GetInt32()).ToArray();
             return (summary, rows);
         }
         finally
         {
-            await Service().ExecuteAsync(new QueryRequest("cleanup", "conn:sql1/db:Orders", $"DROP TABLE {table}"), default);
+            await Service().ExecuteAsync(new QueryRequest("cleanup", "conn:sql1/db:Orders", Fill("DROP PROCEDURE IF EXISTS {P}; DROP TABLE {T}")), default);
         }
     }
 
     [SqlFact(NeedsWindows = true), Trait("Category", "SqlIntegration")]
-    public async Task Read_only_balanced_begin_commit_stays_inside_the_guard()
+    public async Task A_read_only_run_does_not_leave_its_pooled_connection_in_implicit_transaction_mode()
     {
-        // The script's BEGIN TRAN nests (@@TRANCOUNT 2) and its COMMIT only takes it back to 1.
-        var (summary, rows) = await RunReadOnly("BEGIN TRAN; INSERT {T} VALUES (1); COMMIT; INSERT {T} VALUES (2)");
+        // Same connection string, so the next query reuses the pooled connection (same session) the read-only run
+        // returned. The guard turns IMPLICIT_TRANSACTIONS on; sp_reset_connection must have turned it off again, or
+        // every later write on that connection would silently never commit.
+        await Service(readOnly: true).ExecuteAsync(new QueryRequest("ro", "conn:sql1/db:Orders", "SELECT 1"), default);
+        await Service().ExecuteAsync(new QueryRequest("rw", "conn:sql1/db:Orders", "SELECT @@OPTIONS & 2 AS implicit_transactions"), default);
 
-        Assert.Null(summary.Error);
-        Assert.True(summary.RolledBack);
+        Assert.Equal(0, Notes("query.rows").Last(n => n.GetProperty("queryId").GetString() == "rw").GetProperty("rows")[0][0].GetInt32());
+    }
+
+    [SqlFact(NeedsWindows = true), Trait("Category", "SqlIntegration")]
+    public async Task Read_only_refuses_a_script_with_transaction_control_before_running_it()
+    {
+        // A COMMIT would end the guard and make every statement after it in the batch permanent.
+        var (summary, rows) = await RunReadOnly("INSERT {T} VALUES (1);\nCOMMIT; INSERT {T} VALUES (2)");
+
+        Assert.NotNull(summary.Error);
+        Assert.Contains("COMMIT", summary.Error);
+        Assert.Contains("line 2", summary.Error);
         Assert.False(summary.Committed);
         Assert.Empty(rows);
     }
 
     [SqlFact(NeedsWindows = true), Trait("Category", "SqlIntegration")]
-    public async Task Read_only_commit_is_reported_and_stops_later_batches()
+    public async Task Read_only_contains_a_procedure_that_commits()
     {
-        var (summary, rows) = await RunReadOnly("INSERT {T} VALUES (1); COMMIT\nGO\nINSERT {T} VALUES (2)");
+        // The procedure's COMMIT is not in the script, so the static check cannot see it. The guard's second
+        // transaction level absorbs it, and implicit transactions catch the insert after it.
+        var (summary, rows) = await RunReadOnly("EXEC {P}",
+            "CREATE PROCEDURE {P} AS BEGIN INSERT {T} VALUES (1); COMMIT; INSERT {T} VALUES (2); END");
 
-        Assert.Null(summary.Error);
-        Assert.True(summary.Committed);
-        Assert.False(summary.RolledBack);
-        Assert.Equal([1], rows); // committed by the script; the batch after it did not run
-        Assert.Contains(Notes("query.message"), m => m.GetProperty("kind").GetString() == "error" && m.GetProperty("text").GetString()!.Contains("ended the read-only guard"));
+        Assert.False(summary.Committed);
+        Assert.True(summary.RolledBack);
+        Assert.Empty(rows);
     }
 
     [SqlFact(NeedsWindows = true), Trait("Category", "SqlIntegration")]
-    public async Task Read_only_commit_then_begin_tran_is_still_caught()
+    public async Task Read_only_reports_a_procedure_that_commits_every_level()
     {
-        // @@TRANCOUNT is back to 1 after this batch, but the open transaction is the script's.
-        var (summary, rows) = await RunReadOnly("INSERT {T} VALUES (1); COMMIT; BEGIN TRAN; INSERT {T} VALUES (2)\nGO\nINSERT {T} VALUES (3)");
+        // Deliberately escaping: what came before the loop is committed, but it is reported, and the insert after it
+        // falls into an implicit transaction that the guard rolls back.
+        var (summary, rows) = await RunReadOnly("EXEC {P}",
+            "CREATE PROCEDURE {P} AS BEGIN INSERT {T} VALUES (1); WHILE @@TRANCOUNT > 0 COMMIT; INSERT {T} VALUES (2); END");
 
-        Assert.Null(summary.Error);
         Assert.True(summary.Committed);
-        Assert.False(summary.RolledBack);
         Assert.Equal([1], rows);
+        Assert.Contains(Notes("query.message"), m => m.GetProperty("kind").GetString() == "error" && m.GetProperty("text").GetString()!.Contains("ended the read-only guard"));
     }
 
     [SqlFact(NeedsWindows = true), Trait("Category", "SqlIntegration")]
