@@ -107,13 +107,33 @@
     };
   }
 
-  /** Blank secret while editing means "keep the stored one". */
-  const secretArg = () => (needsSecret ? (secret || (editing ? undefined : "")) : "");
+  /**
+   * A saved secret can be kept only while the edit still points where it was saved for: same type, server, sign-in,
+   * user and certificate trust (the sidecar enforces the same rule). Otherwise it has to be entered again.
+   */
+  const keepsSavedSecret = $derived.by(() => {
+    if (!initial) return false;
+    const c = config();
+    return (
+      c.kind === initial.kind &&
+      c.endpoint.toLowerCase() === initial.endpoint.toLowerCase() &&
+      c.auth === initial.auth &&
+      (c.user ?? null) === (initial.user ?? null) &&
+      c.trustServerCertificate === initial.trustServerCertificate
+    );
+  });
+  const secretName = $derived(auth === "key" ? "account key" : "password");
+
+  /** Blank secret means "keep the stored one" while that is allowed. */
+  const secretArg = () => (needsSecret ? (secret || (keepsSavedSecret ? undefined : "")) : "");
 
   function validate(): string {
     if (!endpoint.trim()) return kind === "cosmos" ? "Account URI is required" : "Server is required";
     if (login && !user.trim()) return "User is required";
-    if (needsSecret && !secret && !editing) return auth === "key" ? "Account key is required" : "Password is required";
+    if (needsSecret && !secret && !keepsSavedSecret)
+      return editing
+        ? `Enter the ${secretName} again: the server, user, sign-in or certificate setting changed, so the saved one is not sent.`
+        : auth === "key" ? "Account key is required" : "Password is required";
     return "";
   }
 
@@ -179,7 +199,7 @@
       type="password"
       bind:value={secret}
       autocomplete="off"
-      placeholder={editing ? "Leave blank to keep the saved one" : ""}
+      placeholder={keepsSavedSecret ? "Leave blank to keep the saved one" : ""}
     />
   {/if}
 
