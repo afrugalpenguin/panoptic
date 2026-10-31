@@ -7,7 +7,16 @@
     children,
     footer,
     wide = false,
-  }: { title: string; onClose: () => void; children: Snippet; footer: Snippet; wide?: boolean } = $props();
+    closeOnBackdrop = false,
+  }: {
+    title: string;
+    onClose: () => void;
+    children: Snippet;
+    footer: Snippet;
+    wide?: boolean;
+    /** Off by default: a click outside a form dialog would lose what was typed. */
+    closeOnBackdrop?: boolean;
+  } = $props();
 
   let dialog: HTMLDialogElement;
 
@@ -17,7 +26,13 @@
   });
 </script>
 
-<dialog bind:this={dialog} class:wide oncancel={(e) => (e.preventDefault(), onClose())}>
+<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions (Esc is the keyboard path) -->
+<dialog
+  bind:this={dialog}
+  class:wide
+  oncancel={(e) => (e.preventDefault(), onClose())}
+  onclick={(e) => closeOnBackdrop && e.target === dialog && onClose()}
+>
   <form method="dialog" onsubmit={(e) => e.preventDefault()}>
     <h2>{title}</h2>
     <div class="body">{@render children()}</div>

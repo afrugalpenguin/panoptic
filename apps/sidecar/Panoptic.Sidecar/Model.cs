@@ -74,6 +74,7 @@ public sealed record AppConfig(List<EnvironmentConfig> Environments, List<Connec
 public sealed record SaveConnectionParams(string? EnvironmentId, ConnectionConfig Connection, string? Secret);
 public sealed record TestConnectionParams(ConnectionConfig Connection, string? Secret);
 public sealed record IdParams(string Id);
+public sealed record PurgeSecretsParams(List<string>? ConnectionIds);
 public sealed record TreeChildrenParams(string NodeId);
 public sealed record TestConnectionResult(bool Ok, double ElapsedMs, string? Error);
 /// <param name="Database">Overrides the database the node resolves to (the tab's database picker).</param>
@@ -181,6 +182,7 @@ public sealed record StoreFile(AppConfig Config, Dictionary<string, string> Secr
 [JsonSerializable(typeof(SaveConnectionParams))]
 [JsonSerializable(typeof(TestConnectionParams))]
 [JsonSerializable(typeof(IdParams))]
+[JsonSerializable(typeof(PurgeSecretsParams))]
 [JsonSerializable(typeof(TreeChildrenParams))]
 [JsonSerializable(typeof(TestConnectionResult))]
 [JsonSerializable(typeof(DeviceCodePrompt))]
