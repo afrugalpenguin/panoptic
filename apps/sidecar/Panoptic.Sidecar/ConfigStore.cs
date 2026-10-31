@@ -77,6 +77,12 @@ public sealed class ConfigStore
         lock (_lock) return _file.Config.Environments.FirstOrDefault(e => e.Id == environmentId);
     }
 
+    /// <summary>The ids of every saved connection, in an environment or not.</summary>
+    public IReadOnlyCollection<string> ConnectionIds()
+    {
+        lock (_lock) return _file.Config.Environments.SelectMany(e => e.Connections).Concat(_file.Config.Connections).Select(c => c.Id).ToHashSet();
+    }
+
     public string? GetSecret(string connectionId)
     {
         lock (_lock) return _file.Secrets.GetValueOrDefault(connectionId);

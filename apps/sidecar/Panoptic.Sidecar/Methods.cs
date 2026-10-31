@@ -80,10 +80,13 @@ public static class Methods
             return Task.FromResult(Rpc.Result(store.Config, SidecarJson.Default.AppConfig));
         };
 
-        // A delete stands (its undo window closed): drop the deleted connections' secrets.
+        // A delete stands (its undo window closed): drop the deleted connections' secrets and catalog snapshots.
         methods["config.purgeSecrets"] = (p, _) =>
         {
-            store.PurgeSecrets(Rpc.Params(p, SidecarJson.Default.PurgeSecretsParams).ConnectionIds ?? []);
+            var ids = Rpc.Params(p, SidecarJson.Default.PurgeSecretsParams).ConnectionIds ?? [];
+            store.PurgeSecrets(ids);
+            var live = store.ConnectionIds();
+            catalog?.Remove(ids.Where(id => !live.Contains(id)));
             return Task.FromResult<Action<System.Text.Json.Utf8JsonWriter>>(w => w.WriteBooleanValue(true));
         };
 

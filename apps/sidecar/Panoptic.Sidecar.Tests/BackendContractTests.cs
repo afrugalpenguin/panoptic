@@ -159,6 +159,22 @@ public sealed class BackendContractTests : IDisposable
     }
 
     [Fact]
+    public async Task Purging_a_deleted_connection_also_deletes_its_catalog_snapshots()
+    {
+        var sidecar = Sidecar();
+        var cache = new CatalogCache(Path.Combine(_dir, "catalog"));
+        cache.Write(CatalogCache.KeyOf("b", "main"), new DatabaseCatalog("s", [], [], [], null));
+        cache.Write(CatalogCache.KeyOf("f", "main"), new DatabaseCatalog("s", [], [], [], null));
+
+        await Call(sidecar, "config.deleteConnection", new { id = "b" });
+        Assert.NotNull(cache.Read(CatalogCache.KeyOf("b", "main"))); // kept while the delete can still be undone
+        await Call(sidecar, "config.purgeSecrets", new { connectionIds = new[] { "b" } });
+
+        Assert.Null(cache.Read(CatalogCache.KeyOf("b", "main")));
+        Assert.NotNull(cache.Read(CatalogCache.KeyOf("f", "main")));
+    }
+
+    [Fact]
     public async Task Templates_language_and_scope_come_from_the_backend()
     {
         var sidecar = Sidecar();

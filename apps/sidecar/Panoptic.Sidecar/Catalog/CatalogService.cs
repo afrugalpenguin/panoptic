@@ -48,6 +48,9 @@ public sealed class CatalogService(Func<CatalogParams, QueryTarget> resolve, Cat
     /// <summary>A connection changed or was removed: re-check every catalog on its next use.</summary>
     public void Forget() => _current.Clear();
 
+    /// <summary>A delete stands: remove the deleted connections' snapshots from disk too.</summary>
+    public void Remove(IEnumerable<string> deletedConnectionIds) => cache.Remove(deletedConnectionIds);
+
     private void Start(string key, QueryTarget target, DatabaseCatalog? cached, bool force)
     {
         lock (_work)
