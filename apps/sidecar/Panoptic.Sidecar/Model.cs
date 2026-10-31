@@ -62,12 +62,16 @@ public sealed record ConnectionConfig(
 
 public sealed record EnvironmentConfig(string Id, string Name, string Color, bool ReadOnly, List<ConnectionConfig> Connections);
 
-public sealed record AppConfig(List<EnvironmentConfig> Environments)
+/// <param name="Connections">Connections in no environment. Null in stores written before they existed.</param>
+public sealed record AppConfig(List<EnvironmentConfig> Environments, List<ConnectionConfig>? Connections = null)
 {
+    public List<ConnectionConfig> Connections { get; init; } = Connections ?? [];
+
     public static AppConfig Empty => new([]);
 }
 
-public sealed record SaveConnectionParams(string EnvironmentId, ConnectionConfig Connection, string? Secret);
+/// <param name="EnvironmentId">Null: the connection is in no environment.</param>
+public sealed record SaveConnectionParams(string? EnvironmentId, ConnectionConfig Connection, string? Secret);
 public sealed record TestConnectionParams(ConnectionConfig Connection, string? Secret);
 public sealed record IdParams(string Id);
 public sealed record TreeChildrenParams(string NodeId);

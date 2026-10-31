@@ -96,6 +96,94 @@ public sealed class ConfigStoreTests : IDisposable
     }
 
     [Fact]
+    public void Connections_can_be_saved_without_an_environment_and_reload()
+    {
+        var store = new ConfigStore(_path);
+        store.SaveConnection(null, Sql("c1"), "pw");
+
+        var reloaded = new ConfigStore(_path);
+        Assert.Empty(reloaded.Config.Environments);
+        Assert.Equal(["c1"], reloaded.Config.Connections.Select(c => c.Id));
+        Assert.Equal("pw", reloaded.GetSecret("c1"));
+        var found = reloaded.FindConnection("c1");
+        Assert.NotNull(found);
+        Assert.Null(found.Value.Environment);
+        Assert.Equal("c1", found.Value.Connection.Id);
+    }
+
+    [Fact]
+    public void Moving_between_an_environment_and_none_keeps_one_copy()
+    {
+        var store = new ConfigStore(_path);
+        store.SaveEnvironment(new EnvironmentConfig("dev", "Dev", "#000", false, []));
+        store.SaveConnection(null, Sql("a"), null);
+        store.SaveConnection(null, Sql("b"), null);
+
+        store.SaveConnection("dev", Sql("a"), null);
+        Assert.Equal(["a"], store.Config.Environments[0].Connections.Select(c => c.Id));
+        Assert.Equal(["b"], store.Config.Connections.Select(c => c.Id));
+
+        store.SaveConnection(null, Sql("a"), null);
+        Assert.Empty(store.Config.Environments[0].Connections);
+        Assert.Equal(["b", "a"], store.Config.Connections.Select(c => c.Id));
+
+        store.SaveConnection(null, Sql("b") with { Name = "b2" }, null);
+        Assert.Equal(["b", "a"], store.Config.Connections.Select(c => c.Id));
+    }
+
+    [Fact]
+    public void Saving_to_an_unknown_environment_is_rejected()
+    {
+        var store = new ConfigStore(_path);
+        var ex = Assert.Throws<RpcException>(() => store.SaveConnection("nope", Sql("a"), null));
+        Assert.Equal(RpcException.InvalidParams, ex.Code);
+    }
+
+    [Fact]
+    public void An_environment_with_no_connections_is_kept()
+    {
+        var store = new ConfigStore(_path);
+        store.SaveEnvironment(new EnvironmentConfig("dev", "Dev", "#000", false, []));
+
+        var reloaded = new ConfigStore(_path);
+        Assert.Empty(Assert.Single(reloaded.Config.Environments).Connections);
+    }
+
+    [Fact]
+    public void Deleting_an_ungrouped_connection_removes_it_and_its_secret()
+    {
+        var store = new ConfigStore(_path);
+        store.SaveConnection(null, Sql("a"), "pw");
+        store.DeleteConnection("a");
+
+        Assert.Empty(store.Config.Connections);
+        Assert.Null(store.GetSecret("a"));
+    }
+
+    [Fact]
+    public void Environment_changes_keep_ungrouped_connections()
+    {
+        var store = new ConfigStore(_path);
+        store.SaveConnection(null, Sql("a"), null);
+        store.SaveEnvironment(new EnvironmentConfig("dev", "Dev", "#000", false, []));
+        store.DeleteEnvironment("dev");
+
+        Assert.Equal(["a"], store.Config.Connections.Select(c => c.Id));
+    }
+
+    [Fact]
+    public void A_store_written_before_ungrouped_connections_loads_with_none()
+    {
+        WriteEncrypted("{\"config\":{\"environments\":[]},\"secrets\":{}}");
+
+        var store = new ConfigStore(_path);
+
+        Assert.NotNull(store.Config.Connections);
+        Assert.Empty(store.Config.Connections);
+        Assert.Null(store.RecoveredFrom);
+    }
+
+    [Fact]
     public void Settings_default_to_checking_for_updates_on_startup_and_persist()
     {
         var store = new ConfigStore(_path);
