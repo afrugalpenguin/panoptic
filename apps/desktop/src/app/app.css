@@ -15,9 +15,14 @@
   --ok: #1a7f37;
   --bad: #cf222e;
   --warn: #9a6700;
-  /* The two colours of the logo, the same in both themes (docs/changelog.md, visual spec v2). */
-  --brand-cyan: #26c6da;
-  --brand-amber: #ffc107;
+  /* The two colours of the logo (src-tauri/icons/icon.svg), the same in both themes. */
+  --brand-cyan: #24c8db;
+  --brand-amber: #ffc131;
+  /* Landing (docs/landing.md). Dark values are the design's; light ones are derived so the page stays readable. */
+  --landing-bg: var(--bg);
+  --wordmark-faded: color-mix(in srgb, var(--text) 5%, var(--bg));
+  --kbd-bg: color-mix(in srgb, var(--text) 6%, var(--bg-pane));
+  --kbd-border: var(--border);
 
   /* Explorer tree (docs/explorer-ux.md). The spec's colours are for the dark theme. */
   --tree-bright: #111418;
@@ -46,6 +51,11 @@
     --tree-dim: #6a6a6a;
     --tree-dim-selected: #9aa3b5;
     --tree-folder: #d0d0d0;
+
+    --landing-bg: #191a1d;
+    --wordmark-faded: #1f2126;
+    --kbd-bg: #24262b;
+    --kbd-border: #33363d;
   }
 }
 
