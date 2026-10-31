@@ -5,6 +5,7 @@
   "packageManager": "pnpm@12.15.0",
   "scripts": {
     "dev": "pnpm --filter @panoptic/desktop tauri dev",
+    "dev:seeded": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-seeded.ps1",
     "build": "pnpm --filter @panoptic/desktop tauri build",
     "test": "pnpm --filter @panoptic/desktop check && pnpm --filter @panoptic/desktop test && dotnet test apps/sidecar"
   }

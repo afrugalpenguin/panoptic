@@ -87,9 +87,14 @@ Needs Rust (MSVC), Node 24 with pnpm, and the .NET 10 SDK.
 ```powershell
 pnpm install
 pnpm dev     # framework-dependent sidecar, Vite dev server
+pnpm dev:seeded  # the same, on a separate store with Prod, UAT and Test (20 connections)
 pnpm test    # vitest + sidecar xunit
 pnpm build   # self-contained sidecar + release build + installer
 ```
+
+`pnpm dev:seeded` keeps its profile in `%APPDATA%\Panoptic\dev-seeded` and never touches your
+real store; `scripts\dev-seeded.ps1 -Reset` seeds it again. Test's first three connections are the
+local Docker databases from `scripts\dev-db.ps1`; the rest are synthetic and fail to expand.
 
 Locally, `pnpm build` writes the installer to `apps/desktop/src-tauri/target/release/bundle/nsis/`
 and then fails at signing the update, because the updater's private key is only in GitHub Secrets
