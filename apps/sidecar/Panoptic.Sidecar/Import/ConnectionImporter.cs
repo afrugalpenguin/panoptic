@@ -75,13 +75,23 @@ public static class ConnectionImporter
         return sources;
     }
 
+    /// <summary>
+    /// Loads another tool's XML settings file. They never carry a DTD, so one is refused outright (XmlException) rather
+    /// than expanded up to .NET's entity cap; no resolver, so nothing is ever fetched.
+    /// </summary>
+    private static XDocument LoadXml(string path)
+    {
+        using var reader = System.Xml.XmlReader.Create(path, new System.Xml.XmlReaderSettings { DtdProcessing = System.Xml.DtdProcessing.Prohibit, XmlResolver = null });
+        return XDocument.Load(reader);
+    }
+
     // --- SSMS Registered Servers (RegSrvr.xml) --------------------------------------------------
 
     private const string EngineGroupUri = "/RegisteredServersStore/ServerGroup/DatabaseEngineServerGroup";
 
     public static ImportSource? ParseRegisteredServers(string path)
     {
-        var doc = XDocument.Load(path);
+        var doc = LoadXml(path);
         var groups = new Dictionary<string, List<ImportCandidate>>();
 
         foreach (var server in doc.Descendants().Where(e => e.Name.LocalName == "RegisteredServer"))
@@ -140,7 +150,7 @@ public static class ConnectionImporter
 
     public static ImportSource? ParseSsmsUserSettings(string path)
     {
-        var doc = XDocument.Load(path);
+        var doc = LoadXml(path);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var connections = new List<ImportCandidate>();
 
