@@ -156,6 +156,10 @@
     color: var(--text);
     font: 15px var(--font-ui);
   }
+  /* The box's cyan border and ring already show focus; the app-wide blue input outline (app.css) would double it. */
+  input:focus {
+    outline: none;
+  }
   input::placeholder {
     color: var(--text-muted);
   }
