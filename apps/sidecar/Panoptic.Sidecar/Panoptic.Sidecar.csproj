@@ -8,6 +8,8 @@
     <Nullable>enable</Nullable>
     <AssemblyName>panoptic-sidecar</AssemblyName>
     <RootNamespace>Panoptic.Sidecar</RootNamespace>
+    <!-- Published for win-x64 only (scripts/build-sidecar.ps1); listed so the lock file covers its runtime packages. -->
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     <Version>0.2.0</Version>
     <!-- Set by scripts/build-sidecar.ps1: jit, r2r, aot or fdd. Reported by ping. -->
     <PanopticMode Condition="'$(PanopticMode)' == ''">dev</PanopticMode>

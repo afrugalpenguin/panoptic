@@ -90,6 +90,8 @@ jobs:
         with:
           projectPath: apps/desktop
           tauriScript: pnpm tauri
+          # Passed through to cargo: build exactly what Cargo.lock says, as CI's cargo check does.
+          args: -- --locked
           tagName: v${{ env.VERSION }}
           releaseName: Panoptic v${{ env.VERSION }}
           releaseCommitish: ${{ github.sha }}
