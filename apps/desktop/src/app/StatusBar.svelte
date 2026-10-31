@@ -14,6 +14,7 @@
     problems,
     onOpenProblems,
     onCancelLoad,
+    undo,
   }: {
     sidecar: "connecting" | "connected" | "disconnected";
     sidecarText: string;
@@ -26,6 +27,8 @@
     onOpenProblems: () => void;
     /** Stops the in-flight load shown by the elapsed timer. */
     onCancelLoad: (id: string) => void;
+    /** The last delete while it can be undone (docs/explorer-ux.md, "Destructive actions"). */
+    undo?: { text: string; run: () => void };
   } = $props();
 
   let now = $state(Date.now());
@@ -38,6 +41,10 @@
 
 <footer class="status">
   <span class="item" title={startup}><span class="dot {sidecar}"></span>{sidecarText}</span>
+
+  {#if undo}
+    <span class="item">{undo.text} - <button class="cancel" onclick={undo.run}>Undo</button></span>
+  {/if}
 
   <span class="item grow">
     {#if inFlight}

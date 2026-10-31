@@ -126,6 +126,10 @@ export function createApi(rpc: RpcClient) {
     saveConnection: (environmentId: string | null, connection: ConnectionConfig, secret?: string) =>
       rpc.request<AppConfig>("config.saveConnection", { environmentId, connection, secret: secret ?? null }),
     deleteConnection: (id: string) => rpc.request<AppConfig>("config.deleteConnection", { id }),
+    /** Undo of a delete: writes back the config from before it; the sidecar kept the deleted connections' secrets. */
+    restoreConfig: (config: AppConfig) => rpc.request<AppConfig>("config.restore", config),
+    /** A delete stands: drops these deleted connections' secrets. Never touches a connection still in the config. */
+    purgeSecrets: (connectionIds: string[]) => rpc.request<boolean>("config.purgeSecrets", { connectionIds }),
     testConnection: (connection: ConnectionConfig, secret?: string, signal?: AbortSignal) =>
       // Sign-in can include an interactive Entra prompt, so allow longer than a normal call.
       rpc.request<TestConnectionResult>("connection.test", { connection, secret: secret ?? null }, 180_000, signal),

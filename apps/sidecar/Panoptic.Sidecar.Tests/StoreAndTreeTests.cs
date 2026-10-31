@@ -150,14 +150,58 @@ public sealed class ConfigStoreTests : IDisposable
     }
 
     [Fact]
-    public void Deleting_an_ungrouped_connection_removes_it_and_its_secret()
+    public void Deleting_an_ungrouped_connection_removes_it_and_purging_removes_its_secret()
     {
         var store = new ConfigStore(_path);
         store.SaveConnection(null, Sql("a"), "pw");
         store.DeleteConnection("a");
 
         Assert.Empty(store.Config.Connections);
+        Assert.Equal("pw", store.GetSecret("a"));
+
+        store.PurgeSecrets(["a"]);
         Assert.Null(store.GetSecret("a"));
+        Assert.Null(new ConfigStore(_path).GetSecret("a"));
+    }
+
+    [Fact]
+    public void Restoring_the_config_before_a_delete_brings_back_the_connection_and_its_secret()
+    {
+        var store = new ConfigStore(_path);
+        store.SaveEnvironment(new EnvironmentConfig("dev", "Dev", "#000", false, []));
+        store.SaveConnection("dev", Sql("c1"), "pw");
+        var prior = store.Config;
+
+        store.DeleteEnvironment("dev");
+        store.Restore(prior);
+
+        Assert.Equal(["c1"], store.Config.Environments.Single().Connections.Select(c => c.Id));
+        Assert.Equal("pw", new ConfigStore(_path).GetSecret("c1"));
+    }
+
+    [Fact]
+    public void Purging_never_removes_the_secret_of_a_connection_still_in_the_config()
+    {
+        var store = new ConfigStore(_path);
+        store.SaveConnection(null, Sql("a"), "pw");
+
+        store.PurgeSecrets(["a"]);
+
+        Assert.Equal("pw", store.GetSecret("a"));
+    }
+
+    [Fact]
+    public void Secrets_left_by_a_delete_that_was_never_purged_go_at_the_next_start()
+    {
+        var store = new ConfigStore(_path);
+        store.SaveConnection(null, Sql("a"), "pw");
+        store.SaveConnection(null, Sql("b"), "pw2");
+        store.DeleteConnection("a");
+
+        var reloaded = new ConfigStore(_path);
+
+        Assert.Null(reloaded.GetSecret("a"));
+        Assert.Equal("pw2", reloaded.GetSecret("b"));
     }
 
     [Fact]
@@ -314,7 +358,7 @@ public sealed class ConfigStoreTests : IDisposable
     }
 
     [Fact]
-    public void Saving_an_environment_keeps_its_connections_and_deleting_removes_secrets()
+    public void Saving_an_environment_keeps_its_connections_and_purging_after_a_delete_removes_secrets()
     {
         var store = new ConfigStore(_path);
         store.SaveEnvironment(new EnvironmentConfig("dev", "Dev", "#000", false, []));
@@ -326,6 +370,7 @@ public sealed class ConfigStoreTests : IDisposable
 
         store.DeleteEnvironment("dev");
         Assert.Empty(store.Config.Environments);
+        store.PurgeSecrets(["c1"]);
         Assert.Null(store.GetSecret("c1"));
     }
 

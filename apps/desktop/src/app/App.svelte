@@ -9,6 +9,8 @@
   import { createUpdateChecker, currentVersion, type UpdateState } from "../updates";
   import { parseChangelog, sectionsSince, type ChangelogSection } from "../whats-new";
   import { createApi, type Api, type AppConfig, type AppSettings, type ConnectionConfig, type DeviceCodePrompt, type EnvironmentConfig, type TreeNode } from "./api";
+  import ConfirmDialog from "./ConfirmDialog.svelte";
+  import { confirmText, type ConfirmText } from "./confirm";
   import ConnectionDialog from "./ConnectionDialog.svelte";
   import ContextMenu, { type MenuItem } from "./ContextMenu.svelte";
   import DetailPane from "./DetailPane.svelte";
@@ -31,6 +33,7 @@
   import Tree from "./Tree.svelte";
   import { environmentOrder, moveEnvironment, TreeModel, UNGROUPED, type KindSummary, type LoadReport, type Row } from "./tree-model";
   import { errorText, type Problem } from "./problems";
+  import { UndoDelete } from "./undo-delete";
 
   let { info }: { info: StartupInfo } = $props();
 
@@ -58,6 +61,16 @@
     | { kind: "import" }
     | { kind: "settings" }
   >();
+  /** A destructive action waiting on ConfirmDialog. */
+  let confirming = $state<{ text: ConfirmText; resolve: (confirmed: boolean) => void }>();
+  /** The last delete, while it can still be undone. */
+  let undoText = $state<string>();
+  const undoDelete = new UndoDelete({
+    restore: async (prior) => showConfig(await api!.restoreConfig(prior)),
+    // If this fails the secrets go at the next start instead.
+    purge: async (ids) => void (await api!.purgeSecrets(ids).catch(() => {})),
+    changed: (text) => (undoText = text),
+  });
   /** The bundled changelog, parsed once at start-up; empty when the build has none. */
   let changelog = $state.raw<ChangelogSection[]>([]);
   let settings = $state<AppSettings>({
@@ -269,7 +282,13 @@
   }
 
   /** Re-reads environments and connections after a config change without losing expanded subtrees. */
+  /** After any config change other than a delete or its undo: a pending delete then stands, so Undo cannot overwrite the change. */
   async function configChanged(next?: AppConfig) {
+    void undoDelete.settle();
+    await showConfig(next);
+  }
+
+  async function showConfig(next?: AppConfig) {
     config = next ?? (await api!.config());
     await model.reload("");
     // Environments' connection lists only: reloading a loose connection's children would call its server.
@@ -322,6 +341,25 @@
     }
   }
 
+  /** Resolves true only when the user picks the destructive action. */
+  function ask(text: ConfirmText): Promise<boolean> {
+    return new Promise((resolve) => (confirming = { text, resolve }));
+  }
+
+  /** Delete environment and Remove connection: ask, delete, then offer Undo (docs/explorer-ux.md, "Destructive actions"). */
+  async function deleteConfig(
+    text: ConfirmText,
+    undoLabel: string,
+    connectionIds: string[],
+    remove: () => Promise<AppConfig>,
+  ) {
+    if (!(await ask(text))) return;
+    await undoDelete.settle();
+    const prior = $state.snapshot(config);
+    await showConfig(await remove());
+    undoDelete.offer(undoLabel, prior, connectionIds);
+  }
+
   function openMenu(row: Row, x: number, y: number) {
     const items: (MenuItem | "separator")[] = [];
     if (row.type === "group" || row.type === "env-empty") {
@@ -355,10 +393,14 @@
         items.push({
           label: "Delete environment",
           danger: true,
-          run: async () => {
-            if (env && confirm(`Delete environment "${env.name}" and its ${env.connections.length} connection(s)?`))
-              await configChanged(await api!.deleteEnvironment(env.id));
-          },
+          run: () =>
+            env &&
+            deleteConfig(
+              confirmText("environment", env.name, env.connections.length),
+              `Deleted environment ${env.name}`,
+              env.connections.map((c) => c.id),
+              () => api!.deleteEnvironment(env.id),
+            ),
         });
       } else if (n.kind === "connection") {
         const found = connectionOf(n.meta!.connectionId);
@@ -373,10 +415,14 @@
         items.push({
           label: "Remove connection",
           danger: true,
-          run: async () => {
-            if (found && confirm(`Remove connection "${found.connection.name}"?`))
-              await configChanged(await api!.deleteConnection(found.connection.id));
-          },
+          run: () =>
+            found &&
+            deleteConfig(
+              confirmText("connection", found.connection.name, 1),
+              `Removed connection ${found.connection.name}`,
+              [found.connection.id],
+              () => api!.deleteConnection(found.connection.id),
+            ),
         });
       } else {
         items.push(...actionItems(n, actionLabels, on));
@@ -663,12 +709,23 @@
   </main>
 
   <div class="status-host">
-    <StatusBar {sidecar} {sidecarText} {inFlight} {lastLoad} {startup} {update} problems={problems.length} onOpenProblems={() => openProblems()} onCancelLoad={(id) => model.cancel(id)} />
+    <StatusBar {sidecar} {sidecarText} {inFlight} {lastLoad} {startup} {update} problems={problems.length} onOpenProblems={() => openProblems()} onCancelLoad={(id) => model.cancel(id)}
+      undo={undoText ? { text: undoText, run: () => undoDelete.undo() } : undefined} />
   </div>
 </div>
 
 {#if menu}
   <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => (menu = undefined)} />
+{/if}
+
+{#if confirming}
+  <ConfirmDialog
+    text={confirming.text}
+    onResult={(ok) => {
+      confirming?.resolve(ok);
+      confirming = undefined;
+    }}
+  />
 {/if}
 
 {#if dialog?.kind === "environment"}

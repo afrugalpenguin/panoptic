@@ -69,6 +69,24 @@ public static class Methods
             return Task.FromResult(Rpc.Result(store.Config, SidecarJson.Default.AppConfig));
         };
 
+        // Undo of a delete: the config from before it, whose deleted secrets the store still holds.
+        methods["config.restore"] = (p, _) =>
+        {
+            var config = Rpc.Params(p, SidecarJson.Default.AppConfig);
+            if (config.Environments is null) throw new RpcException(RpcException.InvalidParams, "environments is required");
+            foreach (var c in config.Environments.SelectMany(e => e.Connections ?? []).Concat(config.Connections)) tree.Validate(c);
+            store.Restore(config);
+            catalog?.Forget();
+            return Task.FromResult(Rpc.Result(store.Config, SidecarJson.Default.AppConfig));
+        };
+
+        // A delete stands (its undo window closed): drop the deleted connections' secrets.
+        methods["config.purgeSecrets"] = (p, _) =>
+        {
+            store.PurgeSecrets(Rpc.Params(p, SidecarJson.Default.PurgeSecretsParams).ConnectionIds ?? []);
+            return Task.FromResult<Action<System.Text.Json.Utf8JsonWriter>>(w => w.WriteBooleanValue(true));
+        };
+
         // Tests unsaved settings. A null secret means "use the stored one" (editing an existing connection).
         methods["connection.test"] = async (p, ct) =>
         {

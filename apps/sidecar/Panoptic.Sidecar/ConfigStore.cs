@@ -19,6 +19,9 @@ public sealed class ConfigStore
     {
         _path = path;
         (_file, RecoveredFrom) = Load(path);
+        // A delete whose undo window was still open when Panoptic closed leaves its secrets behind; they go now.
+        var orphans = Orphans(_file.Secrets.Keys);
+        if (orphans.Count > 0) Commit(_file with { Secrets = Without(_file.Secrets, orphans) });
     }
 
     /// <summary>
@@ -92,15 +95,16 @@ public sealed class ConfigStore
         }
     }
 
+    /// <summary>
+    /// Removes an environment and its connections. Their secrets stay until <see cref="PurgeSecrets"/> (or the next
+    /// start) so the delete can be undone with <see cref="Restore"/>.
+    /// </summary>
     public void DeleteEnvironment(string environmentId)
     {
         lock (_lock)
         {
-            var env = _file.Config.Environments.FirstOrDefault(e => e.Id == environmentId);
-            if (env is null) return;
-            var secrets = new Dictionary<string, string>(_file.Secrets);
-            foreach (var c in env.Connections) secrets.Remove(c.Id);
-            Commit(_file with { Config = _file.Config with { Environments = _file.Config.Environments.Where(e => e.Id != environmentId).ToList() }, Secrets = secrets });
+            if (_file.Config.Environments.All(e => e.Id != environmentId)) return;
+            Commit(_file with { Config = _file.Config with { Environments = _file.Config.Environments.Where(e => e.Id != environmentId).ToList() } });
         }
     }
 
@@ -136,6 +140,7 @@ public sealed class ConfigStore
         }
     }
 
+    /// <summary>Removes a connection. Its secret stays until <see cref="PurgeSecrets"/> (or the next start), as for an environment.</summary>
     public void DeleteConnection(string connectionId)
     {
         lock (_lock)
@@ -144,11 +149,34 @@ public sealed class ConfigStore
                 .Select(e => e with { Connections = e.Connections.Where(c => c.Id != connectionId).ToList() })
                 .ToList();
             var loose = _file.Config.Connections.Where(c => c.Id != connectionId).ToList();
-            var secrets = new Dictionary<string, string>(_file.Secrets);
-            secrets.Remove(connectionId);
-            Commit(_file with { Config = new AppConfig(envs, loose), Secrets = secrets });
+            Commit(_file with { Config = new AppConfig(envs, loose) });
         }
     }
+
+    /// <summary>Undoes a delete: writes back the config from before it. Secrets are untouched, so the deleted ones return.</summary>
+    public void Restore(AppConfig config)
+    {
+        lock (_lock) Commit(_file with { Config = config });
+    }
+
+    /// <summary>Drops the secrets of deleted connections once their delete stands. A connection still in the config keeps its secret.</summary>
+    public void PurgeSecrets(IEnumerable<string> connectionIds)
+    {
+        lock (_lock)
+        {
+            var orphans = Orphans(connectionIds);
+            if (orphans.Count > 0) Commit(_file with { Secrets = Without(_file.Secrets, orphans) });
+        }
+    }
+
+    private HashSet<string> Orphans(IEnumerable<string> connectionIds)
+    {
+        var live = _file.Config.Environments.SelectMany(e => e.Connections).Concat(_file.Config.Connections).Select(c => c.Id).ToHashSet();
+        return connectionIds.Where(id => !live.Contains(id) && _file.Secrets.ContainsKey(id)).ToHashSet();
+    }
+
+    private static Dictionary<string, string> Without(Dictionary<string, string> secrets, HashSet<string> ids) =>
+        secrets.Where(kv => !ids.Contains(kv.Key)).ToDictionary();
 
     private void Commit(StoreFile file)
     {
