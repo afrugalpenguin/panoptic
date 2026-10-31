@@ -36,7 +36,7 @@
   let api = $state.raw<Api>();
   let sidecar = $state<"connecting" | "connected" | "disconnected">("connecting");
   let sidecarText = $state("Starting database engine...");
-  let config = $state<AppConfig>({ environments: [] });
+  let config = $state<AppConfig>({ environments: [], connections: [] });
   let rows = $state.raw<Row[]>([]);
   let problems = $state.raw<Problem[]>([]);
   let kinds = $state.raw<KindSummary[]>([]);
@@ -52,7 +52,7 @@
   let actionLabels = $state.raw<Record<string, string>>({});
   let dialog = $state<
     | { kind: "environment"; initial?: EnvironmentConfig }
-    | { kind: "connection"; environmentId: string; initial?: ConnectionConfig }
+    | { kind: "connection"; environmentId: string | null; initial?: ConnectionConfig }
     | { kind: "import" }
     | { kind: "settings" }
   >();
@@ -267,11 +267,14 @@
   }
 
   const envOf = (id: string) => config.environments.find((e) => e.id === id);
-  const connectionOf = (id: string) => {
+  /** A connection and its environment, which is undefined for one in no environment. */
+  const connectionOf = (id: string): { env?: EnvironmentConfig; connection: ConnectionConfig } | undefined => {
     for (const env of config.environments) {
       const c = env.connections.find((x) => x.id === id);
       if (c) return { env, connection: c };
     }
+    const loose = config.connections.find((x) => x.id === id);
+    return loose && { connection: loose };
   };
 
   /** Runs an action a backend adds in the sidecar and copies the text it returns, if any. */
@@ -338,7 +341,7 @@
         const found = connectionOf(n.meta!.connectionId);
         items.push({
           label: "Edit connection...",
-          run: () => found && (dialog = { kind: "connection", environmentId: found.env.id, initial: found.connection }),
+          run: () => found && (dialog = { kind: "connection", environmentId: found.env?.id ?? null, initial: found.connection }),
         });
         items.push(...actionItems(n, actionLabels, { ...on, refresh: () => (model.refresh(n.id), refreshQueryTabs(n.id)) }));
         items.push("separator");

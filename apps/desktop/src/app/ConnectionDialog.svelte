@@ -13,7 +13,7 @@
   }: {
     api: Api;
     environments: EnvironmentConfig[];
-    environmentId: string;
+    environmentId: string | null;
     initial?: ConnectionConfig;
     onSaved: () => void;
     onClose: () => void;
