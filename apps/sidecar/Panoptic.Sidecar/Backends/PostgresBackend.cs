@@ -565,6 +565,8 @@ public sealed class PostgresBackend(Credentials credentials) : IQueryBackend
             // Always encrypted. Trust server certificate encrypts without validating (local and dev servers only);
             // otherwise the certificate chain and host name are verified.
             SslMode = c.TrustServerCertificate ? SslMode.Require : SslMode.VerifyFull,
+            // A private CA (or the server's own certificate): trusted for this connection only, still with full checks.
+            RootCertificate = string.IsNullOrWhiteSpace(c.CertificateFile) ? null : c.CertificateFile.Trim(),
             Timeout = 15,
             CommandTimeout = 30,
             ApplicationName = "Panoptic",
@@ -592,10 +594,17 @@ public sealed class PostgresBackend(Credentials credentials) : IQueryBackend
         }
 
         var settings = Settings(c, database, user);
-        var key = (c.Id, settings.Database!, $"{settings.ConnectionString};auth={c.Auth};tenant={c.TenantId}");
+        var key = (c.Id, settings.Database!, $"{settings.ConnectionString};auth={c.Auth};tenant={c.TenantId};certhost={c.CertificateHostName}");
         var source = _sources.GetOrAdd(key, _ =>
         {
             var builder = new NpgsqlDataSourceBuilder(settings.ConnectionString);
+            // A server reached by another name: the certificate must match this one instead of the endpoint. Only the
+            // name changes; the chain and name are still checked by the platform, as for any VerifyFull connection.
+            if (!string.IsNullOrWhiteSpace(c.CertificateHostName))
+            {
+                var expected = c.CertificateHostName.Trim();
+                builder.UseSslClientAuthenticationOptionsCallback(o => o.TargetHost = expected);
+            }
             if (tokens is not null) builder.UsePasswordProvider(_ => throw new NotSupportedException("Postgres connections open asynchronously."), tokens);
             else builder.ConnectionStringBuilder.Password = secret ?? "";
             return builder.Build();

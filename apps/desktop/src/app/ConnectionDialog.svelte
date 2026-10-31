@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { open as openFile } from "@tauri-apps/plugin-dialog";
   import { onDestroy } from "svelte";
   import type { Api, AppConfig, AuthKind, ConnectionConfig, ConnectionKind, EnvironmentConfig, TestConnectionResult } from "./api";
   import Dialog from "./Dialog.svelte";
@@ -53,6 +54,10 @@
   let tenantId = $state(initial?.tenantId ?? "");
   // svelte-ignore state_referenced_locally
   let trust = $state(initial?.trustServerCertificate ?? false);
+  // svelte-ignore state_referenced_locally
+  let certHost = $state(initial?.certificateHostName ?? "");
+  // svelte-ignore state_referenced_locally
+  let certFile = $state(initial?.certificateFile ?? "");
   let secret = $state("");
 
   let busy = $state<"" | "testing" | "saving">("");
@@ -98,7 +103,7 @@
         : auth === "windows"
           ? "your queries and their results"
           : "the password";
-    return `The certificate of ${endpoint.trim()} won't be checked, so anyone able to intercept the connection could pose as it and capture ${what}. Only trust certificates for servers you control.`;
+    return `The certificate of ${endpoint.trim()} won't be checked, so anyone able to intercept the connection could pose as it and capture ${what}. Only trust certificates for servers you control. Where you can, use a certificate host name or file instead.`;
   });
 
   $effect(() => {
@@ -107,7 +112,7 @@
 
   // A test result describes the settings it ran with: any edit to them makes it stale, so it goes (#263).
   $effect(() => {
-    void [kind, endpoint, auth, user, database, tenantId, trust, secret];
+    void [kind, endpoint, auth, user, database, tenantId, trust, certHost, certFile, secret];
     test = null;
   });
 
@@ -122,6 +127,8 @@
       database: kind !== "cosmos" && database.trim() ? database.trim() : null,
       tenantId: auth === "entra" && tenantId.trim() ? tenantId.trim() : null,
       trustServerCertificate: trust,
+      certificateHostName: kind !== "cosmos" && certHost.trim() ? certHost.trim() : null,
+      certificateFile: kind !== "cosmos" && certFile.trim() ? certFile.trim() : null,
     };
   }
 
@@ -137,9 +144,13 @@
       c.endpoint.toLowerCase() === initial.endpoint.toLowerCase() &&
       c.auth === initial.auth &&
       (c.user ?? null) === (initial.user ?? null) &&
-      c.trustServerCertificate === initial.trustServerCertificate
+      c.trustServerCertificate === initial.trustServerCertificate &&
+      same(c.certificateHostName, initial.certificateHostName) &&
+      same(c.certificateFile, initial.certificateFile)
     );
   });
+  /** Optional text that compares blank-or-missing as equal, ignoring case and surrounding space. */
+  const same = (a?: string | null, b?: string | null) => (a ?? "").trim().toLowerCase() === (b ?? "").trim().toLowerCase();
   const secretName = $derived(auth === "key" ? "account key" : "password");
 
   /** Blank secret means "keep the stored one" while that is allowed. */
@@ -148,11 +159,18 @@
   function validate(): string {
     if (!endpoint.trim()) return kind === "cosmos" ? "Account URI is required" : "Server is required";
     if (login && !user.trim()) return "User is required";
+    if (kind !== "cosmos" && trust && (certHost.trim() || certFile.trim()))
+      return "Turn off Trust server certificate to use a certificate host name or file: trusting skips the checks they set up.";
     if (needsSecret && !secret && !keepsSavedSecret)
       return editing
         ? `Enter the ${secretName} again: the server, user, sign-in or certificate setting changed, so the saved one is not sent.`
         : auth === "key" ? "Account key is required" : "Password is required";
     return "";
+  }
+
+  async function browseCertificate() {
+    const picked = await openFile({ multiple: false, directory: false, filters: [{ name: "Certificates", extensions: ["pem", "cer", "crt", "der"] }] });
+    if (typeof picked === "string") certFile = picked;
   }
 
   async function runTest() {
@@ -241,6 +259,16 @@
   </label>
   {#if trustWarning}<p class="full trust-warning">{trustWarning}</p>{/if}
 
+  {#if kind !== "cosmos"}
+    <label for="c-cert-host">Certificate host name <span class="muted">(optional)</span></label>
+    <input id="c-cert-host" bind:value={certHost} placeholder="The name on the certificate, if not the server's" spellcheck="false" autocomplete="off" />
+    <label for="c-cert-file">Certificate file <span class="muted">(optional)</span></label>
+    <span class="file-row">
+      <input id="c-cert-file" bind:value={certFile} placeholder="A CA or server certificate to trust (.pem, .cer)" spellcheck="false" autocomplete="off" />
+      <button type="button" onclick={browseCertificate}>Browse...</button>
+    </span>
+  {/if}
+
   {#if test}
     <p class="full result" class:ok={test.ok}>
       {test.ok ? `Connected in ${test.elapsedMs} ms` : `Failed after ${test.elapsedMs} ms: ${test.error}`}
@@ -263,6 +291,15 @@
     gap: 6px;
     align-items: center;
     color: var(--text) !important;
+  }
+  .file-row {
+    display: flex;
+    gap: 6px;
+    min-width: 0;
+  }
+  .file-row input {
+    flex: 1;
+    min-width: 0;
   }
   .trust-warning {
     margin: 0;

@@ -119,7 +119,33 @@ public sealed class TreeService(ConfigStore store, IReadOnlyDictionary<string, I
         var backend = BackendFor(connection);
         if (!backend.AuthsFor(connection.Kind).Contains(connection.Auth))
             throw new RpcException(RpcException.InvalidParams, $"{connection.Kind} connections do not support auth '{connection.Auth}'");
+        ValidateCertificateOptions(connection);
         return backend;
+    }
+
+    /// <summary>
+    /// The certificate host name and file (issue #261): only for SQL Server and Postgres, not alongside Trust server
+    /// certificate (which skips the checks they configure), a DNS name, and an absolute path to a loadable certificate.
+    /// </summary>
+    private static void ValidateCertificateOptions(ConnectionConfig c)
+    {
+        var host = c.CertificateHostName?.Trim();
+        var file = c.CertificateFile?.Trim();
+        if (string.IsNullOrEmpty(host) && string.IsNullOrEmpty(file)) return;
+        static RpcException Bad(string message) => new(RpcException.InvalidParams, message);
+        if (c.Kind == ConnectionKinds.Cosmos)
+            throw Bad("Cosmos connections don't take a certificate host name or file.");
+        if (c.TrustServerCertificate)
+            throw Bad("Turn off Trust server certificate to use a certificate host name or file: trusting skips the checks they set up.");
+        if (!string.IsNullOrEmpty(host) && (host.Length > 253 || Uri.CheckHostName(host) != UriHostNameType.Dns))
+            throw Bad($"The certificate host name '{host}' is not a valid host name.");
+        if (!string.IsNullOrEmpty(file))
+        {
+            if (!Path.IsPathFullyQualified(file)) throw Bad("The certificate file must be a full path, such as C:\\certs\\fabrikam-ca.pem.");
+            if (!File.Exists(file)) throw Bad($"The certificate file {file} does not exist.");
+            try { using var _ = System.Security.Cryptography.X509Certificates.X509CertificateLoader.LoadCertificateFromFile(file); }
+            catch (System.Security.Cryptography.CryptographicException) { throw Bad($"The certificate file {file} is not a certificate (PEM or DER)."); }
+        }
     }
 
     public void Forget(string connectionId)

@@ -1,0 +1,1 @@
+Added: SQL Server and PostgreSQL connections take an optional **Certificate host name** and **Certificate file**, so a private endpoint or a server signed by your own CA can be checked properly instead of turning on Trust server certificate.

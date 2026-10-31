@@ -38,6 +38,10 @@ export interface ConnectionConfig {
   database?: string | null;
   tenantId?: string | null;
   trustServerCertificate: boolean;
+  /** SQL Server and Postgres: the name the certificate must match, when it isn't the server's (a private endpoint, an alias). */
+  certificateHostName?: string | null;
+  /** SQL Server and Postgres: a CA (or the server's own) certificate to trust for this connection only. */
+  certificateFile?: string | null;
 }
 
 export interface EnvironmentConfig {

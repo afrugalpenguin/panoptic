@@ -14,7 +14,9 @@ Covers PostgreSQL and Azure Database for PostgreSQL Flexible Server. Backend: `a
 | User | The login. For Entra, optional: the Entra name of the Postgres role (a user principal name, or a group's name to sign in through the group). Left blank, it is the name of the account you sign in with. |
 | Password | Username and password only. Stored DPAPI-encrypted in the local store, never sent to the UI. |
 | Tenant | Optional, Entra only. |
-| Trust server certificate | Encrypts without validating the certificate. For local and dev servers only. Otherwise the certificate and host name are verified. Connections are always encrypted, so a server without TLS cannot be reached. |
+| Trust server certificate | Encrypts without validating the certificate. For local and dev servers only. Otherwise the certificate and host name are verified. Connections are always encrypted, so a server without TLS cannot be reached. The explorer marks such connections **cert not checked**. |
+| Certificate host name | Optional. The name the server's certificate must match when it isn't the endpoint's (a private endpoint, an alias). Only the TLS target name changes; the chain and name are still verified. |
+| Certificate file | Optional. A CA (or the server's own certificate) trusted for this connection only, as Npgsql's `RootCertificate` with full verification. Can't be combined with Trust server certificate. |
 
 Entra connections get tokens for `https://ossrdbms-aad.database.windows.net/.default` through the same credential as SQL and Cosmos (WAM first, then device code), with the same 3 minute allowance for a sign-in prompt. The token is sent as the password; every new physical connection asks the credential again, so an expired token is replaced from MSAL's cache.
 
