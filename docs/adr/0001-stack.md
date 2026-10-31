@@ -1,7 +1,7 @@
 # 0001. Tauri 2 shell, TypeScript UI, .NET 10 sidecar
 
 - Status: Accepted
-- Date: 2026-10-29
+- Recorded: 2026-10-29
 
 ## Context
 

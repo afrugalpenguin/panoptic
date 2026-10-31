@@ -5,7 +5,7 @@
 
 ## Context
 
-Early drafts of the plan listed "select the same object in two environments and diff it" as the headline feature and gave it its own milestone. That was an inference from the design, not a decision: Panoptic is a platform-agnostic SSMS replacement, and nothing in that goal needs a comparison tool.
+The first plan gave "select the same object in two environments and diff it" a headline place and its own milestone. It was never a goal: Panoptic is a platform-agnostic SSMS replacement, and nothing in that needs a comparison tool. It crept in from an early brief, and this record strikes it out.
 
 ## Decision
 

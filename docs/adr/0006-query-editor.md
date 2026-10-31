@@ -1,7 +1,7 @@
 # 0006. Monaco for the query pane only
 
 - Status: Accepted
-- Date: 2026-10-29
+- Recorded: 2026-10-29
 
 ## Context
 

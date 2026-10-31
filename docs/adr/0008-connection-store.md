@@ -1,7 +1,7 @@
 # 0008. Encrypted local connection store
 
 - Status: Accepted (amended 2026-10-30 to describe what was built)
-- Date: 2026-10-29
+- Recorded: 2026-10-29
 
 ## Context
 

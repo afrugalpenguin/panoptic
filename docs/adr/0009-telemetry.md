@@ -1,11 +1,11 @@
 # 0009. No telemetry
 
 - Status: Accepted
-- Date: 2026-10-29
+- Recorded: 2026-10-29
 
 ## Context
 
-The tool runs against production data on a corporate laptop.
+The tool runs against production data on managed machines.
 
 ## Decision
 
