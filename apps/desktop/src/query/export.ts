@@ -1,10 +1,19 @@
 import type { CellValue, ResultColumn } from "./types";
 
-/** RFC 4180 CSV with CRLF line endings, quoting only fields that need it. NULL is an empty field. */
+/** Text a spreadsheet would run as a formula: starts with = + - @, a tab or a carriage return. */
+const FORMULA_START = /^[=+\-@\t\r]/;
+/** Numbers the engine sends as text (decimals): never formulas, and a prefix would corrupt them. */
+const NUMERIC = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+
+/**
+ * RFC 4180 CSV with CRLF line endings, quoting only fields that need it. NULL is an empty field. Text that starts
+ * like a formula gets a leading ' so Excel and its kin show it instead of running it (CSV injection).
+ */
 export function toCsv(columns: ResultColumn[], rows: CellValue[][]): string {
   const field = (v: CellValue) => {
     if (v === null || v === undefined) return "";
-    const s = String(v);
+    let s = String(v);
+    if (typeof v === "string" && FORMULA_START.test(s) && !NUMERIC.test(s)) s = `'${s}`;
     return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   const lines = [columns.map((c) => field(c.name)).join(",")];
