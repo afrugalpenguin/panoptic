@@ -14,6 +14,7 @@
   import DetailPane from "./DetailPane.svelte";
   import EnvironmentDialog from "./EnvironmentDialog.svelte";
   import ImportDialog from "./ImportDialog.svelte";
+  import MoveDialog from "./MoveDialog.svelte";
   import IconButton from "./IconButton.svelte";
   import KindChips from "./KindChips.svelte";
   import Landing from "./Landing.svelte";
@@ -53,6 +54,7 @@
   let dialog = $state<
     | { kind: "environment"; initial?: EnvironmentConfig }
     | { kind: "connection"; environmentId: string | null; initial?: ConnectionConfig }
+    | { kind: "move"; connection: ConnectionConfig; from?: string }
     | { kind: "import" }
     | { kind: "settings" }
   >();
@@ -296,10 +298,9 @@
     );
   }
 
+  /** New connection: always the connection dialog, its environment None unless one is given (docs/explorer-ux.md). */
   function addConnection(environmentId?: string) {
-    const envId = environmentId ?? config.environments[0]?.id;
-    if (!envId) dialog = { kind: "environment" };
-    else dialog = { kind: "connection", environmentId: envId };
+    dialog = { kind: "connection", environmentId: environmentId ?? null };
   }
 
   /** Drag onto an environment, Move to environment... and Remove from environment (null): the connection keeps its id. */
@@ -358,6 +359,7 @@
           run: () => found && (dialog = { kind: "connection", environmentId: found.env?.id ?? null, initial: found.connection }),
         });
         items.push(...actionItems(n, actionLabels, { ...on, refresh: () => (model.refresh(n.id), refreshQueryTabs(n.id)) }));
+        items.push({ label: "Move to environment...", run: () => found && (dialog = { kind: "move", connection: found.connection, from: found.env?.id }) });
         if (found?.env) items.push({ label: "Remove from environment", run: () => moveConnection(found.connection.id, null) });
         items.push("separator");
         items.push({
@@ -685,6 +687,17 @@
     environmentId={dialog.environmentId}
     initial={dialog.initial}
     onSaved={() => configChanged()}
+    onEnvironmentCreated={configChanged}
+    onClose={() => (dialog = undefined)}
+  />
+{:else if dialog?.kind === "move" && api}
+  <MoveDialog
+    {api}
+    environments={config.environments}
+    connection={dialog.connection}
+    from={dialog.from}
+    onMove={(envId) => moveConnection(dialog?.kind === "move" ? dialog.connection.id : "", envId)}
+    onEnvironmentCreated={configChanged}
     onClose={() => (dialog = undefined)}
   />
 {/if}

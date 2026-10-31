@@ -33,7 +33,7 @@
     onSeekLeave: () => void;
     onReopen: () => void;
     onNewQuery: () => void;
-    /** With no environments yet, this asks for one first (App's addConnection). */
+    /** Opens the connection dialog, environment None (App's addConnection). */
     onNewConnection: () => void;
     onImport: () => void;
     onRestart: () => void;
