@@ -31,9 +31,10 @@ export function recordUse(usage: Usage, place: Place, now: number): Usage {
   return { envs: { ...usage.envs, [place.envId]: { last: now, uses: (env?.uses ?? 0) + 1 } }, last: place, recent };
 }
 
-export function loadUsage(storage: Storage | undefined = globalThis.localStorage): Usage {
+// Storage is looked up inside the try: with site data blocked, merely reading localStorage throws.
+export function loadUsage(storage?: Storage): Usage {
   try {
-    const raw = storage?.getItem(KEY);
+    const raw = (storage ?? globalThis.localStorage)?.getItem(KEY);
     const parsed = raw ? (JSON.parse(raw) as Usage) : undefined;
     return parsed && typeof parsed.envs === "object" && Array.isArray(parsed.recent) ? parsed : EMPTY_USAGE;
   } catch {
@@ -41,9 +42,9 @@ export function loadUsage(storage: Storage | undefined = globalThis.localStorage
   }
 }
 
-export function saveUsage(usage: Usage, storage: Storage | undefined = globalThis.localStorage): void {
+export function saveUsage(usage: Usage, storage?: Storage): void {
   try {
-    storage?.setItem(KEY, JSON.stringify(usage));
+    (storage ?? globalThis.localStorage)?.setItem(KEY, JSON.stringify(usage));
   } catch {
     // Private mode or full storage: the landing just has less to offer next time.
   }

@@ -44,4 +44,14 @@ describe("loadUsage / saveUsage", () => {
     store.set("panoptic.usage", "{not json");
     expect(loadUsage(storage)).toEqual(EMPTY_USAGE);
   });
+
+  it("falls back quietly when touching local storage itself throws (blocked site data)", () => {
+    Object.defineProperty(globalThis, "localStorage", { configurable: true, get: () => { throw new Error("SecurityError"); } });
+    try {
+      expect(loadUsage()).toEqual(EMPTY_USAGE);
+      expect(() => saveUsage(EMPTY_USAGE)).not.toThrow();
+    } finally {
+      delete (globalThis as { localStorage?: unknown }).localStorage;
+    }
+  });
 });
