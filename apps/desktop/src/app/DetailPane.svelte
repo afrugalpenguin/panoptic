@@ -2,11 +2,12 @@
   import Icon from "./Icon.svelte";
   import type { Row } from "./tree-model";
 
-  let { row, onAddEnvironment, onImport }: { row: Row | undefined; onAddEnvironment: () => void; onImport: () => void } = $props();
+  // Shown for a selected row; with nothing selected App shows the landing instead (docs/landing.md).
+  let { row }: { row: Row } = $props();
 
   const HIDDEN_META = new Set(["json", "environmentId", "connectionId", "dragText", "copyText"]);
 
-  const node = $derived(row?.type === "node" ? row.node : undefined);
+  const node = $derived(row.type === "node" ? row.node : undefined);
   const meta = $derived(Object.entries(node?.meta ?? {}).filter(([k]) => !HIDDEN_META.has(k)));
   const json = $derived.by(() => {
     const raw = node?.meta?.json;
@@ -22,19 +23,7 @@
 </script>
 
 <section class="detail">
-  {#if !row}
-    <div class="empty">
-      <h2>Panoptic</h2>
-      <p class="muted">Every environment in one tree. Bring your saved connections across, or start from scratch.</p>
-      <div class="actions">
-        <button class="primary" onclick={onImport}>Import from SSMS</button>
-        <button onclick={onAddEnvironment}>New environment</button>
-      </div>
-      <p class="muted keys">
-        Arrows to move, Right/Left to expand and collapse, type to jump, F5 to refresh, right-click for actions.
-      </p>
-    </div>
-  {:else if row.type === "error"}
+  {#if row.type === "error"}
     <h2 class="error">Could not load</h2>
     <p>{row.error.summary}{#if row.error.code} <span class="muted">({row.error.code})</span>{/if}</p>
     <pre class="message">{row.error.detail}</pre>
@@ -114,23 +103,5 @@
   }
   .error {
     color: var(--bad);
-  }
-  .empty {
-    max-width: 420px;
-    margin: 12vh auto 0;
-    text-align: center;
-  }
-  .empty h2 {
-    font-size: 22px;
-    margin-bottom: 8px;
-  }
-  .actions {
-    display: flex;
-    gap: 8px;
-    justify-content: center;
-  }
-  .keys {
-    margin-top: 24px;
-    font-size: 12px;
   }
 </style>

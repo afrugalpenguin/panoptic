@@ -68,6 +68,10 @@ explorer.envOrder        string[] manual order of env ids, default order added
 
 No layout mode setting. L2 (kind tabs) and L3 (stacked sections) are rejected.
 
+## Keys
+
+Up/Down, Page Up/Down, Home/End move. Right expands (or steps into), Left collapses (or steps to the parent). Enter toggles, F5 refreshes, typing jumps to a matching row, the context-menu key or right-click opens actions. Esc clears the selection, which brings back the landing when no tab is open (docs/landing.md).
+
 ## Out of scope for this change
 
 Display-name aliases, pipeline ordering with an Other divider, region chips. All on the canvas, all rejected or deferred.

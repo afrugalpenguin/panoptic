@@ -27,6 +27,19 @@ Not yet measured. Fill in from a `-Suite startup -Runs 10` run of a current rele
 | Home | TODO | TODO | TODO | TODO | TODO |
 | Work laptop | TODO | TODO | TODO | TODO | TODO |
 
+### Landing and Seek vs main: Home, 2026-10-31 (repo release builds, JIT sidecar)
+
+Release builds (`pnpm tauri build --no-bundle`) of `feature/landing` and of main at the same commit it
+branched from, 10 runs each, one after the other. The branch ran first, so its run 1 includes the
+cold start of a newly written exe; the medians are the comparison.
+
+| Build | Launch to first paint (median ms) | Launch to sidecar ready (median ms) | Sidecar start to ready (median ms) | Run 1 paint / ready (ms) |
+| --- | --- | --- | --- | --- |
+| feature/landing | 408 | 365 | 94.9 | 874 / 1086 |
+| main | 409 | 370 | 96.1 | 644 / 966 |
+
+The landing costs nothing measurable at start and stays inside the 500 ms window-open budget.
+
 ### Superseded: Home, 2026-10-29, v0.1.0 (repo release build, AOT sidecar)
 
 These numbers were measured on the Native AOT sidecar, which no longer ships: since M1 the sidecar

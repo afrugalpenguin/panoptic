@@ -3,13 +3,19 @@
   import ProblemsView from "./ProblemsView.svelte";
   import QueryView from "./QueryView.svelte";
   import WhatsNewView from "./WhatsNewView.svelte";
-  import type { QueryWorkspace } from "./store.svelte";
+  import type { SeekHost, SeekIndex } from "../app/seek";
+  import type { QueryTab, QueryWorkspace } from "./store.svelte";
 
   let {
     workspace,
     onLinkError,
+    seekIndex,
+    onConnect,
   }: {
     workspace: QueryWorkspace;
+    /** For an unconnected tab's connection picker. */
+    seekIndex: SeekIndex;
+    onConnect: (tab: QueryTab, host: SeekHost) => void;
     /** A What's new link failed to open; the message goes to the status bar. */
     onLinkError: (message: string) => void;
   } = $props();
@@ -24,11 +30,11 @@
         role="tab"
         tabindex="0"
         aria-selected={tab.id === workspace.activeId}
-        style:--band={tab.kind === "query" ? (tab.target.envColor ?? "transparent") : "transparent"}
+        style:--band={tab.kind === "query" ? (tab.target?.envColor ?? "transparent") : "transparent"}
         onclick={() => (workspace.activeId = tab.id)}
         onkeydown={(e) => e.key === "Enter" && (workspace.activeId = tab.id)}
         onauxclick={(e) => e.button === 1 && workspace.close(tab.id)}
-        title={tab.kind === "query" ? `${tab.target.connection} / ${tab.target.label}` : tab.title}
+        title={tab.kind === "query" && tab.target ? `${tab.target.connection} / ${tab.target.label}` : tab.title}
       >
         {#if tab.kind === "query" && tab.running}<span class="spinner"></span>{/if}
         {#if tab.kind === "whats-new"}<img class="icon" src={logo} alt="" />{/if}
@@ -41,7 +47,7 @@
     <!-- Every tab stays mounted so its editor keeps its undo history and cursor; only the active one shows. -->
     <div class="body" hidden={tab.id !== workspace.activeId}>
       {#if tab.kind === "query"}
-        <QueryView {tab} {workspace} />
+        <QueryView {tab} {workspace} {seekIndex} {onConnect} />
       {:else if tab.kind === "problems"}
         <ProblemsView {tab} />
       {:else}

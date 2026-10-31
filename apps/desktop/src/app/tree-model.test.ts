@@ -531,6 +531,17 @@ describe("TreeModel", () => {
       expect(labels(model)).toEqual(["dev", "  a"]);
     });
   });
+
+  it("focus expands one environment (and a connection in it) and collapses the others", async () => {
+    const { model } = fixture({ "": [node("env:a"), node("env:b")], "env:a": [node("env:a/conn:x")], "env:b": [], "env:a/conn:x": [] });
+    await model.loadRoot();
+    await model.expand("env:a");
+    await model.expand("env:b");
+    await model.focus("env:a", "env:a/conn:x");
+    expect(model.isExpanded("env:a")).toBe(true);
+    expect(model.isExpanded("env:a/conn:x")).toBe(true);
+    expect(model.isExpanded("env:b")).toBe(false);
+  });
 });
 
 describe("moveEnvironment", () => {

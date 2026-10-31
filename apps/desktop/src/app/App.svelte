@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import type { RpcClient } from "../rpc";
   import { connectSidecar, readyText, type PingResult, type SidecarStatus } from "../sidecar";
@@ -16,11 +16,15 @@
   import ImportDialog from "./ImportDialog.svelte";
   import IconButton from "./IconButton.svelte";
   import KindChips from "./KindChips.svelte";
+  import Landing from "./Landing.svelte";
+  import type { SeekEnv, SeekHost, SeekIndex, SeekRow } from "./seek";
+  import { globalShortcut } from "./shortcuts";
+  import { loadUsage, recordUse, saveUsage, type Place } from "./usage";
   import { actionItems, actionLabel, queryItems, shortcutAction, type NodeActionHandlers } from "./node-menu";
   import Workspace from "../query/Workspace.svelte";
   import { preloadMonaco } from "../query/preload";
   import { intellisense, syncCatalogs } from "../query/intellisense/shared";
-  import { QueryWorkspace } from "../query/store.svelte";
+  import { QueryWorkspace, type QueryTab } from "../query/store.svelte";
   import SettingsDialog from "./SettingsDialog.svelte";
   import StatusBar from "./StatusBar.svelte";
   import Tree from "./Tree.svelte";
@@ -31,7 +35,7 @@
 
   let api = $state.raw<Api>();
   let sidecar = $state<"connecting" | "connected" | "disconnected">("connecting");
-  let sidecarText = $state("Starting...");
+  let sidecarText = $state("Starting database engine...");
   let config = $state<AppConfig>({ environments: [] });
   let rows = $state.raw<Row[]>([]);
   let problems = $state.raw<Problem[]>([]);
@@ -62,6 +66,12 @@
   const checkForUpdates = createUpdateChecker((s) => (update = s));
   let stopUpdateSchedule = () => {};
   let treeWidth = $state(readWidth());
+  /** Where the user has been, for Seek and Reopen (docs/landing.md, "Usage"). */
+  let usage = $state.raw(loadUsage());
+  /** Launch to engine ready, shown on the landing. */
+  let openedMs = $state<number>();
+  let tree = $state<Tree>();
+  let landing = $state<Landing>();
 
   const model = new TreeModel(
     (id, signal) => api!.children(id, signal),
@@ -82,6 +92,29 @@
   );
 
   const selectedRow = $derived(rows.find((r) => r.key === selectedKey));
+  const version = $derived(update?.current);
+
+  /** Loaded environments and their connections. Reads rows so it follows every tree change; preload loads all connections at start. */
+  function seekEnvs(): SeekEnv[] {
+    void rows;
+    return model.childIds("").flatMap((envId) => {
+      const env = model.node(envId);
+      if (!env) return [];
+      const hosts: SeekHost[] = model
+        .childIds(envId)
+        .map((id) => model.node(id))
+        .filter((n): n is TreeNode => n?.kind === "connection")
+        .map((n) => ({ id: n.id, name: n.label, envId }));
+      return [{ id: envId, name: env.label, color: env.meta?.color, hosts }];
+    });
+  }
+  const seekIndex = $derived<SeekIndex>({ envs: seekEnvs(), usage });
+
+  /** An environment node's colour band and read-only flag, as its rows get them. */
+  const envLook = (envId: string) => {
+    const meta = model.node(envId)?.meta;
+    return { envColor: meta?.color, readOnly: meta?.readOnly === "true" };
+  };
 
   const workspace = new QueryWorkspace({
     executeQuery: (request) => api!.executeQuery(request),
@@ -138,7 +171,7 @@
     sidecarText = view.text;
     // Its caches went with the process: drop what was loaded below the connections.
     if (view.lost) model.forgetConnections();
-    if (status.state === "failed") lastLoad = { id: "", label: "Sidecar", count: 0, ms: 0, error: `${status.error}. Restart Panoptic.` };
+    if (status.state === "failed") lastLoad = { id: "", label: "Database engine", count: 0, ms: 0, error: `${status.error}. Restart Panoptic.` };
   }
 
   async function onRunning() {
@@ -173,6 +206,7 @@
     await model.preload(model.childIds(""));
 
     const fcp = await firstPaintEpochMs();
+    openedMs = Math.round(sidecarReadyEpochMs - info.mainStartEpochMs);
     const timings = {
       kind: "startup",
       mainStartEpochMs: info.mainStartEpochMs,
@@ -183,7 +217,7 @@
       sidecarStartupMs: ping.startupMs,
       sidecarMode: ping.mode,
     };
-    startup = `First paint ${timings.mainToFirstPaintMs} ms, sidecar ready ${timings.mainToSidecarReadyMs} ms (sidecar ${ping.startupMs} ms, ${ping.mode}, v${ping.version})`;
+    startup = `First paint ${timings.mainToFirstPaintMs} ms, engine ready ${timings.mainToSidecarReadyMs} ms (engine ${ping.startupMs} ms, ${ping.mode}, v${ping.version})`;
     if (info.benchMode === "startup") await finishBenchmark(timings);
     if (info.benchMode) return;
     settings = await api!.settings();
@@ -323,11 +357,24 @@
     if (items.length) menu = { x, y, items };
   }
 
-  /** Opens a query tab against a node: New query, or Select top 1000 which also runs it. */
-  async function openQuery(row: Row, action: "newQuery" | "selectTop") {
-    // Only nodes that carry the action open a tab: the sidecar never offers it on a backend that cannot query.
-    if (row.type !== "node" || !api || !row.node.actions.includes(action)) return;
-    const n = row.node;
+  /** Opens a query tab against a row's node: New query, or Select top 1000 which also runs it. */
+  function openQuery(row: Row, action: "newQuery" | "selectTop") {
+    if (row.type !== "node") return;
+    return openQueryOn(row.node, row.envColor, row.readOnly, action);
+  }
+
+  /**
+   * Opens a query tab against a node, rendered or not (Seek reopens places the tree may not have loaded). Only nodes
+   * that carry the action open a tab: the sidecar never offers it on a backend that cannot query. A node that is not
+   * loaded has no actions to check; the sidecar's template refuses one it cannot query.
+   */
+  async function openQueryOn(
+    n: { id: string; label: string; actions?: string[] },
+    envColor: string | undefined,
+    readOnly: boolean,
+    action: "newQuery" | "selectTop",
+  ) {
+    if (!api || (n.actions && !n.actions.includes(action))) return;
     try {
       // The sidecar resolves the tab's scope (connection, database, container) and names from the node id.
       const template = await api.queryTemplate(n.id, action);
@@ -337,17 +384,91 @@
           nodeId: n.id,
           label: action === "selectTop" ? n.label : (scope?.label ?? n.label),
           connection: scope?.connectionLabel ?? "",
-          envColor: row.envColor,
-          readOnly: row.readOnly,
+          envColor,
+          readOnly,
           language: template.language,
           scope,
         },
         template.text ?? "",
       );
+      remember(n.id, n.label);
       if (action === "selectTop") void workspace.run(tab);
     } catch (e) {
       lastLoad = { id: n.id, label: n.label, count: 0, ms: 0, error: e instanceof Error ? e.message : String(e) };
     }
+  }
+
+  /** The node's environment and connection, walking up the loaded tree; undefined above connection level. */
+  function placeFor(nodeId: string, label: string): Place | undefined {
+    let host: TreeNode | undefined;
+    let env: TreeNode | undefined;
+    for (let id: string | undefined = nodeId; id; id = model.parentOf(id)) {
+      const n = model.node(id);
+      if (n?.kind === "connection") host = n;
+      else if (n?.kind === "environment") env = n;
+    }
+    if (!host || !env) return undefined;
+    return { envId: env.id, hostId: host.id, hostName: host.label, nodeId, label, kind: model.node(nodeId)?.kind ?? "object" };
+  }
+
+  function remember(nodeId: string, label: string) {
+    const place = placeFor(nodeId, label);
+    if (!place) return;
+    usage = recordUse(usage, place, Date.now());
+    saveUsage(usage);
+  }
+
+  /** Reopen last session / Pick up where you left off: the place only, in the tree and in a new query tab. */
+  async function reopen(place: Place) {
+    await model.focus(place.envId, place.hostId);
+    selectedKey = place.hostId;
+    const { envColor, readOnly } = envLook(place.envId);
+    await openQueryOn(model.node(place.nodeId) ?? { id: place.nodeId, label: place.label }, envColor, readOnly, "newQuery");
+  }
+
+  /** Seek's Enter: scope the tree to the row, or reopen a place. */
+  function seekOpen(row: SeekRow) {
+    if (row.kind === "env") {
+      selectedKey = row.env.id;
+      void model.focus(row.env.id);
+    } else if (row.kind === "host") {
+      selectedKey = row.host.id;
+      void model.focus(row.host.envId, row.host.id);
+    } else if (row.kind === "resume" || row.kind === "recent") void reopen(row.place);
+  }
+
+  /** Seek's Ctrl+Enter: a new query tab on the connection (an environment's first one); a place reopens. */
+  function seekQuery(row: SeekRow) {
+    if (row.kind === "resume" || row.kind === "recent") return void reopen(row.place);
+    const host = row.kind === "host" ? row.host : row.kind === "env" ? row.env.hosts[0] : undefined;
+    if (!host) return;
+    const { envColor, readOnly } = envLook(host.envId);
+    void openQueryOn(model.node(host.id) ?? { id: host.id, label: host.name }, envColor, readOnly, "newQuery");
+  }
+
+  /** The unconnected tab's picker chose a connection: connect it in place, keeping its text. */
+  async function connectTab(tab: QueryTab, host: SeekHost) {
+    if (!api) return;
+    try {
+      const template = await api.queryTemplate(host.id, "newQuery");
+      const scope = template.scope;
+      workspace.connect(tab, {
+        nodeId: host.id,
+        label: scope?.label ?? host.name,
+        connection: scope?.connectionLabel ?? "",
+        ...envLook(host.envId),
+        language: template.language,
+        scope,
+      });
+      remember(host.id, host.name);
+    } catch (e) {
+      lastLoad = { id: host.id, label: host.name, count: 0, ms: 0, error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
+  /** The landing's Restart: starts the engine again after the supervisor gave up or it was stopped. */
+  function restartEngine() {
+    invoke("sidecar_start").catch((e) => (lastLoad = { id: "", label: "Database engine", count: 0, ms: 0, error: String(e) }));
   }
 
   function onGlobalKeydown(e: KeyboardEvent) {
@@ -355,7 +476,28 @@
     if (action && selectedRow) {
       e.preventDefault();
       void openQuery(selectedRow, action);
+      return;
     }
+    // Not while a dialog is open: its fields keep their keys.
+    if (dialog) return;
+    const global = globalShortcut(e, !!(e.target as Element | null)?.closest?.(".monaco-editor"));
+    if (!global) return;
+    e.preventDefault();
+    if (global === "newQuery") workspace.openUnconnected();
+    else if (global === "newConnection") {
+      if (sidecar === "connected") addConnection();
+    }
+    else if (global === "import") {
+      if (sidecar === "connected") dialog = { kind: "import" };
+    } else void focusSeek();
+  }
+
+  /** Ctrl+P: the landing's Seek. With tabs open there is nothing to focus yet (a palette comes later). */
+  async function focusSeek() {
+    selectedKey = undefined;
+    if (workspace.tabs.length > 0) return;
+    await tick();
+    landing?.focus();
   }
 
   function activate(row: Row) {
@@ -437,6 +579,7 @@
         <p class="hint muted">No environments yet.</p>
       {/if}
       <Tree
+        bind:this={tree}
         {model}
         {rows}
         bind:selectedKey
@@ -454,9 +597,31 @@
 
   <main class="content">
     {#if workspace.tabs.length > 0}
-      <Workspace {workspace} onLinkError={(error) => (lastLoad = { id: "", label: "Open link", count: 0, ms: 0, error })} />
+      <Workspace
+        {workspace}
+        {seekIndex}
+        onConnect={connectTab}
+        onLinkError={(error) => (lastLoad = { id: "", label: "Open link", count: 0, ms: 0, error })}
+      />
+    {:else if !selectedRow}
+      <Landing
+        bind:this={landing}
+        index={seekIndex}
+        envCount={config.environments.length}
+        {version}
+        engine={sidecar}
+        {openedMs}
+        onSeekOpen={seekOpen}
+        onSeekQuery={seekQuery}
+        onSeekLeave={() => tree?.focus()}
+        onReopen={() => seekIndex.usage.last && reopen(seekIndex.usage.last)}
+        onNewQuery={() => workspace.openUnconnected()}
+        onNewConnection={() => sidecar === "connected" && addConnection()}
+        onImport={() => sidecar === "connected" && (dialog = { kind: "import" })}
+        onRestart={restartEngine}
+      />
     {:else}
-    <DetailPane row={selectedRow} onAddEnvironment={() => (dialog = { kind: "environment" })} onImport={() => (dialog = { kind: "import" })} />
+      <DetailPane row={selectedRow} />
     {/if}
   </main>
 

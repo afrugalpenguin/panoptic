@@ -2,12 +2,29 @@
   import { onMount } from "svelte";
   import { save } from "@tauri-apps/plugin-dialog";
   import { writeTextFile } from "@tauri-apps/plugin-fs";
+  import SeekBox from "../app/SeekBox.svelte";
+  import type { SeekHost, SeekIndex, SeekRow } from "../app/seek";
   import { toCsv, toJson } from "./export";
   import QueryEditor from "./QueryEditor.svelte";
   import ResultGrid from "./ResultGrid.svelte";
   import type { QueryTab, QueryWorkspace } from "./store.svelte";
 
-  let { tab, workspace }: { tab: QueryTab; workspace: QueryWorkspace } = $props();
+  let {
+    tab,
+    workspace,
+    seekIndex,
+    onConnect,
+  }: {
+    tab: QueryTab;
+    workspace: QueryWorkspace;
+    /** The unconnected tab's picker: Seek scoped to connections (docs/landing.md). */
+    seekIndex: SeekIndex;
+    onConnect: (tab: QueryTab, host: SeekHost) => void;
+  } = $props();
+
+  let editorHost = $state<HTMLDivElement>();
+  // Never auto-connect: the last used connection is only pre-selected, and Enter or a click picks it.
+  const pick = (row: SeekRow) => row.kind === "host" && onConnect(tab, row.host);
 
   let editorHeight = $state(readSplit());
   let now = $state(Date.now());
@@ -53,8 +70,9 @@
   function startResize(e: PointerEvent) {
     const target = e.currentTarget as HTMLElement;
     target.setPointerCapture(e.pointerId);
-    const top = target.parentElement!.getBoundingClientRect().top;
-    const move = (ev: PointerEvent) => (editorHeight = Math.max(80, Math.min(window.innerHeight - 200, ev.clientY - top - 36)));
+    // From the editor's own top, so the connection picker above it (unconnected tabs) doesn't skew the drag.
+    const top = editorHost!.getBoundingClientRect().top;
+    const move = (ev: PointerEvent) => (editorHeight = Math.max(80, Math.min(window.innerHeight - 200, ev.clientY - top)));
     target.addEventListener("pointermove", move);
     target.addEventListener(
       "pointerup",
@@ -74,16 +92,21 @@
     {#if tab.running}
       <button class="cancel" onclick={() => workspace.cancel(tab)}>Cancel</button>
     {:else}
-      <button class="primary" onclick={() => workspace.run(tab)} title="Run (F5 or Ctrl+Enter); runs the selection if there is one">Run</button>
+      <button
+        class="primary"
+        disabled={!tab.target}
+        onclick={() => workspace.run(tab)}
+        title={tab.target ? "Run (F5 or Ctrl+Enter); runs the selection if there is one" : "Choose a connection first"}>Run</button
+      >
     {/if}
-    <span class="target" style:--band={tab.target.envColor ?? "transparent"}>
+    {#if tab.target}<span class="target" style:--band={tab.target.envColor ?? "transparent"}>
       {tab.target.connection} / {tab.target.label}
       {#if tab.target.readOnly}<span
           class="ro"
           title="SQL runs in a transaction that is rolled back at the end. A COMMIT in the script ends it early (the remaining batches are then skipped), and side effects outside the database transaction (xp_cmdshell, sp_send_dbmail, linked servers) are not rolled back. A read-only login is the real protection."
           >read-only</span
         >{/if}
-    </span>
+    </span>{/if}
     {#if databaseOptions.length > 0}
       <select
         class="database"
@@ -113,10 +136,27 @@
     {/if}
   </div>
 
-  <div class="editor-host">
+  <!-- Always rendered, so the grid rows stay put; empty (no height) once connected. -->
+  <div>
+    {#if !tab.target}<div class="picker">
+      <p class="muted">Not connected - choose a connection</p>
+      <SeekBox
+        index={seekIndex}
+        scope="connections"
+        autofocus
+        placeholder="Seek a connection"
+        label="Choose a connection for this tab"
+        onOpen={pick}
+        onQuery={pick}
+        onLeave={() => editorHost?.querySelector("textarea")?.focus()}
+      />
+    </div>{/if}
+  </div>
+
+  <div class="editor-host" bind:this={editorHost}>
     <QueryEditor
       bind:text={tab.text}
-      language={tab.target.language}
+      language={tab.target?.language}
       {intellisense}
       onRun={(selection, offset) => workspace.run(tab, selection, offset)}
       messages={tab.messages}
@@ -176,7 +216,7 @@
 <style>
   .view {
     display: grid;
-    grid-template-rows: auto var(--editor-h) 5px 1fr;
+    grid-template-rows: auto auto var(--editor-h) 5px 1fr;
     height: 100%;
     min-height: 0;
   }
@@ -224,6 +264,17 @@
     color: var(--warn);
     border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
     border-radius: 8px;
+  }
+  .picker {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-width: 460px;
+    padding: 10px 12px;
+    font-size: 12px;
+  }
+  .picker p {
+    margin: 0;
   }
   .editor-host {
     min-height: 0;

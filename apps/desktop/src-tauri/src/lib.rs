@@ -113,11 +113,13 @@ fn sidecar_stop(app: AppHandle, sidecar: State<Sidecar>) -> Result<(), String> {
     Ok(())
 }
 
-/// Starts a supervisor again after sidecar_stop, e.g. when installing an update failed. Does nothing
-/// if the sidecar was not stopped.
+/// Starts a supervisor again after sidecar_stop (e.g. when installing an update failed), or after the
+/// supervisor gave up on repeated failures (the landing's Restart). Does nothing while one is running.
 #[tauri::command]
 fn sidecar_start(app: AppHandle, sidecar: State<Sidecar>) -> Result<(), String> {
-    if sidecar.stopping.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+    // The supervisor returns right after reporting Failed, so none is running then.
+    let gave_up = matches!(sidecar.status.lock().ok().and_then(|s| s.clone()), Some(SidecarStatus::Failed { .. }));
+    if sidecar.stopping.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_err() && !gave_up {
         return Ok(());
     }
     let generation = sidecar.generation.fetch_add(1, Ordering::SeqCst) + 1;
@@ -173,7 +175,7 @@ fn supervise(app: AppHandle, generation: u32) {
                 failures = if started.elapsed() >= HEALTHY_AFTER { 1 } else { failures + 1 };
                 set_status(&app, SidecarStatus::Exited { code });
                 if failures >= MAX_CONSECUTIVE_FAILURES {
-                    set_status(&app, SidecarStatus::Failed { error: format!("sidecar exited {failures} times in a row (last code {code:?})") });
+                    set_status(&app, SidecarStatus::Failed { error: format!("database engine exited {failures} times in a row (last code {code:?})") });
                     return;
                 }
             }

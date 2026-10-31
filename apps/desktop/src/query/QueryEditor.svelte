@@ -15,7 +15,8 @@
     warnUnknownNames = false,
   }: {
     text: string;
-    language: QueryLanguage;
+    /** Undefined until an unconnected tab connects: plain text, then the connection's language. */
+    language: QueryLanguage | undefined;
     /** What completions and hover read; called on every request, so it always sees current settings. */
     intellisense?: () => ModelInfo | undefined;
     /** Called with the selected text and where it starts, or undefined to run everything. */
@@ -31,6 +32,15 @@
   const MONACO_LANGUAGE: Record<QueryLanguage, string> = { sql: "tsql", cosmos: "cosmos-sql", pgsql: "pgsql" };
   /** Like the editor's own diagnostics would be: after typing pauses, never per keystroke (docs/query-editor.md). */
   const LINT_DELAY_MS = 500;
+
+  const monacoLanguage = (l: QueryLanguage | undefined) => (l ? MONACO_LANGUAGE[l] : "plaintext");
+
+  // An unconnected tab gets its language on connect; the editor and its undo history stay.
+  $effect(() => {
+    const next = monacoLanguage(language);
+    const model = editor?.getModel();
+    if (monaco && model && model.getLanguageId() !== next) monaco.editor.setModelLanguage(model, next);
+  });
 
   let host: HTMLDivElement;
   let editor: Monaco.editor.IStandaloneCodeEditor | undefined;
@@ -52,7 +62,7 @@
       monaco = m.monaco;
       editor = monaco.editor.create(host, {
         value: text,
-        language: MONACO_LANGUAGE[language],
+        language: monacoLanguage(language),
         theme: dark.matches ? "vs-dark" : "vs",
         automaticLayout: true,
         minimap: { enabled: false },
