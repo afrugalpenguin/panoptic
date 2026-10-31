@@ -286,3 +286,77 @@ describe("replace range and table refs", () => {
     ]);
   });
 });
+
+describe("pgsql dialect", () => {
+  const types = (text: string) => tokenize(text, "pgsql").map((t) => t.type);
+
+  it("reads double-quoted names, E strings and dollar quoting", () => {
+    const tokens = tokenize(String.raw`select "My ""T""", E'it\'s', $$a;'b$$, $fn$ x $$ y $fn$ from t`, "pgsql");
+    expect(tokens.filter((t) => t.type === "quoted").map((t) => t.value)).toEqual(['My "T"']);
+    expect(tokens.filter((t) => t.type === "string").map((t) => t.text)).toEqual([String.raw`E'it\'s'`, "$$a;'b$$", "$fn$ x $$ y $fn$"]);
+  });
+
+  it("treats brackets, @ and # as punctuation and $1 as a parameter", () => {
+    expect(types("a[1] @> #x $1")).toEqual(["word", "punct", "number", "punct", "punct", "punct", "punct", "word", "var"]);
+  });
+
+  it("reads :: casts as punctuation around a type name", () => {
+    expect(tokenize("x::int", "pgsql").map((t) => t.text)).toEqual(["x", ":", ":", "int"]);
+  });
+
+  it("splits statements on semicolons only, never on GO or blank lines", () => {
+    const text = "select 1\nGO\nselect 2\n\nselect 3; select 4";
+    const slice = (marker: string) => {
+      const s = statementAt(text, text.indexOf(marker), "pgsql");
+      return text.slice(s.start, s.end).trim();
+    };
+    expect(slice("3")).toBe("select 1\nGO\nselect 2\n\nselect 3");
+    expect(slice("4")).toBe("select 4");
+  });
+
+  it("does not split on a semicolon inside a dollar-quoted body", () => {
+    const text = "create function f() returns int as $$ begin return 1; end $$ language plpgsql; select |";
+    expect(at(text, "pgsql").context).toEqual({ kind: "columns", tables: [] });
+    const s = statementAt(text.replace("|", ""), 10, "pgsql");
+    expect(text.slice(s.start, s.end)).toContain("language plpgsql");
+  });
+
+  it("completes tables after FROM and columns from them", () => {
+    expect(at(`select * from public.|`, "pgsql").context).toEqual({ kind: "objects", qualifier: ["public"] });
+    expect(at(`select | from "Orders" o limit 10`, "pgsql").context).toEqual({ kind: "columns", tables: [{ name: "Orders", alias: "o" }] });
+    expect(at(`select o.| from orders o`, "pgsql").context).toEqual({ kind: "aliasColumns", table: { name: "orders", alias: "o" } });
+  });
+
+  it("does not read LIMIT, OFFSET or RETURNING as a table alias", () => {
+    expect(tablesAt("select * from t limit 5 offset 2", 0, "pgsql")).toEqual([{ name: "t" }]);
+    expect(tablesAt("delete from t returning id", 0, "pgsql")).toEqual([{ name: "t" }]);
+  });
+
+  it("completes types after :: and CAST(x AS", () => {
+    expect(at("select x::|", "pgsql").context.kind).toBe("types");
+    expect(at("select cast(x as |", "pgsql").context.kind).toBe("types");
+  });
+
+  it("takes the prefix inside an unterminated quoted name", () => {
+    expect(at(`select * from "My Ta|`, "pgsql")).toMatchObject({ prefix: "My Ta", start: "select * from ".length });
+  });
+
+  it("has no variables or USE", () => {
+    expect(at("select @|", "pgsql").context.kind).not.toBe("variables");
+    expect(at("use other; select * from |", "pgsql").useDatabase).toBeUndefined();
+  });
+
+  it("finds DDL outside dollar-quoted bodies only", () => {
+    expect(isDdl("create table t (a int)", "pgsql")).toBe(true);
+    expect(isDdl("select $$drop table t$$", "pgsql")).toBe(false);
+  });
+
+  it("never throws at any offset", () => {
+    const scripts = [
+      String.raw`select "a""b".c::int[], E'x\'y', $t$ body $ $t$, $$ unterminated`,
+      "select a[1:2] from t where b @> '{1}' and c ~* 'x' -- e;f\n/* /* nested */ */ ;; $1 $",
+      `select "unterminated, E'also`,
+    ];
+    for (const script of scripts) for (let o = 0; o <= script.length; o++) expect(() => contextAt(script, o, "pgsql")).not.toThrow();
+  });
+});

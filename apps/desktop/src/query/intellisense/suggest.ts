@@ -2,8 +2,8 @@
 // against the catalog snapshot it already holds, and never calls the sidecar.
 
 import type { CatalogObject, ColumnRef } from "../catalog.svelte";
-import { quote, type Index, type Lookup } from "./engine";
-import type { TableRef } from "./scanner";
+import { defaultSchema, quote, type Index, type Lookup } from "./engine";
+import type { Language, TableRef } from "./scanner";
 
 export interface Suggestion {
   /** As shown in the message: dbo.Contracts. */
@@ -45,33 +45,35 @@ function closest<T>(typed: string, candidates: T[], nameOf: (c: T) => string): T
   return best;
 }
 
-const KINDS = { objects: new Set(["table", "view", "synonym"]), procs: new Set(["proc"]) };
+const KINDS = { objects: new Set(["table", "view", "synonym"]), procs: new Set(["proc"]), routines: new Set(["fn", "proc"]) };
 
 /**
- * An object for an invalid object name (208) or a missing procedure (2812), from [name] or [schema, name]. The one
- * the name already resolves to exactly is skipped: the server could not use it, so suggesting it would not help.
+ * An object for an invalid object name (208, 42P01), a missing procedure (2812) or an undefined Postgres function or
+ * procedure (42883), from [name] or [schema, name]. The one the name already resolves to exactly is skipped: the
+ * server could not use it, so suggesting it would not help.
  */
-export function suggestObject(index: Index, parts: string[], kind: keyof typeof KINDS): Suggestion | undefined {
+export function suggestObject(index: Index, parts: string[], kind: keyof typeof KINDS, language: Language = "tsql"): Suggestion | undefined {
   if (parts.length === 0 || parts.length > 2) return undefined;
   const name = parts[parts.length - 1];
   const schema = parts.length === 2 ? parts[0] : undefined;
+  const fallback = defaultSchema(language);
   const inSchema = (o: CatalogObject) => !!schema && o.schema.toLowerCase() === schema.toLowerCase();
   const candidates = index.catalog.objects
-    .filter((o) => KINDS[kind].has(o.kind) && !(o.name === name && (schema ? o.schema === schema : o.schema.toLowerCase() === "dbo")))
+    .filter((o) => KINDS[kind].has(o.kind) && !(o.name === name && (schema ? o.schema === schema : o.schema.toLowerCase() === fallback)))
     .sort((a, b) => Number(inSchema(b)) - Number(inSchema(a)));
   const found = closest(name, candidates, (o) => o.name);
-  return found && { label: `${found.schema}.${found.name}`, insertText: `${quote(found.schema)}.${quote(found.name)}` };
+  return found && { label: `${found.schema}.${found.name}`, insertText: `${quote(found.schema, language)}.${quote(found.name, language)}` };
 }
 
 /**
- * A column for an invalid column name (207), from the columns of the statement's tables that resolve in the
+ * A column for an invalid column name (207, 42703), from the columns of the statement's tables that resolve in the
  * catalog, or only the table qualifier names (an alias or a table name) when the column is qualified.
  */
-export function suggestColumn(lookup: Lookup, tables: TableRef[], name: string, qualifier?: string): Suggestion | undefined {
+export function suggestColumn(lookup: Lookup, tables: TableRef[], name: string, qualifier?: string, language: Language = "tsql"): Suggestion | undefined {
   const eq = (a: string | undefined, b: string) => a?.toLowerCase() === b.toLowerCase();
   const refs = qualifier ? tables.filter((t) => eq(t.alias, qualifier) || (!t.alias && eq(t.name, qualifier))) : tables;
   const columns: ColumnRef[] = [];
-  for (const ref of refs) columns.push(...(lookup(ref.database)?.find(ref.name, ref.schema)?.columns ?? []));
+  for (const ref of refs) columns.push(...(lookup(ref.database)?.find(ref.name, ref.schema, defaultSchema(language))?.columns ?? []));
   const found = closest(name, columns.filter((c) => c.name !== name), (c) => c.name);
-  return found && { label: found.name, insertText: quote(found.name) };
+  return found && { label: found.name, insertText: quote(found.name, language) };
 }

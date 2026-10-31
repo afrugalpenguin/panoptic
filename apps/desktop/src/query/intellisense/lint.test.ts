@@ -96,3 +96,48 @@ describe("unknownNames: columns", () => {
     expect(warn("select inserted.Anything from Customer")).toEqual([]);
   });
 });
+
+describe("unknownNames: pgsql", () => {
+  const shop: DatabaseCatalog = {
+    stamp: "p",
+    schemas: ["public", "sales"],
+    types: [],
+    objects: [
+      { name: "customer", schema: "public", kind: "table", columns: [{ name: "id", type: "integer", nullable: false }, { name: "created", type: "timestamptz", nullable: false }] },
+      { name: "Order", schema: "sales", kind: "table", columns: [{ name: "id", type: "bigint", nullable: false }] },
+    ],
+  };
+  const pg = new Index(shop);
+  const pgWarn = (text: string) => unknownNames(() => pg, text, text.length, "pgsql").map((w) => text.slice(w.start, w.end));
+
+  it("warns about unknown tables and columns", () => {
+    expect(pgWarn("select * from custmer")).toEqual(["custmer"]);
+    expect(pgWarn(`select * from sales."Ordr"`)).toEqual([`sales."Ordr"`]);
+    expect(pgWarn("select nme from customer")).toEqual(["nme"]);
+    expect(pgWarn("select c.nme from customer c")).toEqual(["nme"]);
+  });
+
+  it("accepts public by default and quoted names", () => {
+    expect(pgWarn(`select id from customer; select "id" from sales."Order"`)).toEqual([]);
+  });
+
+  it("skips system catalogs, casts, EXTRACT fields and Postgres clauses", () => {
+    expect(pgWarn("select * from pg_class")).toEqual([]);
+    expect(pgWarn("select * from pg_catalog.pg_tables")).toEqual([]);
+    expect(pgWarn("select * from information_schema.columns")).toEqual([]);
+    expect(pgWarn("select id::text, created::my_enum from customer")).toEqual([]);
+    expect(pgWarn("select extract(year from created) from customer")).toEqual([]);
+    expect(pgWarn("select id from customer order by id limit 5 offset 2")).toEqual([]);
+    expect(pgWarn("delete from customer where id = $1 returning id")).toEqual([]);
+  });
+
+  it("knows names created earlier in the script", () => {
+    expect(pgWarn("create temp table scratch (a int); select a from scratch")).toEqual([]);
+    expect(pgWarn("create or replace view v as select 1 as a; select * from v")).toEqual([]);
+    expect(pgWarn("create materialized view if not exists mv as select 1; select * from mv")).toEqual([]);
+  });
+
+  it("does not look inside dollar-quoted bodies", () => {
+    expect(pgWarn("do $$ begin perform * from nowhere; end $$")).toEqual([]);
+  });
+});

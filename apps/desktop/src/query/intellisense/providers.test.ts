@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { shouldSuggestAfterSpace, toMonacoItem } from "./providers";
+import type * as Monaco from "monaco-editor/editor/editor.api";
+import type { IntelliSenseClient } from "./client";
+import { registerIntelliSense, registerQuickFixes, shouldSuggestAfterSpace, toMonacoItem } from "./providers";
 
 const kinds = { Struct: 1, Field: 2, Keyword: 3, Function: 4, Method: 5, Variable: 6, Module: 7, TypeParameter: 8, Interface: 9, Reference: 10, Property: 11, Folder: 12 };
 const range = { startLineNumber: 1, startColumn: 15, endLineNumber: 1, endColumn: 18 };
@@ -33,5 +35,27 @@ describe("shouldSuggestAfterSpace", () => {
     for (const line of ["select * from ", "  JOIN ", "exec ", "select ", "where a = 1 and ", "order by ", "update ", "insert into "])
       expect(shouldSuggestAfterSpace(line), line).toBe(true);
     for (const line of ["select a ", "select a, b ", "begin ", "", "from", "select 'from "]) expect(shouldSuggestAfterSpace(line), line).toBe(false);
+  });
+});
+
+describe("registration", () => {
+  it("serves completion, hover and quick fixes to the Postgres editor too", () => {
+    const registered: Record<string, string[]> = { completion: [], hover: [], codeAction: [] };
+    const monaco = {
+      languages: {
+        CompletionItemKind: {},
+        registerCompletionItemProvider: (language: string) => void registered.completion.push(language),
+        registerHoverProvider: (language: string) => void registered.hover.push(language),
+        registerCodeActionProvider: (language: string) => void registered.codeAction.push(language),
+      },
+    } as unknown as typeof Monaco;
+    registerIntelliSense(monaco, {} as IntelliSenseClient);
+    registerQuickFixes(monaco);
+    expect(registered).toEqual({ completion: ["tsql", "cosmos-sql", "pgsql"], hover: ["tsql", "cosmos-sql", "pgsql"], codeAction: ["tsql", "pgsql"] });
+  });
+
+  it("opens the list after CALL and RETURNING", () => {
+    expect(shouldSuggestAfterSpace("call ")).toBe(true);
+    expect(shouldSuggestAfterSpace("delete from t returning ")).toBe(true);
   });
 });

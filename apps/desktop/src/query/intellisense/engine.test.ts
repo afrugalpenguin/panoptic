@@ -149,3 +149,61 @@ describe("hover", () => {
     expect(at("select * from nope|")).toBeNull();
   });
 });
+
+describe("pgsql dialect", () => {
+  const shop: DatabaseCatalog = {
+    stamp: "p",
+    schemas: ["public", "sales"],
+    types: [],
+    objects: [
+      { name: "customer", schema: "public", kind: "table", columns: [{ name: "id", type: "integer", nullable: false }, { name: "Full Name", type: "text", nullable: true }] },
+      { name: "Order", schema: "sales", kind: "table", columns: [{ name: "id", type: "bigint", nullable: false }] },
+      { name: "customer", schema: "sales", kind: "view", columns: [{ name: "id", type: "integer", nullable: false }] },
+      { name: "refresh_totals", schema: "sales", kind: "proc", params: [{ name: "since", type: "date", output: false }] },
+    ],
+  };
+  const pg = new Index(shop);
+  const pgLookup: Lookup = (db) => (db ? undefined : pg);
+  const pgsql: Options = { language: "pgsql" };
+  const pgRun = (source: string) => {
+    const offset = source.indexOf("|");
+    return complete(pgLookup, contextAt(source.replace("|", ""), offset, "pgsql").context, pgsql);
+  };
+
+  it("dims public as the default schema and double-quotes names that are not plain lower case", () => {
+    const { items } = pgRun("select * from |");
+    expect(items.map((i) => i.label)).toEqual(["customer", "sales.Order", "sales.customer"]);
+    expect(items[0]).toMatchObject({ insertText: "public.customer", description: "public", dimmed: true });
+    expect(items[1]).toMatchObject({ insertText: 'sales."Order"' });
+  });
+
+  it("resolves an unqualified name to public, and quotes columns", () => {
+    const { items } = pgRun("select | from customer");
+    expect(items.filter((i) => i.kind === "column").map((i) => i.insertText)).toEqual(["id", '"Full Name"']);
+  });
+
+  it("offers Postgres keywords and functions in lower case", () => {
+    const words = pgRun("select 1 |").items.map((i) => i.label);
+    expect(words).toContain("limit");
+    expect(words).toContain("coalesce");
+    expect(words).not.toContain("getdate");
+  });
+
+  it("offers Postgres types when the catalog has none", () => {
+    expect(pgRun("select x::|").items.map((i) => i.label)).toContain("jsonb");
+  });
+
+  it("lists a procedure's parameters after CALL", () => {
+    expect(pgRun("call sales.refresh_totals(|").items.map((i) => i.label)).toEqual(["since"]);
+  });
+
+  it("never reads a qualifier as another database: Postgres cannot query across them", () => {
+    expect(pgRun("select * from other.|")).toEqual({ items: [] });
+    expect(pgRun("select * from other.public.|")).toEqual({ items: [] });
+  });
+
+  it("hovers a table in public", () => {
+    const text = "select * from customer";
+    expect(hover(pgLookup, text, text.length, pgsql)).toContain("**public.customer** table");
+  });
+});

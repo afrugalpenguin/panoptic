@@ -4,6 +4,7 @@
 
 import type { DatabaseCatalog } from "../catalog.svelte";
 import type { Options } from "./engine";
+import type { Language } from "./scanner";
 import type { CompleteResponse, HoverResponse, Keys, LintResponse, Request, Response, SuggestRequest, SuggestResponse } from "./worker";
 
 export interface WorkerLike {
@@ -59,8 +60,8 @@ export class IntelliSenseClient {
     return this.request("suggest", 0, { ...request, keys }) as Promise<SuggestResponse>;
   }
 
-  lint(text: string, offset: number, keys: Keys): Promise<LintResponse> {
-    return this.request("lint", offset, { text, offset, keys }) as Promise<LintResponse>;
+  lint(text: string, offset: number, keys: Keys, language: Language = "tsql"): Promise<LintResponse> {
+    return this.request("lint", offset, { text, offset, keys, language }) as Promise<LintResponse>;
   }
 
   private request(type: Kind, offset: number, body: object): Promise<Response> {

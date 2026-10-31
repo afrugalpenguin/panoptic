@@ -97,6 +97,28 @@ describe("worker suggest and lint", () => {
     expect(handle({ type: "lint", id: 4, text, offset: 0, keys })).toEqual({ id: 4, warnings: [{ start: 14, end: 22, message: "Unknown table or view 'Contrcts'." }] });
   });
 
+  it("lints in the request's language", () => {
+    const text = 'select * from "Contrcts"';
+    expect(handle({ type: "lint", id: 5, text, offset: 0, keys, language: "pgsql" })).toEqual({
+      id: 5, warnings: [{ start: 14, end: 24, message: "Unknown table or view 'Contrcts'." }],
+    });
+    expect(handle({ type: "lint", id: 6, text: "select $$ from Contrcts $$", offset: 0, keys, language: "pgsql" })).toEqual({ id: 6, warnings: [] });
+  });
+
+  it("suggests for Postgres SQLSTATEs: 42P01 an object, 42703 a column, 42883 a routine", () => {
+    handle({ type: "catalog", key: "kPg", catalog: { stamp: "p", schemas: ["public"], types: [], objects: [
+      { name: "customer", schema: "public", kind: "table", columns: [{ name: "full_name", type: "text", nullable: true }] },
+      { name: "order_total", schema: "public", kind: "fn", params: [] },
+    ] } });
+    const pgKeys = { current: "kPg", databases: {} };
+    const pg = (state: string, parts: string[], tables = [] as { name: string }[]) =>
+      (handle({ type: "suggest", id: 4, number: 0, state, language: "pgsql", parts, tables, keys: pgKeys }) as { suggestion?: { label: string } }).suggestion?.label;
+    expect(pg("42P01", ["custmer"])).toBe("public.customer");
+    expect(pg("42703", ["fullname"], [{ name: "customer" }])).toBe("full_name");
+    expect(pg("42883", ["order_totl"])).toBe("public.order_total");
+    expect(pg("42601", ["custmer"])).toBeUndefined();
+  });
+
   it("does not let one suggestion supersede another", async () => {
     const client = new IntelliSenseClient(() => fakeWorker([]));
     const [a, b] = await Promise.all([
