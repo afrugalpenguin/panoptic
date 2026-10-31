@@ -14,7 +14,7 @@ A centred column, at most 460px wide:
 - The Seek box: 56px tall, radius 12, a cyan border with a 4px cyan ring, placeholder "Seek anything, anywhere", a `Ctrl P` chip. Focused when the landing shows.
 - A muted line: "Objects across all N environments. Type a table, container, proc or host." ("No environments yet" with none.)
 - Actions, 44px rows with dividers: Reopen last session (amber clock and the last place in muted mono, only when there is one), New query `Ctrl N`, New connection `Ctrl Shift N` (with no environments yet it asks for one first; New environment stays in the explorer toolbar), Import `Ctrl I` (dimmed).
-- Bottom left, mono 11px: an amber dot, "Ready" and "opened in NNN ms" when the engine is up; "Starting database engine..."; or "Database engine stopped" and Restart.
+- Bottom left, mono 11px: a green dot (`--ok`, as in the status bar), "Ready" and "opened in NNN ms" when the engine is up; "Starting database engine..."; or "Database engine stopped" and Restart.
 - Bottom right: a faded 300px "Panoptic" wordmark overflowing the corner, `aria-hidden`, behind everything.
 
 The word "sidecar" never appears in user-facing text, here or in the status bar.
