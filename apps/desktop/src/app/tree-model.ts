@@ -1,6 +1,7 @@
 import type { NodeError, TreeNode } from "./api";
 import { kindBadge, type KindBadge } from "./kinds";
 import { computeLabels, leafLabel, type LabelSegments } from "./labels";
+import { isLoopback } from "./loopback";
 import { isAbortError } from "../rpc";
 import { toNodeError, type Problem } from "./problems";
 
@@ -56,6 +57,8 @@ export type Row =
       count?: number;
       /** Muted text after the name, e.g. a container's partition key. */
       secondary?: string;
+      /** Connection rows only: Trust server certificate is on for a server that isn't this machine. */
+      certificateUnchecked?: boolean;
       /** Its children failed to load: a warning glyph after the label, visible even when collapsed. */
       error?: NodeError;
     })
@@ -69,6 +72,10 @@ export type Row =
 
 /** Whether keys and clicks can select the row. */
 export const selectableRow = (row: Row) => row.type !== "env-empty";
+
+/** Trust server certificate on a server that isn't this machine. Cosmos only allows it for a local emulator. */
+const certificateUnchecked = (node: TreeNode) =>
+  node.meta?.trustServerCertificate === "true" && node.meta?.connectionKind !== "cosmos" && !isLoopback(node.meta?.endpoint ?? "");
 
 /**
  * Where a connection dropped on the row goes: an environment id (its header or its empty row), null for no
@@ -464,6 +471,7 @@ export class TreeModel {
               envId: env,
               loose: isLoose,
               badge: rowKind === "connection" ? kindBadge(node.meta?.connectionKind ?? node.icon) : undefined,
+              certificateUnchecked: rowKind === "connection" && certificateUnchecked(node),
               count: isEnv
                 ? filter
                   ? shown.get(id)
