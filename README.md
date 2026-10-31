@@ -7,12 +7,14 @@
 [![License: MIT](https://img.shields.io/github/license/afrugalpenguin/panoptic)](LICENSE)
 
 A fast desktop database client for SQL Server, Azure SQL, Azure Synapse, Cosmos DB and
-PostgreSQL. It replaces SSMS for everyday work: one explorer holds every environment at once (dev,
-UAT, prod, client sandboxes), with a query editor and results grid hanging off whatever you select.
+PostgreSQL. One explorer holds every environment at once (dev, UAT, prod, client sandboxes) and
+every engine side by side in the same tree, with a query editor and results grid hanging off
+whatever you select.
 
-It aims to do what SSMS does day to day, faster, across engines and environments, rather than
-adding features SSMS lacks. Admin surfaces (Agent, security, backup and restore) are out of
-scope; SSMS stays the tool for those.
+It is built for the everyday work of browsing, querying and checking data across many
+environments, and for doing that faster than any one engine's own tool. Engine-specific admin
+surfaces (SQL Agent, security, backup and restore) are out of scope; the vendor tools stay the
+place for those.
 
 ![The explorer with Dev, UAT and Prod expanded, showing SQL Server, Cosmos DB and PostgreSQL connections side by side and a SQL Server database open to its tables](docs/images/readme/explorer.png)
 
