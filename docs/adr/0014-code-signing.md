@@ -29,6 +29,6 @@ The release workflow change is deferred until that question is answered, because
 
 ## Consequences
 
-Signing adds a recurring cost and a dependency on the signing service for every release when it is on. Signed builds start building reputation with SmartScreen and Defender, and a managed machine should be able to run Panoptic without a local exclusion; that needs confirming on a managed machine and recording in docs/benchmarks.md. Until signing lands, the README tells users about the quarantine and the folder exclusion. Updater integrity still rests on the Tauri updater key (ADR 0010); Authenticode is in addition to it, not a replacement.
+Signing adds a recurring cost and a dependency on the signing service for every release when it is on. Signed builds start building reputation with SmartScreen and Defender, and a managed machine should be able to run Panoptic without a local exclusion; that needs confirming on a managed machine and recording in docs/benchmarks.md. Until signing lands, the README tells users about the quarantine and how to allow the detection. It no longer recommends the folder exclusion (2026-10-31): `%LOCALAPPDATA%\Panoptic` is writable by anything running as the user, so excluding it would let malware replace the sidecar, which decrypts the credential store, unscanned (issue #172). Updater integrity still rests on the Tauri updater key (ADR 0010); Authenticode is in addition to it, not a replacement.
 
 When this ADR is accepted, 0011's status becomes "Superseded by 0014".
