@@ -40,6 +40,8 @@ export const config: AppConfig = {
     env("staging", "Staging", "#7048e8", false, [conn("stg-sql-01", "sql", "stg-sql-01.example.test"), conn("stg-cosmos", "cosmos", "https://stg-cosmos.example.test:443/")]),
     env("sandbox", "Sandbox", "#0c8599", false, [conn("sbx-pg-01", "postgres", "sbx-pg-01.example.test")]),
   ],
+  // Connections in no environment (docs/explorer-ux.md, "Grouping"): none in the README fixture.
+  connections: [],
 };
 
 const SELECTABLE = ["selectTop", "newQuery", "refresh"];
@@ -71,32 +73,36 @@ const TABLES: [string, string][] = [
   ["sales", "Payments"],
 ];
 
+/** Connection ids carry no environment, as in the real sidecar: conn:<id>/db:<name>/... */
+const connectionNode = (c: AppConfig["connections"][number]) =>
+  node(`conn:${c.id}`, "connection", c.name, c.kind, true, QUERYABLE, { connectionKind: c.kind, endpoint: c.endpoint, connectionId: c.id, copyText: c.name });
+const connectionAt = (segment: string) =>
+  [...config.environments.flatMap((e) => e.connections), ...config.connections].find((x) => `conn:${x.id}` === segment);
+
 function children(id: string): TreeNode[] {
   if (id === "") {
-    return config.environments.map((e) =>
-      node(`env:${e.id}`, "environment", e.name, "environment", e.connections.length > 0, BROWSE, {
-        color: e.color,
-        readOnly: String(e.readOnly),
-        environmentId: e.id,
-        connectionCount: String(e.connections.length),
-      }),
-    );
+    return [
+      ...config.environments.map((e) =>
+        node(`env:${e.id}`, "environment", e.name, "environment", e.connections.length > 0, BROWSE, {
+          color: e.color,
+          readOnly: String(e.readOnly),
+          environmentId: e.id,
+          connectionCount: String(e.connections.length),
+        }),
+      ),
+      ...config.connections.map(connectionNode),
+    ];
   }
   const parts = id.split("/");
-  const e = config.environments.find((x) => `env:${x.id}` === parts[0]);
-  if (!e) return [];
+  if (parts.length === 1 && parts[0].startsWith("env:")) return config.environments.find((x) => `env:${x.id}` === parts[0])?.connections.map(connectionNode) ?? [];
+  const c = connectionAt(parts[0]);
+  if (!c) return [];
   if (parts.length === 1) {
-    return e.connections.map((c) =>
-      node(`${id}/conn:${c.id}`, "connection", c.name, c.kind, true, QUERYABLE, { connectionKind: c.kind, endpoint: c.endpoint, connectionId: c.id, copyText: c.name }),
-    );
-  }
-  const c = e.connections.find((x) => `conn:${x.id}` === parts[1])!;
-  if (parts.length === 2) {
     return DATABASES[c.kind].map((db) =>
       node(`${id}/db:${db}`, "database", db, "database", true, QUERYABLE, { system: String(["master", "model", "msdb", "tempdb", "postgres"].includes(db)) }),
     );
   }
-  if (parts.length === 3) {
+  if (parts.length === 2) {
     return [
       node(`${id}/f:tables`, "folder", "Tables", "folder", true, BROWSE),
       node(`${id}/f:views`, "folder", "Views", "folder", true, BROWSE),
@@ -104,7 +110,7 @@ function children(id: string): TreeNode[] {
       node(`${id}/f:synonyms`, "folder", "Synonyms", "folder", true, BROWSE),
     ];
   }
-  if (parts.length === 4 && parts[3] === "f:tables") {
+  if (parts.length === 3 && parts[2] === "f:tables") {
     return TABLES.map(([schema, name]) =>
       node(`${id}/o:${schema}.${name}`, "table", `${schema}.${name}`, "table", true, SELECTABLE, { schema, name, dragText: `${schema}.${name}`, copyText: `[${schema}].[${name}]` }),
     );
@@ -133,16 +139,14 @@ const notify = (method: string, params: unknown) => reply({ jsonrpc: "2.0", meth
 
 function scopeOf(nodeId: string) {
   const parts = nodeId.split("/");
-  const connection = parts.slice(0, 2).join("/");
-  const database = parts[2]?.slice(3);
-  const connectionLabel = parts[1].slice(5);
+  const connection = parts[0];
+  const database = parts[1]?.slice(3);
+  const connectionLabel = parts[0].slice(5);
   return { connection, database, label: database ?? connectionLabel, connectionLabel };
 }
 
 function languageOf(nodeId: string): string {
-  const parts = nodeId.split("/");
-  const e = config.environments.find((x) => `env:${x.id}` === parts[0]);
-  const kind = e?.connections.find((x) => `conn:${x.id}` === parts[1])?.kind;
+  const kind = connectionAt(nodeId.split("/")[0])?.kind;
   return kind === "cosmos" ? "cosmos" : kind === "postgres" ? "pgsql" : "sql";
 }
 
