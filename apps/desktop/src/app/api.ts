@@ -38,6 +38,8 @@ export interface ConnectionConfig {
   database?: string | null;
   tenantId?: string | null;
   trustServerCertificate: boolean;
+  /** Entra only: sign in as this app registration instead of the default public client. */
+  clientId?: string | null;
 }
 
 export interface EnvironmentConfig {
