@@ -74,16 +74,25 @@ clear text.
 ## Read-only environments
 
 In a read-only environment, a query runs inside a transaction that Panoptic rolls back when the
-query ends (`Query/QueryService.cs`). This is belt and braces, not a security boundary: **a login
+query ends (`Backends/SqlBackend.cs`). This is belt and braces, not a security boundary: **a login
 with read-only permissions is the real control**, and is the only thing that stops a write. The
-transaction does not cover:
+guard has two layers:
 
-- **COMMIT in the script, or in a procedure it calls.** A bare `COMMIT` (or `ROLLBACK`) ends the
-  guard transaction. A balanced `BEGIN TRAN ... COMMIT` pair does not: it nests inside the guard and
-  is still rolled back. After each batch (each `GO`), Panoptic checks `@@TRANCOUNT`; if the guard has
-  ended, it stops before the next batch, reports the query as committed, and shows an error. The
-  check is per batch, not per statement: statements after the `COMMIT` in the same batch have
-  already run, outside the guard.
+- **Scripts that would end the guard are refused before they run** (`Query/ReadOnlyScript.cs`):
+  `COMMIT`, `ROLLBACK`, `SET IMPLICIT_TRANSACTIONS` and dynamic SQL (`EXEC(...)`,
+  `sp_executesql`), whose text could hold either. Words in comments, strings and quoted
+  identifiers don't count. This includes a balanced `BEGIN TRAN ... COMMIT`: a read-only run is
+  already one transaction that is rolled back. Calling procedures with `EXEC` is allowed.
+- **Procedures that commit are contained on the server.** The guard runs with
+  `IMPLICIT_TRANSACTIONS ON` and opens two transaction levels, so a procedure's stray `COMMIT` only
+  takes it to one, and any statement after a full commit opens a new transaction that is rolled
+  back too.
+
+What the guard does not cover:
+
+- **A procedure written to commit every level** (for example `WHILE @@TRANCOUNT > 0 COMMIT`).
+  What ran before that loop is committed. Panoptic notices after the batch, stops before the next
+  one, reports the query as committed and shows an error.
 - **Side effects outside the database transaction**, such as `xp_cmdshell`, `sp_send_dbmail`,
   linked-server calls that are not enlisted in the transaction, sequence values and identity
   increments.

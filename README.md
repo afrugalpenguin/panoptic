@@ -45,8 +45,11 @@ place for those.
   collapsing a node that is still loading stops it too.
 - **Explorer errors inline.** A node that fails to load says why in one line in the tree, in
   plain English for common failures, with the full details in a Problems tab.
-- **Read-only environments.** Queries against an environment marked read-only are rolled back, and
-  a `COMMIT` in the script stops the run and flags it as committed. On PostgreSQL the server
+- **Read-only environments.** On SQL Server, queries against an environment marked read-only run in
+  a transaction that is rolled back, and scripts that would end it (`COMMIT`, `ROLLBACK`, dynamic
+  SQL) are refused before they run. This is a guard against mistakes, not a permission boundary:
+  use a read-only login for production
+  ([details](docs/connectors/sql-server.md#read-only-environments)). On PostgreSQL the server
   refuses every write.
 - **Sign-in.** Microsoft Entra (Windows sign-in or device code), SQL login, Windows
   authentication, Cosmos account keys and Postgres username and password. Secrets are stored
