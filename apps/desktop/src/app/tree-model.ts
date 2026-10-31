@@ -169,6 +169,16 @@ export class TreeModel {
     return this.childIds("").filter((id) => this.nodes.get(id)?.kind !== "connection");
   }
 
+  /**
+   * After a move, opens where the connection landed so it never seems to vanish: the environment with that config
+   * id (an empty one could not be open before), or the Ungrouped group for null. An unknown id opens nothing.
+   */
+  async reveal(environmentId: string | null): Promise<void> {
+    if (environmentId === null) return this.expand(UNGROUPED);
+    const id = this.envIds().find((e) => this.nodes.get(e)?.meta?.environmentId === environmentId);
+    if (id) await this.expand(id);
+  }
+
   /** The root's connections in no environment. */
   looseIds(): string[] {
     return this.childIds("").filter((id) => this.nodes.get(id)?.kind === "connection");

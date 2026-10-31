@@ -317,6 +317,7 @@
     if (!found || (found.env?.id ?? null) === environmentId) return;
     try {
       await configChanged(await api!.saveConnection(environmentId, found.connection));
+      await model.reveal(environmentId);
     } catch (e) {
       lastLoad = { id: "", label: found.connection.name, count: 0, ms: 0, error: e instanceof Error ? e.message : String(e) };
     }
