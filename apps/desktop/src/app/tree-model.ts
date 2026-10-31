@@ -9,7 +9,11 @@ export const ROW_HEIGHT = { header: 26, connection: 24, folder: 22, leaf: 22 } a
 /** Space before each environment group after the first. */
 export const ENV_GAP = 4;
 const CONNECTION_INDENT = 30;
+/** Connections at the root when there are no environments: no group bar to clear (docs/explorer-ux.md). */
+const FLAT_CONNECTION_INDENT = 10;
 const INDENT_STEP = 20;
+/** Key of the synthetic group that holds connections in no environment. Not a node id: ids never start with "#". */
+export const UNGROUPED = "#ungrouped";
 
 export type RowKind = keyof typeof ROW_HEIGHT;
 
@@ -32,8 +36,10 @@ interface RowBase {
   gapBefore: number;
   /** Pixels from the left bar: connections 30, then 20 more per level. Headers 0. */
   indent: number;
-  /** The environment node id this row belongs to, for grouping rows under --env. */
+  /** The environment node id this row belongs to, for grouping rows under --env; UNGROUPED for loose connections. */
   envId: string;
+  /** In no environment: no environment colour, bar or wash. */
+  loose: boolean;
 }
 
 export type Row =
@@ -55,7 +61,25 @@ export type Row =
     })
   | (RowBase & { type: "loading"; parentId: string })
   | (RowBase & { type: "error"; parentId: string; error: NodeError })
-  | (RowBase & { type: "empty"; parentId: string });
+  | (RowBase & { type: "empty"; parentId: string })
+  /** The dimmed "Ungrouped" header over connections in no environment (only when there are environments). */
+  | (RowBase & { type: "group"; parentId: ""; expanded: boolean; count: number })
+  /** "Empty - drag a connection here" under an environment with no connections: not a node, not selectable. */
+  | (RowBase & { type: "env-empty"; parentId: string; environmentId: string });
+
+/** Whether keys and clicks can select the row. */
+export const selectableRow = (row: Row) => row.type !== "env-empty";
+
+/**
+ * Where a connection dropped on the row goes: an environment id (its header or its empty row), null for no
+ * environment (the Ungrouped header), undefined when the row is not a drop target.
+ */
+export function dropTarget(row: Row): string | null | undefined {
+  if (row.type === "group") return null;
+  if (row.type === "env-empty") return row.environmentId;
+  if (row.type === "node" && row.node.kind === "environment") return row.node.meta?.environmentId;
+  return undefined;
+}
 
 /** One chip in the kind filter row: a kind present in the loaded connections and how many. */
 export interface KindSummary {
@@ -112,6 +136,8 @@ export class TreeModel {
   private readonly failures = new Map<string, { error: NodeError; at: number }>();
   /** Aborts each in-flight load; collapsing a node, or cancelling from the status bar, aborts its load. */
   private readonly loads = new Map<string, AbortController>();
+  /** The Ungrouped group starts open: its connections are already loaded with the root. */
+  private ungroupedOpen = true;
 
   constructor(
     private readonly load: (id: string, signal: AbortSignal) => Promise<TreeNode[]>,
@@ -135,7 +161,17 @@ export class TreeModel {
   }
 
   isExpanded(id: string): boolean {
-    return this.expanded.has(id);
+    return id === UNGROUPED ? this.ungroupedOpen : this.expanded.has(id);
+  }
+
+  /** The root's environment nodes, without the connections in no environment. */
+  envIds(): string[] {
+    return this.childIds("").filter((id) => this.nodes.get(id)?.kind !== "connection");
+  }
+
+  /** The root's connections in no environment. */
+  private looseIds(): string[] {
+    return this.childIds("").filter((id) => this.nodes.get(id)?.kind === "connection");
   }
 
   isStale(id: string): boolean {
@@ -153,11 +189,15 @@ export class TreeModel {
   }
 
   async toggle(id: string): Promise<void> {
-    if (this.expanded.has(id)) this.collapse(id);
+    if (this.isExpanded(id)) this.collapse(id);
     else await this.expand(id);
   }
 
   async expand(id: string): Promise<void> {
+    if (id === UNGROUPED) {
+      this.ungroupedOpen = true;
+      return this.onChange();
+    }
     const node = this.nodes.get(id);
     if (node && !node.hasChildren) return;
     this.expanded.add(id);
@@ -168,6 +208,7 @@ export class TreeModel {
 
   /** Collapsing a node that is still loading cancels the load; expanding again starts a fresh one. */
   collapse(id: string): void {
+    if (id === UNGROUPED) this.ungroupedOpen = false;
     this.expanded.delete(id);
     this.loads.get(id)?.abort();
     this.onChange();
@@ -177,13 +218,20 @@ export class TreeModel {
   collapseAll(): void {
     for (const id of this.expanded) this.loads.get(id)?.abort();
     this.expanded.clear();
+    this.ungroupedOpen = false;
     this.onChange();
   }
 
-  /** Seek's Enter: only this environment open, and the connection in it when given (docs/landing.md). */
-  async focus(envId: string, id?: string): Promise<void> {
-    for (const other of this.childIds("")) if (other !== envId && this.expanded.has(other)) this.collapse(other);
-    await this.expand(envId);
+  /**
+   * Seek's Enter: only this environment open, and the connection in it when given (docs/landing.md). With no
+   * environment, the Ungrouped group is the one left open (with no environments at all it is not drawn).
+   */
+  async focus(envId: string | undefined, id?: string): Promise<void> {
+    for (const other of this.envIds()) if (other !== envId && this.expanded.has(other)) this.collapse(other);
+    if (envId) {
+      this.ungroupedOpen = false;
+      await this.expand(envId);
+    } else await this.expand(UNGROUPED);
     if (id && id !== envId) await this.expand(id);
   }
 
@@ -198,9 +246,9 @@ export class TreeModel {
    * Connection lists are config only, so this never calls a server.
    */
   async expandEnvironments(): Promise<void> {
-    const root = this.children.get("");
-    const envs = root?.status === "loaded" ? root.ids.filter((id) => this.nodes.get(id)?.hasChildren) : [];
+    const envs = this.envIds().filter((id) => this.nodes.get(id)?.hasChildren);
     this.expanded.clear();
+    this.ungroupedOpen = true;
     for (const id of envs) this.expanded.add(id);
     this.onChange();
     const unloaded = envs.filter((id) => !this.children.has(id) || this.children.get(id)!.status === "error");
@@ -257,12 +305,11 @@ export class TreeModel {
    * Environments, their connection lists and which environments are open are kept.
    */
   forgetConnections(): void {
-    const root = this.children.get("");
-    const envs = root?.status === "loaded" ? root.ids : [];
-    for (const env of envs) {
+    for (const env of this.envIds()) {
       const state = this.children.get(env);
       if (state?.status === "loaded") for (const id of state.ids) this.forgetBelow(id);
     }
+    for (const id of this.looseIds()) this.forgetBelow(id);
     for (const id of this.expanded) if (this.nodes.get(id)?.kind !== "environment") this.expanded.delete(id);
     this.onChange();
   }
@@ -302,6 +349,11 @@ export class TreeModel {
     const root = this.children.get("");
     if (root?.status !== "loaded") return out;
     let top = 0;
+    const filter = this.kindFilter;
+    const envs = this.orderedEnvs(this.envIds());
+    const loose = this.looseIds().filter((id) => !filter || this.connectionKind.get(id) === filter);
+    // With no environments at all, loose connections are the whole tree: flat at the root, no header.
+    const flat = envs.length === 0;
 
     const place = <T extends Omit<RowBase, "height" | "top" | "gapBefore">>(row: T, firstOfTree: boolean) => {
       const gapBefore = row.rowKind === "header" && !firstOfTree ? ENV_GAP : 0;
@@ -311,13 +363,13 @@ export class TreeModel {
       top += height;
       return placed;
     };
-    const indentFor = (depth: number) => (depth === 0 ? 0 : CONNECTION_INDENT + (depth - 1) * INDENT_STEP);
+    const indentFor = (depth: number) =>
+      flat ? FLAT_CONNECTION_INDENT + depth * INDENT_STEP : depth === 0 ? 0 : CONNECTION_INDENT + (depth - 1) * INDENT_STEP;
 
-    const visit = (ids: string[], depth: number, envColor: string | undefined, readOnly: boolean, envId: string) => {
+    const visit = (ids: string[], depth: number, envColor: string | undefined, readOnly: boolean, envId: string, isLoose: boolean) => {
       for (const id of ids) {
         const node = this.nodes.get(id)!;
         const isEnv = node.kind === "environment";
-        const filter = this.kindFilter;
         if (filter && isEnv && !this.envKinds.get(id)?.get(filter)) continue;
         if (filter && node.kind === "connection" && this.connectionKind.get(id) !== filter) continue;
         const color = isEnv ? node.meta?.color : envColor;
@@ -343,6 +395,7 @@ export class TreeModel {
               rowKind,
               indent: indentFor(depth),
               envId: env,
+              loose: isLoose,
               badge: rowKind === "connection" ? kindBadge(node.meta?.connectionKind ?? node.icon) : undefined,
               count: isEnv
                 ? filter
@@ -357,15 +410,44 @@ export class TreeModel {
             out.length === 0,
           ),
         );
+        const base = { depth: depth + 1, envColor: color, readOnly: ro, parentId: id, rowKind: "leaf" as const, indent: indentFor(depth + 1), envId: env, loose: isLoose };
+        // An environment with no connections cannot expand: its hint row is always there to drop onto.
+        if (isEnv && !node.hasChildren) {
+          out.push(place({ ...base, type: "env-empty" as const, key: `${id}#empty`, environmentId: node.meta?.environmentId ?? "" }, false));
+          continue;
+        }
         if (!expanded || !state) continue;
-        const base = { depth: depth + 1, envColor: color, readOnly: ro, parentId: id, rowKind: "leaf" as const, indent: indentFor(depth + 1), envId: env };
         if (state.status === "loading") out.push(place({ ...base, type: "loading" as const, key: `${id}#loading` }, false));
         else if (state.status === "error") out.push(place({ ...base, type: "error" as const, key: `${id}#error`, error: state.error }, false));
         else if (state.ids.length === 0) out.push(place({ ...base, type: "empty" as const, key: `${id}#empty` }, false));
-        else visit(state.ids, depth + 1, color, ro, env);
+        else visit(state.ids, depth + 1, color, ro, env, isLoose);
       }
     };
-    visit(this.orderedEnvs(root.ids), 0, undefined, false, "");
+    visit(envs, 0, undefined, false, "", false);
+    if (loose.length === 0) return out;
+    if (flat) {
+      visit(loose, 0, undefined, false, UNGROUPED, true);
+      return out;
+    }
+    out.push(
+      place(
+        {
+          type: "group" as const,
+          parentId: "" as const,
+          key: UNGROUPED,
+          depth: 0,
+          readOnly: false,
+          rowKind: "header" as const,
+          indent: 0,
+          envId: UNGROUPED,
+          loose: true,
+          expanded: this.ungroupedOpen,
+          count: loose.length,
+        },
+        out.length === 0,
+      ),
+    );
+    if (this.ungroupedOpen) visit(loose, 1, undefined, false, UNGROUPED, true);
     return out;
   }
 
@@ -424,14 +506,15 @@ export class TreeModel {
       if (n.kind !== "connection") this.labels.set(n.id, n.meta?.schema ? leafLabel(n.label) : { prefix: "", core: n.label, suffix: "" });
     }
     if (!loaded.some((n) => n.kind === "connection" || n.kind === "environment")) return;
-    // Only connections listed under environments that are themselves still listed: the node cache
-    // keeps removed environments and connections.
-    const root = this.children.get("");
-    const envIds = root?.status === "loaded" ? root.ids : [];
-    const listed = envIds.flatMap((env) => {
-      const s = this.children.get(env);
-      return s?.status === "loaded" ? s.ids : [];
-    });
+    // Only connections still listed, under an environment that is itself still listed or at the root: the node
+    // cache keeps removed environments and connections.
+    const listed = [
+      ...this.envIds().flatMap((env) => {
+        const s = this.children.get(env);
+        return s?.status === "loaded" ? s.ids : [];
+      }),
+      ...this.looseIds(),
+    ];
     const connections = listed
       .map((id) => this.nodes.get(id)!)
       .filter((n) => n.kind === "connection")

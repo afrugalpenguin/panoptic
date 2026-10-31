@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { TreeNode } from "./api";
 import { AbortError, RpcError } from "../rpc";
-import { ENV_GAP, moveEnvironment, ROW_HEIGHT, TreeModel } from "./tree-model";
+import { dropTarget, ENV_GAP, moveEnvironment, ROW_HEIGHT, selectableRow, TreeModel, UNGROUPED, type Row } from "./tree-model";
 
 const node = (id: string, hasChildren = true, meta?: Record<string, string>): TreeNode => ({
   id,
@@ -510,7 +510,7 @@ describe("TreeModel", () => {
 
       await model.expandEnvironments();
 
-      expect(labels(model)).toEqual(["dev", "  a", "  b", "prod", "  a", "empty"]);
+      expect(labels(model)).toEqual(["dev", "  a", "  b", "prod", "  a", "empty", "  <env-empty>"]);
       expect(load.mock.calls.map(([id]) => id)).toEqual(["", "dev", "dev/a", "prod"]);
     });
 
@@ -541,6 +541,148 @@ describe("TreeModel", () => {
     expect(model.isExpanded("env:a")).toBe(true);
     expect(model.isExpanded("env:a/conn:x")).toBe(true);
     expect(model.isExpanded("env:b")).toBe(false);
+  });
+});
+
+describe("connections without an environment", () => {
+  const conn = (id: string, kind = "sql"): TreeNode => ({
+    id, kind: "connection", label: id, icon: kind, hasChildren: true, actions: [],
+    meta: { endpoint: `${id}-srv.x.com`, connectionKind: kind, connectionId: id.slice(5) },
+  });
+  const env = (id: string, count: number): TreeNode => ({
+    ...node(id, count > 0), kind: "environment", label: id.slice(4), meta: { environmentId: id.slice(4), color: "#2f9e44", connectionCount: String(count) },
+  });
+  type NodeRow = Extract<Row, { type: "node" }>;
+  const byKey = (rows: Row[]) => Object.fromEntries(rows.map((r) => [r.key, r]));
+
+  async function flat() {
+    const f = fixture({ "": [conn("conn:a"), conn("conn:b")], "conn:a": [node("conn:a/db:x", false)] });
+    await f.model.loadRoot();
+    return f;
+  }
+
+  async function mixed() {
+    const f = fixture({
+      "": [env("env:dev", 1), env("env:empty", 0), conn("conn:a"), conn("conn:b", "cosmos")],
+      "env:dev": [conn("conn:c")],
+      "conn:a": [node("conn:a/db:x", false)],
+    });
+    await f.model.loadRoot();
+    await f.model.preload(f.model.envIds());
+    return f;
+  }
+
+  it("with no environments, lists them flat at the root with no header and no environment colour", async () => {
+    const { model } = await flat();
+    await model.expand("conn:a");
+    const rows = model.rows();
+    expect(labels(model)).toEqual(["conn:a", "  db:x", "conn:b"]);
+    expect(rows.map((r) => [r.key, r.rowKind, r.indent, r.loose])).toEqual([
+      ["conn:a", "connection", 10, true],
+      ["conn:a/db:x", "folder", 30, true],
+      ["conn:b", "connection", 10, true],
+    ]);
+    expect(rows.every((r) => r.envColor === undefined && r.gapBefore === 0)).toBe(true);
+  });
+
+  it("with environments, puts them last under a dimmed Ungrouped header, and an empty environment gets a hint row", async () => {
+    const { model } = await mixed();
+    await model.expand("env:dev");
+    const rows = model.rows();
+    expect(rows.map((r) => `${"  ".repeat(r.depth)}${r.type === "node" ? r.node.label : `<${r.type}>`}`)).toEqual([
+      "dev",
+      "  conn:c",
+      "empty",
+      "  <env-empty>",
+      "<group>",
+      "  conn:a",
+      "  conn:b",
+    ]);
+    const k = byKey(rows);
+    expect(k[UNGROUPED]).toMatchObject({ type: "group", rowKind: "header", gapBefore: ENV_GAP, count: 2, expanded: true, loose: true });
+    expect(k["conn:a"]).toMatchObject({ depth: 1, indent: 30, loose: true, envColor: undefined, envId: UNGROUPED });
+    expect(k["env:empty#empty"]).toMatchObject({ type: "env-empty", parentId: "env:empty", rowKind: "leaf" });
+    expect(selectableRow(k["env:empty#empty"])).toBe(false);
+    expect(selectableRow(k[UNGROUPED])).toBe(true);
+    expect((k["conn:c"] as NodeRow).loose).toBe(false);
+  });
+
+  it("collapses and expands the Ungrouped group without loading anything", async () => {
+    const { model, load } = await mixed();
+    const calls = load.mock.calls.length;
+    expect(model.isExpanded(UNGROUPED)).toBe(true);
+    await model.toggle(UNGROUPED);
+    expect(labels(model)).toEqual(["dev", "empty", "  <env-empty>", "<group>"]);
+    await model.toggle(UNGROUPED);
+    expect(labels(model)).toEqual(["dev", "empty", "  <env-empty>", "<group>", "  conn:a", "  conn:b"]);
+    expect(load.mock.calls.length).toBe(calls);
+  });
+
+  it("filters by kind: the group needs a loose connection of that kind, an empty environment always hides", async () => {
+    const { model } = await mixed();
+    model.setKindFilter("cosmos");
+    expect(labels(model)).toEqual(["<group>", "  conn:b"]);
+    expect(byKey(model.rows())[UNGROUPED]).toMatchObject({ count: 1 });
+    model.setKindFilter("sql");
+    expect(labels(model)).toEqual(["dev", "<group>", "  conn:a"]);
+  });
+
+  it("orders environments by envOrder and keeps the group last", async () => {
+    const { model } = await mixed();
+    model.setEnvOrder(["empty", "dev"]);
+    expect(labels(model)).toEqual(["empty", "  <env-empty>", "dev", "<group>", "  conn:a", "  conn:b"]);
+  });
+
+  it("envIds lists environments only; expand all opens them and the group, never a loose connection", async () => {
+    const { model, load } = await mixed();
+    expect(model.envIds()).toEqual(["env:dev", "env:empty"]);
+    await model.toggle(UNGROUPED);
+    await model.expandEnvironments();
+    expect(model.isExpanded(UNGROUPED)).toBe(true);
+    expect(model.isExpanded("conn:a")).toBe(false);
+    expect(load.mock.calls.map(([id]) => id)).not.toContain("conn:a");
+  });
+
+  it("forgetConnections drops what was loaded below loose connections", async () => {
+    const { model, load } = await mixed();
+    await model.expand("conn:a");
+    model.forgetConnections();
+    expect(model.isExpanded("conn:a")).toBe(false);
+    await model.expand("conn:a");
+    expect(load.mock.calls.filter(([id]) => id === "conn:a")).toHaveLength(2);
+  });
+
+  it("focus with no environment opens the group and the connection, and focusing an environment closes the group", async () => {
+    const { model } = await mixed();
+    await model.expand("env:dev");
+    await model.toggle(UNGROUPED);
+    await model.focus(undefined, "conn:a");
+    expect(model.isExpanded("env:dev")).toBe(false);
+    expect(model.isExpanded(UNGROUPED)).toBe(true);
+    expect(model.isExpanded("conn:a")).toBe(true);
+    await model.focus("env:dev");
+    expect(model.isExpanded(UNGROUPED)).toBe(false);
+    expect(model.isExpanded("env:dev")).toBe(true);
+  });
+
+  it("works out labels across grouped and loose connections alike", async () => {
+    const { model } = await mixed();
+    const k = byKey(model.rows()) as Record<string, NodeRow>;
+    const { prefix, core, suffix } = k["conn:a"].label;
+    // Computed from the endpoint (a fallback would be the plain node label), so the loose connection took part.
+    expect(prefix + core + suffix).toBe("conn:a-srv.x.com");
+    expect(core).not.toBe("conn:a");
+  });
+
+  it("dropTarget: a header or its empty row means that environment, the group means none, anything else is not a target", async () => {
+    const { model } = await mixed();
+    await model.expand("env:dev");
+    const k = byKey(model.rows());
+    expect(dropTarget(k["env:dev"])).toBe("dev");
+    expect(dropTarget(k["env:empty#empty"])).toBe("empty");
+    expect(dropTarget(k[UNGROUPED])).toBeNull();
+    expect(dropTarget(k["conn:a"])).toBeUndefined();
+    expect(dropTarget(k["conn:c"])).toBeUndefined();
   });
 });
 
