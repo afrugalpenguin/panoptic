@@ -52,8 +52,8 @@ public sealed class FakeBackend : IQueryBackend
     /// <summary>1200 numbered rows, sent the sink's batch size at a time, and one message.</summary>
     public Task ExecuteAsync(QueryTarget target, string? secret, string text, IQuerySink sink, CancellationToken ct)
     {
-        if (target.Environment.ReadOnly && text.StartsWith("write", StringComparison.OrdinalIgnoreCase))
-            throw new RpcException(RpcException.InvalidParams, $"{target.Environment.Name} is read-only.");
+        if (target.ReadOnly && text.StartsWith("write", StringComparison.OrdinalIgnoreCase))
+            throw new RpcException(RpcException.InvalidParams, $"{target.Environment!.Name} is read-only.");
         if (text == "fail")
         {
             sink.Fail("Line 2: no such table", [new QueryError(0, 2, "Line 2: no such table", "42P01", 6)]);
@@ -142,17 +142,17 @@ public sealed class BackendContractTests : IDisposable
     private List<JsonElement> Notes(string method) =>
         _notes.Where(n => n.Method == method).Select(n => JsonDocument.Parse(n.Params).RootElement).ToList();
 
-    private const string Widgets = "env:e/conn:f/db:main/t:widgets";
+    private const string Widgets = "conn:f/db:main/t:widgets";
 
     [Fact]
     public async Task Tree_lists_the_new_kind_through_the_registry()
     {
         var sidecar = Sidecar();
 
-        var connection = (await Call(sidecar, "tree.children", new { nodeId = "env:e" })).EnumerateArray().First(n => n.GetProperty("id").GetString() == "env:e/conn:f");
+        var connection = (await Call(sidecar, "tree.children", new { nodeId = "env:e" })).EnumerateArray().First(n => n.GetProperty("id").GetString() == "conn:f");
         Assert.Equal(FakeBackend.Kind, connection.GetProperty("meta").GetProperty("connectionKind").GetString());
-        var database = Assert.Single((await Call(sidecar, "tree.children", new { nodeId = "env:e/conn:f" })).EnumerateArray());
-        Assert.Equal("env:e/conn:f/db:main", database.GetProperty("id").GetString());
+        var database = Assert.Single((await Call(sidecar, "tree.children", new { nodeId = "conn:f" })).EnumerateArray());
+        Assert.Equal("conn:f/db:main", database.GetProperty("id").GetString());
         var table = Assert.Single((await Call(sidecar, "tree.children", new { nodeId = database.GetProperty("id").GetString() })).EnumerateArray());
         Assert.Equal(Widgets, table.GetProperty("id").GetString());
         Assert.Contains("copyPath", table.GetProperty("actions").EnumerateArray().Select(a => a.GetString()));
@@ -167,13 +167,13 @@ public sealed class BackendContractTests : IDisposable
         Assert.Equal("SELECT * FROM \"widgets\" LIMIT 1000", select.GetProperty("text").GetString());
         Assert.Equal("fakesql", select.GetProperty("language").GetString());
         var scope = select.GetProperty("scope");
-        Assert.Equal("env:e/conn:f", scope.GetProperty("connection").GetString());
+        Assert.Equal("conn:f", scope.GetProperty("connection").GetString());
         Assert.Equal("main", scope.GetProperty("database").GetString());
         Assert.Equal("main", scope.GetProperty("label").GetString());
         Assert.Equal("Fake one", scope.GetProperty("connectionLabel").GetString());
 
-        Assert.Equal("-- fake", (await Call(sidecar, "query.template", new { nodeId = "env:e/conn:f", action = "newQuery" })).GetProperty("text").GetString());
-        Assert.Equal("Fake one", (await Call(sidecar, "query.scope", new { nodeId = "env:e/conn:f" })).GetProperty("label").GetString());
+        Assert.Equal("-- fake", (await Call(sidecar, "query.template", new { nodeId = "conn:f", action = "newQuery" })).GetProperty("text").GetString());
+        Assert.Equal("Fake one", (await Call(sidecar, "query.scope", new { nodeId = "conn:f" })).GetProperty("label").GetString());
     }
 
     [Fact]
@@ -215,6 +215,19 @@ public sealed class BackendContractTests : IDisposable
     }
 
     [Fact]
+    public async Task A_connection_moved_out_of_a_read_only_environment_keeps_its_ids_and_is_not_read_only()
+    {
+        var sidecar = Sidecar(readOnly: true);
+        var connection = new { id = "f", name = "Fake one", kind = FakeBackend.Kind, endpoint = "fake://host", auth = AuthKinds.Key };
+        var config = await Call(sidecar, "config.saveConnection", new { environmentId = (string?)null, connection, secret = (string?)null });
+        Assert.Equal("f", config.GetProperty("connections")[0].GetProperty("id").GetString());
+
+        var summary = await Call(sidecar, "query.execute", new { queryId = "q9", nodeId = Widgets, text = "write something" });
+
+        Assert.Equal(JsonValueKind.Null, summary.TryGetProperty("error", out var error) ? error.ValueKind : JsonValueKind.Null);
+    }
+
+    [Fact]
     public async Task Actions_are_labelled_and_invoked_by_the_backend()
     {
         var sidecar = Sidecar();
@@ -226,7 +239,7 @@ public sealed class BackendContractTests : IDisposable
         Assert.Equal("\"main\".\"widgets\"", (await Call(sidecar, "node.invoke", new { nodeId = Widgets, actionId = "copyPath" })).GetProperty("text").GetString());
         // Copy name is node meta now, not an action.
         Assert.False(labels.TryGetProperty("copyName", out _));
-        var error = await Error(sidecar, "node.invoke", new { nodeId = "env:e/conn:f", actionId = "copyName" });
+        var error = await Error(sidecar, "node.invoke", new { nodeId = "conn:f", actionId = "copyName" });
         Assert.Equal(RpcException.InvalidParams, error.GetProperty("code").GetInt32());
     }
 
@@ -257,21 +270,21 @@ public sealed class BackendContractTests : IDisposable
     {
         var sidecar = Sidecar();
 
-        var connection = (await Call(sidecar, "tree.children", new { nodeId = "env:e" })).EnumerateArray().First(n => n.GetProperty("id").GetString() == "env:e/conn:b");
+        var connection = (await Call(sidecar, "tree.children", new { nodeId = "env:e" })).EnumerateArray().First(n => n.GetProperty("id").GetString() == "conn:b");
         Assert.Equal(["refresh"], ActionsOf(connection));
-        var thing = Assert.Single((await Call(sidecar, "tree.children", new { nodeId = "env:e/conn:b" })).EnumerateArray());
+        var thing = Assert.Single((await Call(sidecar, "tree.children", new { nodeId = "conn:b" })).EnumerateArray());
         Assert.Equal(["refresh"], ActionsOf(thing));
         // A query backend's connection and nodes keep theirs.
-        var fake = (await Call(sidecar, "tree.children", new { nodeId = "env:e" })).EnumerateArray().First(n => n.GetProperty("id").GetString() == "env:e/conn:f");
+        var fake = (await Call(sidecar, "tree.children", new { nodeId = "env:e" })).EnumerateArray().First(n => n.GetProperty("id").GetString() == "conn:f");
         Assert.Equal(["newQuery", "refresh"], ActionsOf(fake));
 
-        var summary = await Call(sidecar, "query.execute", new { queryId = "q3", nodeId = "env:e/conn:b", text = "x" });
+        var summary = await Call(sidecar, "query.execute", new { queryId = "q3", nodeId = "conn:b", text = "x" });
         Assert.Equal("browse connections cannot run queries.", summary.GetProperty("error").GetString());
-        var template = await Error(sidecar, "query.template", new { nodeId = "env:e/conn:b/x:thing", action = "selectTop" });
+        var template = await Error(sidecar, "query.template", new { nodeId = "conn:b/x:thing", action = "selectTop" });
         Assert.Equal(RpcException.InvalidParams, template.GetProperty("code").GetInt32());
         Assert.Equal("browse connections cannot run queries.", template.GetProperty("message").GetString());
 
-        await Call(sidecar, "catalog.get", new { nodeId = "env:e/conn:b" });
+        await Call(sidecar, "catalog.get", new { nodeId = "conn:b" });
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var notice = await _catalogNotices.Reader.ReadAsync(timeout.Token);
         Assert.Equal(CatalogStates.Error, notice.State);

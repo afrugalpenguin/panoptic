@@ -162,15 +162,15 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
             foreach (SqlError error in e.Errors) sink.Message("info", error.Message);
         };
 
-        if (target.Environment.ReadOnly)
+        if (target.ReadOnly)
         {
             await using var probe = new SqlCommand("SELECT CAST(SERVERPROPERTY('EngineEdition') AS int)", conn) { CommandTimeout = 30 };
             if ((int)(await probe.ExecuteScalarAsync(ct))! == 11) // Synapse serverless: no transactions to roll back
                 throw new RpcException(RpcException.InvalidParams,
-                    $"{target.Environment.Name} is read-only, but Synapse serverless pools do not support transactions, so Panoptic cannot roll queries back here. Use a read-only login, or clear the environment's read-only flag.");
+                    $"{target.Environment!.Name} is read-only, but Synapse serverless pools do not support transactions, so Panoptic cannot roll queries back here. Use a read-only login, or clear the environment's read-only flag.");
         }
 
-        await using var tx = target.Environment.ReadOnly ? conn.BeginTransaction() : null;
+        await using var tx = target.ReadOnly ? conn.BeginTransaction() : null;
         var committed = false;
         var failed = false;
         var batchLine = 1;
@@ -279,11 +279,11 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
         {
             await tx.RollbackAsync(CancellationToken.None);
             sink.RolledBack();
-            sink.Message("info", RolledBackMessage(target.Environment.Name, failed));
+            sink.Message("info", RolledBackMessage(target.Environment!.Name, failed));
         }
         catch (Exception ex) when (ex is InvalidOperationException or SqlException)
         {
-            sink.Message("error", $"{target.Environment.Name} is read-only, but the rollback failed: {ex.Message}. Changes may have been committed.");
+            sink.Message("error", $"{target.Environment!.Name} is read-only, but the rollback failed: {ex.Message}. Changes may have been committed.");
         }
     }
 

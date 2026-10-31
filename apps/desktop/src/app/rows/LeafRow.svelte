@@ -22,6 +22,8 @@
 {:else if row.type === "error"}
   <!-- One line at leaf height: never wraps, never widens the panel. Click opens Problems. -->
   <span class="chevron none"></span><WarningIcon /><span class="note error" title={errorTooltip(row.error)}>{row.error.summary}</span>
+{:else if row.type === "env-empty"}
+  <span class="chevron none"></span><span class="note">Empty - drag a connection here</span>
 {:else}
   <span class="chevron none"></span><span class="note">(empty)</span>
 {/if}

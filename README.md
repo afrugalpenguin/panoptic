@@ -22,7 +22,8 @@ scope; SSMS stays the tool for those.
 
 - **Explorer.** One tree with every environment, and SQL Server, Azure SQL, Synapse, Cosmos DB and
   PostgreSQL connections side by side. Filter by engine, expand or collapse every environment at
-  once, and reorder environments from their right-click menu.
+  once, and reorder environments from their right-click menu. Environments are optional: drag a
+  connection onto one to group it, or leave it ungrouped.
 - **Start page.** Seek finds environments, connections and recent objects from one box (Ctrl+P),
   and Reopen last session picks up where you left off.
 - **Query editor.** T-SQL, Cosmos SQL and PostgreSQL, with results streamed into a grid, several
@@ -52,7 +53,7 @@ scope; SSMS stays the tool for those.
 - **Updates.** Panoptic updates itself from GitHub Releases, and a What's new tab shows what
   changed. No telemetry; the update check is the only outbound call.
 
-![A query tab running Select top 1000 against a sample Orders table, with twelve rows in the results grid and a Messages tab](docs/images/readme/query.png)
+![A query tab running Select top 1000 against a sample Orders table, with 1,000 rows across 22 columns in the results grid and a Messages tab](docs/images/readme/query.png)
 
 *Select top 1000 on a table, with results and messages (sample data).*
 
@@ -87,42 +88,25 @@ Needs Rust (MSVC), Node 24 with pnpm, and the .NET 10 SDK.
 ```powershell
 pnpm install
 pnpm dev     # framework-dependent sidecar, Vite dev server
+pnpm dev:seeded  # the same, on a separate store with Prod, UAT and Test (20 connections)
 pnpm test    # vitest + sidecar xunit
 pnpm build   # self-contained sidecar + release build + installer
 ```
 
+`pnpm dev:seeded` keeps its profile in `%APPDATA%\Panoptic\dev-seeded` and never touches your
+real store; `scripts\dev-seeded.ps1 -Reset` seeds it again. Test's first three connections are the
+local Docker databases from `scripts\dev-db.ps1`; the rest are synthetic and fail to expand.
+
 Locally, `pnpm build` writes the installer to `apps/desktop/src-tauri/target/release/bundle/nsis/`
-and then fails at signing the update, because the updater's private key is only in GitHub Secrets
-(see Release). The installer it wrote is complete.
+and then fails at signing the update, because the updater's private key is only in GitHub Secrets.
+The installer it wrote is complete.
+
+How releases, versions and change fragments work is in [docs/release.md](docs/release.md).
 
 The UI is Svelte 5 in a Tauri 2 shell. Data access runs in a .NET 10 sidecar over JSON-RPC on
 stdio, because Microsoft.Data.SqlClient and the Cosmos .NET SDK are the mature drivers with
 Entra support. Why the sidecar is a self-contained JIT build rather than Native AOT is in
 [ADR 0001](docs/adr/0001-stack.md).
-
-## Release
-
-Every merge to `main` releases automatically as `<major>.<minor>.<run number>`; there is no
-tag step. To start a new series, bump the minor on a branch with
-`.\scripts\set-version.ps1 -Version 0.3.0` and merge it.
-
-Any feat or fix pull request adds a change fragment, `changes/<short-name>.md`, with one
-user-facing line starting `Added:`, `Changed:`, `Fixed:` or `Removed:` (CI checks; see
-[changes/README.md](changes/README.md)). The release notes, the What's new tab in the app and
-`latest.json` are all generated from these fragments (ADR 0013).
-
-The Release workflow builds the installer and portable zip, signs the update with the updater key
-in GitHub Secrets and publishes `latest.json`. The private key lives outside the repo; if it
-is lost, installed copies can no longer update.
-
-Each release is built as a draft and published only as the last step, after
-`scripts\check-release-assets.ps1` confirms the setup.exe, its `.sig`, `latest.json` and the
-portable zip are all attached. Installed copies update from `releases/latest`, which ignores
-drafts, so they never see a half-published release; the tag is created when the draft is
-published. A cancelled or failed run leaves an untagged draft. A newer merge does not touch it:
-it ships its own version, and the stale draft is inert, so delete it from the Releases page when
-convenient. Do not re-run an old cancelled release after a newer one shipped, as publishing it
-would make the older version latest.
 
 ## License
 

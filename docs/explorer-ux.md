@@ -4,7 +4,7 @@ Decided 29 Oct 2026. Mockups: Panoptic explorer mockups canvas (artboards B and 
 
 ## Principles
 
-- Environment is the primary axis. Every kind (SQL, Cosmos, Synapse, Postgres) sits inside its environment group. There is no kind-first grouping.
+- Connections are the primary object; environments are optional grouping (changed 31 Oct 2026, see "Grouping"). Every kind (SQL, Cosmos, Synapse, Postgres) sits inside its environment group, or with the ungrouped connections. There is no kind-first grouping.
 - One tree, one row component. No per-kind row renderers. Backends supply nodes; the tree draws them.
 - Everything the row needs is precomputed when the tree model changes. Render reads fields, it never computes labels, prefixes or icon visibility.
 - Fixed row heights per level so the virtualiser can multiply. Header 26px, connection 24px, folder and leaf 22px.
@@ -18,8 +18,27 @@ Kind filter row (32px, below toolbar): one chip per kind present in the tree plu
 
 Tree below, virtualised, env groups separated by a 4px gap.
 
+## Grouping
+
+A connection may be in one environment or in none, and an environment may have no connections.
+
+- **No environments at all:** the connections are listed flat at the root, with no header, no bar and no environment tint. Connection rows indent 10px (there is no group bar to clear), then 20px more per level.
+- **At least one environment:** the environments come first, in `explorer.envOrder`, and the connections in no environment come last under a dimmed **Ungrouped** header (muted, weight 600, with a count). The group has no environment colour: no bar and no tint, only the neutral hover and selection washes. It is collapsible, starts open and opens again with Expand all. Selecting it shows a short note in the detail pane.
+- **An empty environment** shows its header (no chevron, count 0) with a muted row under it: "Empty - drag a connection here". The row is not a node and cannot be selected.
+- **Read-only** is an environment setting, so a connection in no environment is never read-only.
+- **Kind filter:** the Ungrouped header shows only when a connection in none has that kind; an empty environment is hidden by any filter.
+
+Moving a connection:
+
+- Drag a connection row onto an environment header or its empty row to move it there, or onto the Ungrouped header to take it out of its environment. The target is outlined while a drop is possible.
+- A connection's menu has **Move to environment...** (the environments other than its own, or New environment..., which creates one) and, for a connection in an environment, **Remove from environment**.
+- New connection and Import ask for an environment with a picker whose default is None (docs/landing.md).
+
+A connection's node id never includes its environment, so moving one keeps open query tabs, recent objects and anything expanded below it. Deleting an environment still deletes its connections; its confirmation says so.
+
 ## Environment group header (26px)
 
+- An environment with no connections has no chevron; see "Grouping" for the row under it.
 - Background: env colour at 14% alpha (22% on hover, 30% selected). Left bar: 4px solid env colour.
 - Label: env name, 13px, weight 700, white.
 - Read-only envs show an uppercase `READ ONLY` pill after the name (10px, env-coloured text, 1px border).

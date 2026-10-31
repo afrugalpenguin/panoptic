@@ -98,7 +98,7 @@ public static class Methods
         // Reads other tools' saved connections on this machine. Flags ones that are already in Panoptic.
         methods["import.scan"] = (_, _) =>
         {
-            var existing = store.Config.Environments.SelectMany(e => e.Connections)
+            var existing = store.Config.Environments.SelectMany(e => e.Connections).Concat(store.Config.Connections)
                 .Select(c => Import.ImportKey.Of(c.Endpoint, c.User, c.Database))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
             var sources = Import.ConnectionImporter.Scan(

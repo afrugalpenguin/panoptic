@@ -158,14 +158,14 @@ public class QueryTemplateTests
     [Fact]
     public void Select_top_for_a_cosmos_container()
     {
-        var path = NodePath.Parse("env:e/conn:c/db:shop/c:orders");
+        var path = NodePath.Parse("conn:c/db:shop/c:orders");
         Assert.Equal("SELECT TOP 1000 * FROM c", QueryTemplates.SelectTop(ConnectionKinds.Cosmos, path));
     }
 
     [Fact]
     public void Select_top_is_not_offered_above_an_object()
     {
-        Assert.Null(QueryTemplates.SelectTop(ConnectionKinds.Sql, NodePath.Parse("env:e/conn:c/db:Orders")));
+        Assert.Null(QueryTemplates.SelectTop(ConnectionKinds.Sql, NodePath.Parse("conn:c/db:Orders")));
     }
 }
 
@@ -208,7 +208,7 @@ public sealed class QueryIntegrationTests : IDisposable
     [SqlFact(NeedsWindows = true), Trait("Category", "SqlIntegration")]
     public async Task Sql_streams_result_sets_in_batches_with_messages()
     {
-        var summary = await Service().ExecuteAsync(new QueryRequest("q1", "env:dev/conn:sql1/db:Orders",
+        var summary = await Service().ExecuteAsync(new QueryRequest("q1", "conn:sql1/db:Orders",
             "PRINT 'hello'\nSELECT TOP (1200) o.object_id FROM sys.all_objects o\nGO\nSELECT CAST(NULL AS int) AS n, CAST(1.5 AS decimal(10,2)) AS d"), default);
 
         Assert.Null(summary.Error);
@@ -225,7 +225,7 @@ public sealed class QueryIntegrationTests : IDisposable
     [SqlFact(NeedsWindows = true), Trait("Category", "SqlIntegration")]
     public async Task Sql_error_keeps_earlier_results_and_reports_the_error()
     {
-        var summary = await Service().ExecuteAsync(new QueryRequest("q2", "env:dev/conn:sql1/db:Orders", "SELECT 1 AS ok\nGO\nSELECT * FROM dbo.DoesNotExist"), default);
+        var summary = await Service().ExecuteAsync(new QueryRequest("q2", "conn:sql1/db:Orders", "SELECT 1 AS ok\nGO\nSELECT * FROM dbo.DoesNotExist"), default);
 
         Assert.Single(summary.ResultSets);
         Assert.Contains("DoesNotExist", summary.Error);
@@ -236,7 +236,7 @@ public sealed class QueryIntegrationTests : IDisposable
     {
         // 207 is reported at the column's own line, 208 at the statement's first line; both counted from the script's
         // start, not the GO batch's. Each error is its own message.
-        var summary = await Service().ExecuteAsync(new QueryRequest("q7", "env:dev/conn:sql1/db:Orders",
+        var summary = await Service().ExecuteAsync(new QueryRequest("q7", "conn:sql1/db:Orders",
             "SELECT 1 AS ok\nGO\n\nSELECT o.OrderId,\n  o.Nmae, o.Nmbr\nFROM sales.[Order] o"), default);
 
         Assert.Equal("Line 5: Invalid column name 'Nmae'.", summary.Error?.ReplaceLineEndings("\n").Split('\n')[0]);
@@ -249,9 +249,9 @@ public sealed class QueryIntegrationTests : IDisposable
     public async Task Sql_error_inside_a_procedure_has_no_script_line()
     {
         var service = Service();
-        await service.ExecuteAsync(new QueryRequest("q8", "env:dev/conn:sql1/db:Orders",
+        await service.ExecuteAsync(new QueryRequest("q8", "conn:sql1/db:Orders",
             "CREATE OR ALTER PROCEDURE dbo.PanopticTestMissing AS\n\nSELECT * FROM dbo.NoSuchTable"), default);
-        await service.ExecuteAsync(new QueryRequest("q9", "env:dev/conn:sql1/db:Orders", "\n\nEXEC dbo.PanopticTestMissing"), default);
+        await service.ExecuteAsync(new QueryRequest("q9", "conn:sql1/db:Orders", "\n\nEXEC dbo.PanopticTestMissing"), default);
 
         var error = Notes("query.message").Last(m => m.GetProperty("kind").GetString() == "error");
         Assert.Equal(208, error.GetProperty("number").GetInt32());
@@ -262,7 +262,7 @@ public sealed class QueryIntegrationTests : IDisposable
     [SqlFact(NeedsWindows = true), Trait("Category", "SqlIntegration")]
     public async Task Sql_reports_rows_affected()
     {
-        await Service().ExecuteAsync(new QueryRequest("q3", "env:dev/conn:sql1/db:Orders",
+        await Service().ExecuteAsync(new QueryRequest("q3", "conn:sql1/db:Orders",
             "DECLARE @t TABLE (x int); INSERT @t VALUES (1), (2), (3);"), default);
 
         Assert.Contains(Notes("query.message"), m => m.GetProperty("text").GetString() == "(3 rows affected)");
@@ -273,18 +273,18 @@ public sealed class QueryIntegrationTests : IDisposable
     {
         var service = Service(readOnly: true);
 
-        var summary = await service.ExecuteAsync(new QueryRequest("q4", "env:dev/conn:sql1/db:Orders",
+        var summary = await service.ExecuteAsync(new QueryRequest("q4", "conn:sql1/db:Orders",
             "UPDATE dbo.Customer SET Name = N'changed' WHERE CustomerId = 1"), default);
         Assert.True(summary.RolledBack);
 
-        await service.ExecuteAsync(new QueryRequest("q5", "env:dev/conn:sql1/db:Orders", "SELECT Name FROM dbo.Customer WHERE CustomerId = 1"), default);
+        await service.ExecuteAsync(new QueryRequest("q5", "conn:sql1/db:Orders", "SELECT Name FROM dbo.Customer WHERE CustomerId = 1"), default);
         Assert.NotEqual("changed", Notes("query.rows").Last().GetProperty("rows")[0][0].GetString());
     }
 
     [SqlFact(NeedsWindows = true), Trait("Category", "SqlIntegration")]
     public async Task Read_only_failed_query_says_nothing_was_committed()
     {
-        var summary = await Service(readOnly: true).ExecuteAsync(new QueryRequest("q6", "env:dev/conn:sql1/db:Orders", "SELECT * FROM dbo.NoSuchTable"), default);
+        var summary = await Service(readOnly: true).ExecuteAsync(new QueryRequest("q6", "conn:sql1/db:Orders", "SELECT * FROM dbo.NoSuchTable"), default);
 
         Assert.NotNull(summary.Error);
         Assert.True(summary.RolledBack);
@@ -297,17 +297,17 @@ public sealed class QueryIntegrationTests : IDisposable
     private async Task<(QuerySummary Summary, int[] Rows)> RunReadOnly(string script)
     {
         var table = $"dbo.zz_ro_guard_{Guid.NewGuid():N}";
-        await Service().ExecuteAsync(new QueryRequest("setup", "env:dev/conn:sql1/db:Orders", $"CREATE TABLE {table} (x int)"), default);
+        await Service().ExecuteAsync(new QueryRequest("setup", "conn:sql1/db:Orders", $"CREATE TABLE {table} (x int)"), default);
         try
         {
-            var summary = await Service(readOnly: true).ExecuteAsync(new QueryRequest("ro", "env:dev/conn:sql1/db:Orders", script.Replace("{T}", table)), default);
-            await Service().ExecuteAsync(new QueryRequest("check", "env:dev/conn:sql1/db:Orders", $"SELECT x FROM {table} ORDER BY x"), default);
+            var summary = await Service(readOnly: true).ExecuteAsync(new QueryRequest("ro", "conn:sql1/db:Orders", script.Replace("{T}", table)), default);
+            await Service().ExecuteAsync(new QueryRequest("check", "conn:sql1/db:Orders", $"SELECT x FROM {table} ORDER BY x"), default);
             var rows = Notes("query.rows").Last(n => n.GetProperty("queryId").GetString() == "check").GetProperty("rows").EnumerateArray().Select(r => r[0].GetInt32()).ToArray();
             return (summary, rows);
         }
         finally
         {
-            await Service().ExecuteAsync(new QueryRequest("cleanup", "env:dev/conn:sql1/db:Orders", $"DROP TABLE {table}"), default);
+            await Service().ExecuteAsync(new QueryRequest("cleanup", "conn:sql1/db:Orders", $"DROP TABLE {table}"), default);
         }
     }
 
@@ -352,7 +352,7 @@ public sealed class QueryIntegrationTests : IDisposable
     {
         var service = Service();
 
-        var run = service.ExecuteAsync(new QueryRequest("q6", "env:dev/conn:sql1/db:Orders", "WAITFOR DELAY '00:00:30'; SELECT 1"), default);
+        var run = service.ExecuteAsync(new QueryRequest("q6", "conn:sql1/db:Orders", "WAITFOR DELAY '00:00:30'; SELECT 1"), default);
         await Task.Delay(1000);
         Assert.True(service.Cancel("q6"));
         var summary = await run.WaitAsync(TimeSpan.FromSeconds(10));
@@ -363,7 +363,7 @@ public sealed class QueryIntegrationTests : IDisposable
     [CosmosFact, Trait("Category", "CosmosIntegration")]
     public async Task Cosmos_flattens_documents_into_columns_and_reports_charge()
     {
-        var summary = await Service().ExecuteAsync(new QueryRequest("q7", "env:dev/conn:cos1/db:panoptic-dev/c:orders", "SELECT * FROM c"), default);
+        var summary = await Service().ExecuteAsync(new QueryRequest("q7", "conn:cos1/db:panoptic-dev/c:orders", "SELECT * FROM c"), default);
 
         Assert.Null(summary.Error);
         Assert.Equal(25, summary.ResultSets.Single().RowCount);
@@ -377,7 +377,7 @@ public sealed class QueryIntegrationTests : IDisposable
     [Fact]
     public async Task Cosmos_query_needs_a_container()
     {
-        var summary = await Service().ExecuteAsync(new QueryRequest("q8", "env:dev/conn:cos1/db:panoptic-dev", "SELECT * FROM c"), default);
+        var summary = await Service().ExecuteAsync(new QueryRequest("q8", "conn:cos1/db:panoptic-dev", "SELECT * FROM c"), default);
 
         Assert.Contains("container", summary.Error);
     }

@@ -8,7 +8,7 @@ namespace Panoptic.Sidecar.Tests;
 /// </summary>
 public sealed class CopyTextTests : IDisposable
 {
-    private static readonly NodePath Connection = NodePath.Parse("env:e/conn:c");
+    private static readonly NodePath Connection = NodePath.Parse("conn:c");
     private readonly string _path = Path.Combine(Path.GetTempPath(), $"panoptic-test-{Guid.NewGuid():N}", "store.bin");
 
     public void Dispose()
@@ -41,7 +41,7 @@ public sealed class CopyTextTests : IDisposable
     [Fact]
     public void Cosmos_scripts_copy_their_name_and_udfs_as_called()
     {
-        var container = NodePath.Parse("env:e/conn:c/db:shop/c:orders");
+        var container = NodePath.Parse("conn:c/db:shop/c:orders");
         Assert.Equal("bulkDelete", CopyText(CosmosBackend.ScriptNode(container.Child("f", "sprocs"), "sproc", "bulkDelete")));
         Assert.Equal("stamp", CopyText(CosmosBackend.ScriptNode(container.Child("f", "triggers"), "trigger", "stamp")));
         var udf = CosmosBackend.ScriptNode(container.Child("f", "udfs"), "udf", "tax");
@@ -53,7 +53,7 @@ public sealed class CopyTextTests : IDisposable
     [Fact]
     public void Cosmos_partition_key_copies_its_path_and_the_other_container_children_copy_nothing()
     {
-        var nodes = CosmosBackend.ContainerChildNodes(NodePath.Parse("env:e/conn:c/db:shop/c:orders"), "{}", "/pk", "400 RU/s");
+        var nodes = CosmosBackend.ContainerChildNodes(NodePath.Parse("conn:c/db:shop/c:orders"), "{}", "/pk", "400 RU/s");
 
         var pk = Assert.Single(nodes, n => n.Id.EndsWith("prop:partitionKey", StringComparison.Ordinal));
         Assert.Equal("Partition key: /pk", pk.Label);
@@ -87,11 +87,11 @@ public sealed class CopyTextTests : IDisposable
 
     // These shapes are answered without connecting.
     [Theory]
-    [InlineData("env:e/conn:s/db:Orders")]
-    [InlineData("env:e/conn:s/db:Orders/f:programmability")]
-    [InlineData("env:e/conn:s/db:Orders/f:tables/o:dbo%1FOrders")]
-    [InlineData("env:e/conn:y/db:Pool")]
-    [InlineData("env:e/conn:y/db:Pool/f:external/o:dbo%1Fx")]
+    [InlineData("conn:s/db:Orders")]
+    [InlineData("conn:s/db:Orders/f:programmability")]
+    [InlineData("conn:s/db:Orders/f:tables/o:dbo%1FOrders")]
+    [InlineData("conn:y/db:Pool")]
+    [InlineData("conn:y/db:Pool/f:external/o:dbo%1Fx")]
     public async Task Sql_folders_have_no_copy_name(string nodeId)
     {
         var folders = await Tree().ChildrenAsync(nodeId, default);
@@ -104,7 +104,7 @@ public sealed class CopyTextTests : IDisposable
     public async Task Sql_databases_are_bracketed_and_drag_text_is_unchanged()
     {
         // A connection with a fixed database lists it without connecting.
-        var db = Assert.Single(await Tree().ChildrenAsync("env:e/conn:d", default));
+        var db = Assert.Single(await Tree().ChildrenAsync("conn:d", default));
         Assert.Equal("[Odd]]Db]", CopyText(db));
         Assert.Equal(SqlBackend.DragName("Odd]Db"), db.Meta!["dragText"]);
     }
@@ -113,9 +113,9 @@ public sealed class CopyTextTests : IDisposable
     public async Task Sql_definitions_have_no_copy_name_and_connections_copy_their_name()
     {
         var tree = Tree();
-        foreach (var nodeId in new[] { "env:e/conn:s/db:Orders/f:views/o:dbo%1Fv", "env:e/conn:s/db:Orders/f:programmability/f:procs/o:dbo%1Fp" })
+        foreach (var nodeId in new[] { "conn:s/db:Orders/f:views/o:dbo%1Fv", "conn:s/db:Orders/f:programmability/f:procs/o:dbo%1Fp" })
             NoCopyName(Assert.Single(await tree.ChildrenAsync(nodeId, default), n => n.Kind == "definition"));
-        Assert.Equal("sql", CopyText((await tree.ChildrenAsync("env:e", default)).Single(n => n.Id == "env:e/conn:s")));
+        Assert.Equal("sql", CopyText((await tree.ChildrenAsync("env:e", default)).Single(n => n.Id == "conn:s")));
     }
 
     [SqlFact(NeedsWindows = false), Trait("Category", "SqlIntegration")]
@@ -123,8 +123,8 @@ public sealed class CopyTextTests : IDisposable
     {
         var backend = new SqlBackend(new Credentials(_ => { }));
         var conn = new ConnectionConfig("sql1", "dev", ConnectionKinds.Sql, "127.0.0.1,14333", AuthKinds.Sql, User: "sa", TrustServerCertificate: true);
-        var root = NodePath.Parse("env:e/conn:sql1");
-        Task<TreeNode[]> Expand(NodePath path) => backend.ChildrenAsync(conn, SqlFactAttribute.Password, path, 2, default);
+        var root = NodePath.Parse("conn:sql1");
+        Task<TreeNode[]> Expand(NodePath path) => backend.ChildrenAsync(conn, SqlFactAttribute.Password, path, 1, default);
 
         var orders = (await Expand(root)).Single(n => n.Label == "Orders");
         Assert.Equal("[Orders]", CopyText(orders));

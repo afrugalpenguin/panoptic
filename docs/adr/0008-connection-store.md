@@ -9,7 +9,7 @@ Connections must survive reinstalls and move between machines via a dotfiles rep
 
 ## Decision
 
-Environments, connections, their secrets (SQL login passwords, Cosmos account keys) and app settings are stored together in one file, `%APPDATA%\Panoptic\store.bin`, encrypted as a single blob with DPAPI in CurrentUser scope (`apps/sidecar/Panoptic.Sidecar/ConfigStore.cs`). Every change rewrites the whole file through a temporary file that is then moved into place. Secrets never leave the sidecar: the config the UI receives carries none.
+Environments, connections, their secrets (SQL login passwords, Cosmos account keys) and app settings are stored together in one file, `%APPDATA%\Panoptic\store.bin`, encrypted as a single blob with DPAPI in CurrentUser scope (`apps/sidecar/Panoptic.Sidecar/ConfigStore.cs`). Every change rewrites the whole file through a temporary file that is then moved into place. Secrets never leave the sidecar: the config the UI receives carries none. A connection is in one environment or in none; since 31 Oct 2026 the config has a top-level `connections` list for the latter, which loads empty from older stores.
 
 Entra tokens are not in this file. MSAL caches them in the user profile, also DPAPI-encrypted (`Credentials.cs`, ADR 0007).
 

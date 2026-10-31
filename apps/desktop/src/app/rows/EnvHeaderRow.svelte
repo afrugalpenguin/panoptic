@@ -5,7 +5,7 @@
   let { row }: { row: Extract<Row, { type: "node" }> } = $props();
 </script>
 
-<span class="chevron" class:open={row.expanded}></span>
+<span class="chevron" class:open={row.expanded} class:none={!row.node.hasChildren}></span>
 <span class="name">{row.node.label}</span>
 {#if row.readOnly}<span class="read-only">Read only</span>{/if}
 {#if row.error}<WarningIcon small title="Failed to load. Expand to see why." />{/if}
