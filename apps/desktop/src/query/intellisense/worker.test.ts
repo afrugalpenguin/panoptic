@@ -30,7 +30,7 @@ describe("worker handle", () => {
 
   it("hovers", () => {
     const text = "select * from dbo.Main";
-    expect(handle({ type: "hover", id: 2, text, offset: text.length, options, keys })).toEqual({ id: 2, markdown: "**dbo.Main** table" });
+    expect(handle({ type: "hover", id: 2, text, offset: text.length, options, keys })).toEqual({ id: 2, markdown: "**dbo\\.Main** table" });
   });
 });
 

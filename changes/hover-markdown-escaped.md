@@ -1,0 +1,1 @@
+Fixed: Object, column and Cosmos property names and server error messages shown in the query editor's hovers are now shown as plain text, so a name in a database can no longer render as a link or formatting there.
