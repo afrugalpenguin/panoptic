@@ -118,3 +118,33 @@ export function seek(index: SeekIndex, query: string, scope: "all" | "connection
   for (const place of recentIn(top).filter((r) => inTop([r.label, r.hostName])).slice(0, RECENT_CAP)) rows.push({ kind: "recent", group: "recent", place });
   return cap(rows);
 }
+
+export type SeekKey =
+  | { kind: "move"; index: number }
+  /** Enter: scope the tree to the row (or reopen a place). */
+  | { kind: "open"; row: SeekRow }
+  /** Ctrl+Enter: a new query tab on the row's connection. */
+  | { kind: "query"; row: SeekRow }
+  | { kind: "clear" }
+  | { kind: "leave" };
+
+/** What a key in the Seek box does; undefined leaves the key to the browser. active indexes the selectable rows. */
+export function seekKey(e: { key: string; ctrlKey: boolean; shiftKey: boolean }, rows: SeekRow[], active: number, query: string): SeekKey | undefined {
+  const list = rows.filter(selectable);
+  switch (e.key) {
+    case "ArrowDown":
+      return list.length ? { kind: "move", index: Math.min(active + 1, list.length - 1) } : undefined;
+    case "ArrowUp":
+      return list.length ? { kind: "move", index: Math.max(active - 1, 0) } : undefined;
+    case "Enter":
+      return list[active] ? { kind: e.ctrlKey ? "query" : "open", row: list[active] } : undefined;
+    case "Tab": {
+      if (e.shiftKey || !list[active]) return undefined;
+      const next = list.findIndex((r, i) => i > active && r.group !== list[active].group);
+      return next >= 0 ? { kind: "move", index: next } : undefined;
+    }
+    case "Escape":
+      return query ? { kind: "clear" } : { kind: "leave" };
+  }
+  return undefined;
+}

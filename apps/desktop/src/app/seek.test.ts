@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ENV_CAP, MAX_ROWS, seek, type SeekEnv, type SeekIndex, type SeekRow } from "./seek";
+import { ENV_CAP, MAX_ROWS, seek, seekKey, type SeekEnv, type SeekIndex, type SeekRow } from "./seek";
 import type { Place } from "./usage";
 
 const host = (env: string, name: string) => ({ id: `env:${env}/conn:${name}`, name, envId: `env:${env}` });
@@ -66,5 +66,34 @@ describe("seek: connections only (the query tab's picker)", () => {
 
   it("ANDs tokens across environment and host", () => {
     expect(show(seek(index, "uk prod", "connections"))).toEqual(["host uk-prod-sql-01", "host uk-prod-sql-02"]);
+  });
+});
+
+describe("seekKey", () => {
+  const rows = seek(index, ""); // resume, env UAT, env Prod, env Dev, recent dbo.Lines
+  const key = (key: string, active: number, query = "", mods: { ctrlKey?: boolean; shiftKey?: boolean } = {}) =>
+    seekKey({ key, ctrlKey: !!mods.ctrlKey, shiftKey: !!mods.shiftKey }, rows, active, query);
+
+  it("moves with the arrows, within the list", () => {
+    expect(key("ArrowDown", 0)).toEqual({ kind: "move", index: 1 });
+    expect(key("ArrowUp", 0)).toEqual({ kind: "move", index: 0 });
+    expect(key("ArrowDown", 4)).toEqual({ kind: "move", index: 4 });
+  });
+
+  it("Enter opens, Ctrl+Enter queries the highlighted row", () => {
+    expect(key("Enter", 2)).toEqual({ kind: "open", row: rows[2] });
+    expect(key("Enter", 2, "", { ctrlKey: true })).toEqual({ kind: "query", row: rows[2] });
+  });
+
+  it("Tab jumps to the next group's first row, and leaves after the last group", () => {
+    expect(key("Tab", 0)).toEqual({ kind: "move", index: 1 });
+    expect(key("Tab", 2)).toEqual({ kind: "move", index: 4 });
+    expect(key("Tab", 4)).toBeUndefined();
+    expect(key("Tab", 0, "", { shiftKey: true })).toBeUndefined();
+  });
+
+  it("Esc clears a query, then leaves", () => {
+    expect(key("Escape", 0, "prod")).toEqual({ kind: "clear" });
+    expect(key("Escape", 0, "")).toEqual({ kind: "leave" });
   });
 });
