@@ -1,0 +1,1 @@
+Fixed: Deleting a connection now also deletes the IntelliSense schema snapshots Panoptic saved for it, once the delete can no longer be undone. Snapshots left behind by earlier versions are cleared at start-up.
