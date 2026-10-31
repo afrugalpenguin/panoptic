@@ -87,7 +87,7 @@ Result sets stream as notifications of 500-row batches so the grid paints the fi
 
 ## Milestones
 
-&#91;embedded content: milestones · M0 to M4, v1 at the end of March 2027\]
+&#91;embedded content: milestones · M0 to M4, then v1\]
 
 Each milestone has one definition of done, and the next one does not start until it is met on the work laptop, not just at home.
 
