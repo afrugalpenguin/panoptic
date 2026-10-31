@@ -39,11 +39,22 @@ export function loadUsage(storage?: Storage): Usage {
   try {
     const raw = (storage ?? globalThis.localStorage)?.getItem(KEY);
     const parsed = raw ? (JSON.parse(raw) as Usage) : undefined;
-    return parsed && typeof parsed.envs === "object" && Array.isArray(parsed.recent) ? parsed : EMPTY_USAGE;
+    if (!parsed || typeof parsed.envs !== "object" || !Array.isArray(parsed.recent)) return EMPTY_USAGE;
+    return { ...parsed, last: parsed.last && withoutEnvSegment(parsed.last), recent: parsed.recent.map(withoutEnvSegment) };
   } catch {
     return EMPTY_USAGE;
   }
 }
+
+/**
+ * Connection ids used to start with their environment (env:x/conn:y/...); they no longer do (docs/explorer-ux.md,
+ * "Grouping"). Places saved before that would otherwise look like removed connections and be dropped.
+ */
+const withoutEnvSegment = (p: Place): Place => ({
+  ...p,
+  hostId: p.hostId.replace(/^env:[^/]*\//, ""),
+  nodeId: p.nodeId.replace(/^env:[^/]*\/(?=conn:)/, ""),
+});
 
 export function saveUsage(usage: Usage, storage?: Storage): void {
   try {

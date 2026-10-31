@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { EMPTY_USAGE, loadUsage, recordUse, RECENT_KEEP, saveUsage, type Place } from "./usage";
 
 const place = (over: Partial<Place> = {}): Place => ({
-  envId: "env:prod", hostId: "env:prod/conn:a", hostName: "uk-prod-sql-01", nodeId: "env:prod/conn:a/db:orders/o:t1", label: "dbo.Orders", kind: "table", ...over,
+  envId: "env:prod", hostId: "conn:a", hostName: "uk-prod-sql-01", nodeId: "conn:a/db:orders/o:t1", label: "dbo.Orders", kind: "table", ...over,
 });
 
 describe("recordUse", () => {
@@ -20,7 +20,7 @@ describe("recordUse", () => {
   });
 
   it("does not list a connection itself as a recent object, but remembers it as the last place", () => {
-    const u = recordUse(EMPTY_USAGE, place({ nodeId: "env:prod/conn:a", label: "uk-prod-sql-01", kind: "connection" }), 1);
+    const u = recordUse(EMPTY_USAGE, place({ nodeId: "conn:a", label: "uk-prod-sql-01", kind: "connection" }), 1);
     expect(u.recent).toEqual([]);
     expect(u.last?.kind).toBe("connection");
   });
@@ -50,6 +50,19 @@ describe("loadUsage / saveUsage", () => {
     expect(loadUsage(storage)).toEqual(u);
     store.set("panoptic.usage", "{not json");
     expect(loadUsage(storage)).toEqual(EMPTY_USAGE);
+  });
+
+  it("rewrites connection ids saved before they dropped the environment (env:x/conn:y to conn:y)", () => {
+    const old = {
+      envs: { "env:prod": { last: 1, uses: 2 } },
+      last: place({ hostId: "env:prod/conn:a", nodeId: "env:prod/conn:a/db:orders/o:t1" }),
+      recent: [place({ hostId: "env:prod/conn:a", nodeId: "env:prod/conn:a/db:orders/o:t1" }), place({ hostId: "conn:b", nodeId: "conn:b/db:x" })],
+    };
+    const storage = { getItem: () => JSON.stringify(old), setItem: () => {} };
+    const u = loadUsage(storage);
+    expect(u.last).toMatchObject({ envId: "env:prod", hostId: "conn:a", nodeId: "conn:a/db:orders/o:t1" });
+    expect(u.recent.map((r) => [r.hostId, r.nodeId])).toEqual([["conn:a", "conn:a/db:orders/o:t1"], ["conn:b", "conn:b/db:x"]]);
+    expect(u.envs).toEqual(old.envs);
   });
 
   it("falls back quietly when touching local storage itself throws (blocked site data)", () => {

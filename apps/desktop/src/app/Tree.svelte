@@ -259,7 +259,10 @@
     dropKey = row.key;
   }
 
-  function onRowDragLeave(row: Row) {
+  /** Crossing onto the row's own chevron, name or count also fires dragleave: only leaving the row clears it. */
+  function onRowDragLeave(e: DragEvent, row: Row) {
+    const to = e.relatedTarget;
+    if (to instanceof Node && (e.currentTarget as HTMLElement).contains(to)) return;
     if (dropKey === row.key) dropKey = undefined;
   }
 
@@ -297,7 +300,7 @@
     draggable={row.type === "node"}
     ondragstart={(e) => onRowDragStart(e, row)}
     ondragover={(e) => onRowDragOver(e, row)}
-    ondragleave={() => onRowDragLeave(row)}
+    ondragleave={(e) => onRowDragLeave(e, row)}
     ondrop={(e) => onRowDrop(e, row)}
     onmousedown={(e) => onRowMouseDown(e, row)}
     onclick={() => row.type === "error" && onOpenProblem(row.parentId)}

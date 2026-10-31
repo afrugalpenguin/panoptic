@@ -10,7 +10,7 @@
   import { parseChangelog, sectionsSince, type ChangelogSection } from "../whats-new";
   import { createApi, type Api, type AppConfig, type AppSettings, type ConnectionConfig, type DeviceCodePrompt, type EnvironmentConfig, type TreeNode } from "./api";
   import ConfirmDialog from "./ConfirmDialog.svelte";
-  import { confirmText, type ConfirmText } from "./confirm";
+  import { confirmText, readOnlyMoveText, type ConfirmText } from "./confirm";
   import ConnectionDialog from "./ConnectionDialog.svelte";
   import ContextMenu, { type MenuItem } from "./ContextMenu.svelte";
   import DetailPane from "./DetailPane.svelte";
@@ -294,6 +294,12 @@
     // Environments' connection lists only: reloading a loose connection's children would call its server.
     for (const id of model.envIds()) await model.reload(id);
     await model.preload(model.envIds());
+    // Open tabs follow their connection: a move, or an edited environment, changes their colour and read-only flag.
+    workspace.restyle((connection) => {
+      const parent = model.parentOf(connection);
+      if (parent === undefined || !model.childIds(parent).includes(connection)) return undefined;
+      return envLook(parent || undefined);
+    });
   }
 
   const envOf = (id: string) => config.environments.find((e) => e.id === id);
@@ -334,8 +340,11 @@
   async function moveConnection(connectionId: string, environmentId: string | null) {
     const found = connectionOf(connectionId);
     if (!found || (found.env?.id ?? null) === environmentId) return;
+    const leaving = readOnlyMoveText(found.connection.name, found.env, environmentId ? envOf(environmentId) : undefined);
+    if (leaving && !(await ask(leaving))) return;
     try {
       await configChanged(await api!.saveConnection(environmentId, found.connection));
+      await model.reveal(environmentId);
     } catch (e) {
       lastLoad = { id: "", label: found.connection.name, count: 0, ms: 0, error: e instanceof Error ? e.message : String(e) };
     }

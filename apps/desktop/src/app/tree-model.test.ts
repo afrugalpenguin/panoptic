@@ -750,6 +750,28 @@ describe("connections without an environment", () => {
     expect(core).not.toBe("conn:a");
   });
 
+  it("reveal opens where a moved connection landed: its environment, even one that was empty, or Ungrouped", async () => {
+    const kids: Record<string, TreeNode[]> = {
+      "": [env("env:dev", 1), env("env:empty", 0), conn("conn:a"), conn("conn:b", "cosmos")],
+      "env:dev": [conn("conn:c")],
+    };
+    const { model } = fixture(kids);
+    await model.loadRoot();
+    await model.toggle(UNGROUPED);
+
+    // conn:a moves into the empty environment; the app reloads config, then reveals the target.
+    kids[""] = [env("env:dev", 1), env("env:empty", 1), conn("conn:b", "cosmos")];
+    kids["env:empty"] = [conn("conn:a")];
+    await model.reload("");
+    await model.reveal("empty");
+    expect(labels(model)).toEqual(["dev", "empty", "  conn:a", "<group>"]);
+
+    await model.reveal(null);
+    expect(model.isExpanded(UNGROUPED)).toBe(true);
+    await model.reveal("gone");
+    expect(model.isExpanded("env:dev")).toBe(false);
+  });
+
   it("dropTarget: a header or its empty row means that environment, the group means none, anything else is not a target", async () => {
     const { model } = await mixed();
     await model.expand("env:dev");

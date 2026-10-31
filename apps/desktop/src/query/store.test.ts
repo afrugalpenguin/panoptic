@@ -530,3 +530,30 @@ describe("QueryWorkspace: explorer refresh", () => {
     expect(api.catalogRefresh).toHaveBeenCalledTimes(3);
   });
 });
+
+describe("QueryWorkspace.restyle", () => {
+  const scoped = (connection: string, over: { envColor?: string; readOnly: boolean }) => ({
+    ...target, nodeId: `${connection}/db:Orders`, ...over, scope: { connection, database: "Orders", label: "Orders", connectionLabel: connection },
+  });
+
+  it("gives open tabs their connection's current environment look, after a move", () => {
+    const { ws } = setup();
+    const prod = ws.open(scoped("conn:a", { envColor: "#e03131", readOnly: true }), "");
+    const other = ws.open(scoped("conn:b", { envColor: "#2f9e44", readOnly: false }), "");
+    const blank = ws.openUnconnected();
+
+    // conn:a moved out of Prod into no environment; conn:b is no longer known (removed).
+    ws.restyle((connection) => (connection === "conn:a" ? { envColor: undefined, readOnly: false } : undefined));
+
+    expect(prod.target).toMatchObject({ envColor: undefined, readOnly: false });
+    expect(other.target).toMatchObject({ envColor: "#2f9e44", readOnly: false });
+    expect(blank.target).toBeUndefined();
+  });
+
+  it("can make a tab read-only when its connection moves into a read-only environment", () => {
+    const { ws } = setup();
+    const tab = ws.open(scoped("conn:a", { readOnly: false }), "");
+    ws.restyle(() => ({ envColor: "#e03131", readOnly: true }));
+    expect(tab.target).toMatchObject({ envColor: "#e03131", readOnly: true });
+  });
+});
