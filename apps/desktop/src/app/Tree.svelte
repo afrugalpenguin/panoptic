@@ -80,6 +80,11 @@
     else if (top + h > scroller.scrollTop + scroller.clientHeight) scroller.scrollTop = top + h - scroller.clientHeight;
   }
 
+  /** Seek's Esc (docs/landing.md) hands focus here. */
+  export function focus() {
+    scroller.focus();
+  }
+
   function pageRows(direction: 1 | -1): number {
     const target = (selectedIndex >= 0 ? rows[selectedIndex].top : 0) + direction * scroller.clientHeight;
     return direction > 0 ? Math.min(rows.length - 1, firstBelow(target)) : Math.max(0, firstBelow(target));
@@ -128,6 +133,11 @@
       }
       case "Enter":
         if (row) onActivate(row);
+        break;
+      case "Escape":
+        // Nothing selected brings the landing back (docs/landing.md).
+        if (selectedKey === undefined) return;
+        selectedKey = undefined;
         break;
       case "F5":
         if (row?.type === "node") model.refresh(row.node.id);
