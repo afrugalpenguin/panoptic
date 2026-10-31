@@ -13,6 +13,11 @@ on:
       - 'docs/**'
       - '**/*.md'
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build, sign and check everything on a draft, then delete the draft instead of publishing. Allowed from any branch.
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -21,11 +26,14 @@ permissions:
 # shipped, so finishing the older one only delays the latest. Version numbers may skip. A cancelled
 # or failed run leaves at most an untagged draft, which the updater never sees (see Publish release).
 concurrency:
-  group: release
+  # A dry run never cancels (or is cancelled by) a real release.
+  group: ${{ inputs.dry_run && 'release-dry-run' || 'release' }}
   cancel-in-progress: true
 
 jobs:
   release:
+    # Only main is published. A dry run may come from any branch: it never publishes, and deletes its draft.
+    if: github.ref == 'refs/heads/main' || inputs.dry_run
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -93,7 +101,7 @@ jobs:
           # Passed through to cargo: build exactly what Cargo.lock says, as CI's cargo check does.
           args: -- --locked
           tagName: v${{ env.VERSION }}
-          releaseName: Panoptic v${{ env.VERSION }}
+          releaseName: Panoptic v${{ env.VERSION }}${{ inputs.dry_run && ' (dry run)' || '' }}
           releaseCommitish: ${{ github.sha }}
           releaseBody: |
             ${{ steps.changelog.outputs.notes }}
@@ -117,12 +125,31 @@ jobs:
           Compress-Archive -Path $dir -DestinationPath $zip
           gh release upload "v${env:VERSION}" $zip --clobber
 
-      # Last step: publish only once the installer, its .sig, latest.json and the portable zip are all
-      # on the draft. If any is missing the check throws, the job fails and the release stays a draft.
+      # Publish only once the installer, its .sig, latest.json and the portable zip are all on the draft and
+      # latest.json matches them. If anything is wrong the check throws, the job fails and the release stays a draft.
+      - name: Check release assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./scripts/check-release-assets.ps1 -Version $env:VERSION
+
       - name: Publish release
+        if: ${{ !inputs.dry_run }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "v${env:VERSION}" --draft=false
+
+      # A dry run leaves nothing behind, pass or fail. Its version number is skipped, as for a cancelled release.
+      - name: Delete dry-run draft
+        if: ${{ always() && inputs.dry_run }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ./scripts/check-release-assets.ps1 -Version $env:VERSION
-          gh release edit "v${env:VERSION}" --draft=false
+          $isDraft = gh release view "v${env:VERSION}" --json isDraft --jq .isDraft 2>$null
+          if ($LASTEXITCODE -ne 0) { Write-Host "No draft to delete"; exit 0 }
+          # Never delete a published release, whatever happened above.
+          if ($isDraft -ne 'true') { throw "v${env:VERSION} is not a draft; refusing to delete it" }
+          # No --cleanup-tag: a draft has no tag (it is created on publish), and deleting a missing one fails.
+          gh release delete "v${env:VERSION}" --yes
