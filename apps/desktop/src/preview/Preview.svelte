@@ -4,8 +4,8 @@
   import type { TreeNode } from "../app/api";
   import Landing from "../app/Landing.svelte";
   import type { SeekIndex } from "../app/seek";
-  import Tree from "../app/Tree.svelte";
-  import { TreeModel, type Row } from "../app/tree-model";
+  import Explorer from "../app/Explorer.svelte";
+  import { TreeModel, type EngineSummary, type ExplorerSummary, type Row } from "../app/tree-model";
 
   let {
     nodes,
@@ -13,12 +13,24 @@
     index,
     envCount,
     connectionCount,
-  }: { nodes: Record<string, TreeNode[]>; expand: string[]; index: SeekIndex; envCount: number; connectionCount: number } = $props();
+    width = 360,
+  }: { nodes: Record<string, TreeNode[]>; expand: string[]; index: SeekIndex; envCount: number; connectionCount: number; width?: number } = $props();
 
   let rows = $state.raw<Row[]>([]);
+  let engines = $state.raw<EngineSummary[]>([]);
+  let hiddenEngines = $state.raw<ReadonlySet<string>>(new Set());
+  let summary = $state.raw<ExplorerSummary>({ environments: 0, connections: 0, matching: 0 });
   let selectedKey = $state<string>();
   // svelte-ignore state_referenced_locally
-  const model = new TreeModel(async (id) => nodes[id] ?? [], () => (rows = model.rows()));
+  const model = new TreeModel(
+    async (id) => nodes[id] ?? [],
+    () => {
+      rows = model.rows();
+      engines = model.engines();
+      hiddenEngines = model.hiddenEngines();
+      summary = model.summary();
+    },
+  );
   const noop = () => {};
 
   onMount(async () => {
@@ -28,12 +40,26 @@
   });
 </script>
 
-<div class="shell">
+<div class="shell" style:grid-template-columns="{width}px 1fr">
   <aside class="explorer">
-    <div class="toolbar">EXPLORER</div>
-    <div class="tree-host">
-      <Tree {model} {rows} bind:selectedKey onContextMenu={noop} onActivate={(r) => r.type === "node" && model.toggle(r.node.id)} onOpenProblem={noop} />
-    </div>
+    <Explorer
+      {model}
+      {rows}
+      {engines}
+      {hiddenEngines}
+      {summary}
+      bind:selectedKey
+      onContextMenu={noop}
+      onActivate={(r) => r.type === "node" && model.toggle(r.node.id)}
+      onOpenProblem={noop}
+      connected
+      onNewConnection={noop}
+      onNewEnvironment={noop}
+      onImport={noop}
+      onExpandAll={() => model.expandEnvironments()}
+      onCollapseAll={() => model.collapseAll()}
+      onSettings={noop}
+    />
   </aside>
   <main>
     <Landing
@@ -58,30 +84,13 @@
 <style>
   .shell {
     display: grid;
-    grid-template-columns: 360px 1fr;
     height: 100vh;
   }
   .explorer {
-    display: flex;
-    flex-direction: column;
+    min-width: 0;
     min-height: 0;
     background: var(--bg-pane);
     border-right: 1px solid var(--border);
-  }
-  .toolbar {
-    display: flex;
-    align-items: center;
-    height: 40px;
-    padding: 0 12px;
-    border-bottom: 1px solid var(--border);
-    color: var(--text-muted);
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.06em;
-  }
-  .tree-host {
-    flex: 1;
-    min-height: 0;
   }
   main {
     min-width: 0;

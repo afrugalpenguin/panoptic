@@ -17,8 +17,7 @@
   import EnvironmentDialog from "./EnvironmentDialog.svelte";
   import ImportDialog from "./ImportDialog.svelte";
   import MoveDialog from "./MoveDialog.svelte";
-  import IconButton from "./IconButton.svelte";
-  import KindChips from "./KindChips.svelte";
+  import Explorer from "./Explorer.svelte";
   import Landing from "./Landing.svelte";
   import { livePlace, type SeekEnv, type SeekHost, type SeekIndex, type SeekRow } from "./seek";
   import { globalShortcut } from "./shortcuts";
@@ -30,8 +29,7 @@
   import { QueryWorkspace, type QueryTab } from "../query/store.svelte";
   import SettingsDialog from "./SettingsDialog.svelte";
   import StatusBar from "./StatusBar.svelte";
-  import Tree from "./Tree.svelte";
-  import { environmentOrder, moveEnvironment, TreeModel, UNGROUPED, type KindSummary, type LoadReport, type Row } from "./tree-model";
+  import { environmentOrder, moveEnvironment, TreeModel, UNGROUPED, type EngineSummary, type ExplorerSummary, type LoadReport, type Row } from "./tree-model";
   import { errorText, type Problem } from "./problems";
   import { UndoDelete } from "./undo-delete";
 
@@ -43,8 +41,9 @@
   let config = $state<AppConfig>({ environments: [], connections: [] });
   let rows = $state.raw<Row[]>([]);
   let problems = $state.raw<Problem[]>([]);
-  let kinds = $state.raw<KindSummary[]>([]);
-  let kindFilter = $state<string>();
+  let engines = $state.raw<EngineSummary[]>([]);
+  let hiddenEngines = $state.raw<ReadonlySet<string>>(new Set());
+  let summary = $state.raw<ExplorerSummary>({ environments: 0, connections: 0, matching: 0 });
   let selectedKey = $state<string>();
   let lastLoad = $state<LoadReport>();
   let inFlight = $state<{ id: string; label: string; startedAt: number }>();
@@ -85,7 +84,7 @@
   let usage = $state.raw(loadUsage());
   /** Launch to engine ready, shown on the landing. */
   let openedMs = $state<number>();
-  let tree = $state<Tree>();
+  let explorer = $state<Explorer>();
   let landing = $state<Landing>();
 
   const model = new TreeModel(
@@ -94,8 +93,9 @@
       rows = model.rows();
       problems = model.problems();
       workspace.setProblems(problems);
-      kinds = model.kinds();
-      kindFilter = model.activeKind();
+      engines = model.engines();
+      hiddenEngines = model.hiddenEngines();
+      summary = model.summary();
       const loading = model.inFlight()[0];
       inFlight = loading ? { id: loading.id, label: model.node(loading.id)?.label ?? "tree", startedAt: loading.startedAt } : undefined;
     },
@@ -596,7 +596,7 @@
     workspace.openProblems(problems, nodeId);
   }
 
-  /** Expand or collapse all from the toolbar; a selection that gets hidden moves up to its nearest shown ancestor. */
+  /** Expand or collapse all from the footer; a selection that gets hidden moves up to its nearest shown ancestor. */
   async function expandOrCollapseAll(change: () => void | Promise<void>) {
     const before = selectedRow;
     await change();
@@ -617,7 +617,8 @@
   function startResize(e: PointerEvent) {
     const target = e.currentTarget as HTMLElement;
     target.setPointerCapture(e.pointerId);
-    const move = (ev: PointerEvent) => (treeWidth = Math.max(200, Math.min(window.innerWidth - 240, ev.clientX)));
+    // 220px is the narrowest the explorer is laid out for (docs/explorer-ux.md, "Principles").
+    const move = (ev: PointerEvent) => (treeWidth = Math.max(220, Math.min(window.innerWidth - 240, ev.clientX)));
     const up = () => {
       target.removeEventListener("pointermove", move);
       try {
@@ -641,44 +642,30 @@
   {/if}
 
   <aside class="explorer">
-    <div class="toolbar">
-      <span class="title">Explorer</span>
-      <span style:flex="1"></span>
-      <IconButton icon="expand-all" label="Expand all" disabled={rows.length === 0} onclick={() => expandOrCollapseAll(() => model.expandEnvironments())} />
-      <IconButton icon="collapse-all" label="Collapse all" disabled={rows.length === 0} onclick={() => expandOrCollapseAll(() => model.collapseAll())} />
-      <IconButton icon="import" label="Import from SSMS, Azure Data Studio or VS Code" disabled={sidecar !== "connected"} onclick={() => (dialog = { kind: "import" })} />
-      <IconButton icon="environment" label="New environment" onclick={() => (dialog = { kind: "environment" })} />
-      <IconButton icon="connection" label="New connection" disabled={sidecar !== "connected"} onclick={() => addConnection()} />
-      <IconButton icon="settings" label="Settings" disabled={sidecar !== "connected"} onclick={() => (dialog = { kind: "settings" })} />
-    </div>
-    {#if kinds.length > 1}
-      <KindChips
-        {kinds}
-        active={kindFilter}
-        onSelect={(kind) => {
-          kindFilter = kind;
-          model.setKindFilter(kind);
-        }}
-      />
-    {/if}
-    <div class="tree-host">
-      {#if sidecar === "connected" && config.environments.length === 0 && config.connections.length === 0}
-        <p class="hint muted">No connections yet.</p>
-      {/if}
-      <Tree
-        bind:this={tree}
-        {model}
-        {rows}
-        bind:selectedKey
-        onContextMenu={openMenu}
-        onActivate={activate}
-        onOpenProblem={openProblems}
-        onMoveConnection={moveConnection}
-        disconnected={sidecar === "disconnected"}
-        showKindBadge={settings.explorer.showKindBadge}
-        rowFont={settings.explorer.rowFont}
-      />
-    </div>
+    <Explorer
+      bind:this={explorer}
+      {model}
+      {rows}
+      {engines}
+      {hiddenEngines}
+      {summary}
+      bind:selectedKey
+      onContextMenu={openMenu}
+      onActivate={activate}
+      onOpenProblem={openProblems}
+      onMoveConnection={moveConnection}
+      disconnected={sidecar === "disconnected"}
+      showKindBadge={settings.explorer.showKindBadge}
+      rowFont={settings.explorer.rowFont}
+      connected={sidecar === "connected"}
+      emptyHint={sidecar === "connected" && config.environments.length === 0 && config.connections.length === 0}
+      onNewConnection={() => addConnection()}
+      onNewEnvironment={() => (dialog = { kind: "environment" })}
+      onImport={() => (dialog = { kind: "import" })}
+      onExpandAll={() => expandOrCollapseAll(() => model.expandEnvironments())}
+      onCollapseAll={() => expandOrCollapseAll(() => model.collapseAll())}
+      onSettings={() => (dialog = { kind: "settings" })}
+    />
   </aside>
 
   <div class="splitter" role="separator" aria-orientation="vertical" onpointerdown={startResize}></div>
@@ -702,7 +689,7 @@
         {openedMs}
         onSeekOpen={seekOpen}
         onSeekQuery={seekQuery}
-        onSeekLeave={() => tree?.focus()}
+        onSeekLeave={() => explorer?.focus()}
         onReopen={() => {
           const last = livePlace(seekIndex);
           if (last) void reopen(last);
@@ -809,36 +796,9 @@
   }
   .explorer {
     grid-area: explorer;
-    display: flex;
-    flex-direction: column;
+    min-width: 0;
     min-height: 0;
     background: var(--bg-pane);
-  }
-  .toolbar {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    height: 40px;
-    padding: 0 6px 0 12px;
-    border-bottom: 1px solid var(--border);
-  }
-  .title {
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--text-muted);
-  }
-  .tree-host {
-    position: relative;
-    flex: 1;
-    min-height: 0;
-  }
-  .hint {
-    position: absolute;
-    inset: 12px auto auto 16px;
-    margin: 0;
-    pointer-events: none;
   }
   .splitter {
     grid-area: splitter;

@@ -2,7 +2,8 @@
 // Query string: ?q=<text> types into Seek, ?envs=0 shows no environments, ?engine=connecting|disconnected.
 // ?app=start|explorer|query|messages mounts the whole App on a fake sidecar instead (README screenshots).
 // ?state=flat|mixed|empty-env shows the tree beside the landing with connections in no environment
-// (docs/plans/2026-10-31-loose-connections.md, Task 9).
+// (docs/plans/2026-10-31-loose-connections.md, Task 9). ?state=engines has eight engines, for the engine popover;
+// ?w=<px> sets the explorer width in any ?state.
 import { mount } from "svelte";
 import "../app/app.css";
 import type { TreeNode } from "../app/api";
@@ -60,6 +61,16 @@ function mountState(name: string) {
       loose: [["orders-sql", "sql"], ["catalog-cosmos", "cosmos"]],
       expand: [],
     },
+    // Four made-up engines beside the real four: unregistered kinds get their initial on grey.
+    engines: {
+      envs: [
+        { id: "prod", name: "Prod", color: "#e03131", hosts: [["uk-prod-sql-01", "sql"], ["uk-prod-cosmos", "cosmos"], ["uk-prod-syn", "synapse"], ["uk-prod-pg", "postgres"]] },
+        { id: "uat", name: "UAT", color: "#f08c00", hosts: [["uat-mysql", "mysql"], ["uat-ora", "oracle"], ["uat-mongo", "mongo"], ["uat-redis", "redis"]] },
+        { id: "test", name: "Test", color: "#1971c2", hosts: [["test-sql-01", "sql"], ["test-redis", "redis"]] },
+      ],
+      loose: [],
+      expand: ["env:prod", "env:uat", "env:test"],
+    },
   };
   const state = states[name];
   if (!state) return mountLanding();
@@ -87,7 +98,8 @@ function mountState(name: string) {
   const connectionCount = state.loose.length + state.envs.reduce((n, e) => n + e.hosts.length, 0);
   const target = document.getElementById("host")!;
   target.style.height = "100vh";
-  mount(Preview, { target, props: { nodes, expand: state.expand, index, envCount: state.envs.length, connectionCount } });
+  const width = Number(params.get("w")) || undefined;
+  mount(Preview, { target, props: { nodes, expand: state.expand, index, envCount: state.envs.length, connectionCount, width } });
 }
 
 /** The whole App on the fake sidecar, driven through the DOM to the state asked for. */

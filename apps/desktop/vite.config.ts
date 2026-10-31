@@ -1,4 +1,6 @@
+/// <reference types="vitest/config" />
 import { svelte } from "@sveltejs/vite-plugin-svelte";
+import { playwright } from "@vitest/browser-playwright";
 import { defineConfig, type Plugin } from "vite";
 // @ts-expect-error type error without @types/node package
 import process from "node:process";
@@ -39,6 +41,24 @@ export default defineConfig(() => ({
     rollupOptions: {
       input: { main: "index.html", bench: "bench.html" },
     },
+  },
+
+  test: {
+    projects: [
+      // Logic tests, in Node with no DOM.
+      { extends: true, test: { name: "unit", include: ["src/**/*.test.ts"], exclude: ["src/**/*.browser.test.ts"] } },
+      // Layout tests that need real measurements (scrollWidth, container queries): headless Chromium, the engine
+      // WebView2 runs. jsdom has no layout, so these could not fail there. Scrollbars are left on (Playwright hides
+      // them by default) so the tree's 6px scrollbar is part of the measurement, as it is in the app.
+      {
+        extends: true,
+        test: {
+          name: "browser",
+          include: ["src/**/*.browser.test.ts"],
+          browser: { enabled: true, provider: playwright({ launchOptions: { ignoreDefaultArgs: ["--hide-scrollbars"] } }), headless: true, instances: [{ browser: "chromium" }] },
+        },
+      },
+    ],
   },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`

@@ -45,7 +45,6 @@
   }
   .note {
     overflow: hidden;
-    text-overflow: ellipsis;
   }
   .error {
     min-width: 0;

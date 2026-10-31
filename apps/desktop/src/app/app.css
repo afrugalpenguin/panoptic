@@ -30,6 +30,11 @@
   --tree-dim-selected: #4a5568;
   --tree-folder: #303438;
   --row-font: var(--font-mono);
+  /* Explorer filter bar and footer (docs/explorer-ux.md, "Layout (top to bottom)"). */
+  --engine-toggle-on: #dbe3f7;
+  --explorer-footer-bg: rgba(255, 255, 255, 0.9);
+  --explorer-sticky-shadow: rgba(0, 0, 0, 0.15);
+  --scrollbar-thumb: rgba(0, 0, 0, 0.3);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -51,6 +56,11 @@
     --tree-dim: #6a6a6a;
     --tree-dim-selected: #9aa3b5;
     --tree-folder: #d0d0d0;
+
+    --engine-toggle-on: #2a3356;
+    --explorer-footer-bg: rgba(28, 28, 33, 0.9);
+    --explorer-sticky-shadow: rgba(0, 0, 0, 0.45);
+    --scrollbar-thumb: rgba(255, 255, 255, 0.25);
 
     --landing-bg: #191a1d;
     --wordmark-faded: #1f2126;

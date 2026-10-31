@@ -17,7 +17,6 @@
     color: var(--tree-bright);
     font: 700 13px/1 var(--font-ui);
     overflow: hidden;
-    text-overflow: ellipsis;
     white-space: nowrap;
   }
   .read-only {

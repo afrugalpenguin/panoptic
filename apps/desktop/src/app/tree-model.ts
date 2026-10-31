@@ -81,11 +81,25 @@ export function dropTarget(row: Row): string | null | undefined {
   return undefined;
 }
 
-/** One chip in the kind filter row: a kind present in the loaded connections and how many. */
-export interface KindSummary {
+/**
+ * One entry in the explorer's engine filter: an engine present in the loaded connections and how many.
+ *
+ * This is where the two names meet. Users see "engine" (SQL Server, Cosmos, Synapse, Postgres) and `badge.name`
+ * is its label; the node contract, the backends and the `explorer.showKindBadge` setting say `kind`, which also
+ * covers node kinds such as folder or table. Renaming the contract would touch every backend for a word only the
+ * UI shows, so `kind` stays below this point and "Engine" is used above it (docs/explorer-ux.md, "Terminology").
+ */
+export interface EngineSummary {
   kind: string;
   badge: KindBadge;
   count: number;
+}
+
+/** The explorer footer's totals: environments and connections, and how many connections the filters leave. */
+export interface ExplorerSummary {
+  environments: number;
+  connections: number;
+  matching: number;
 }
 
 export interface LoadReport {
@@ -125,11 +139,14 @@ export class TreeModel {
   private readonly expanded = new Set<string>();
   /** Display segments per node, rebuilt when nodes load (docs/explorer-ux.md); rows only read them. */
   private readonly labels = new Map<string, LabelSegments>();
-  /** Built with the labels: connection kind per connection id, kind counts per env, and tree-wide. */
+  /** Built with the labels: connection kind and lower-cased endpoint per listed connection id, and the engine list. */
   private readonly connectionKind = new Map<string, string>();
-  private envKinds = new Map<string, Map<string, number>>();
-  private kindList: KindSummary[] = [];
-  private kindFilter: string | undefined;
+  private readonly connectionSearch = new Map<string, string>();
+  private engineList: EngineSummary[] = [];
+  /** Engines switched off in the explorer's engine filter; empty shows every engine. */
+  private hidden = new Set<string>();
+  /** The explorer's text filter, lower-cased; empty shows everything. */
+  private text = "";
   /** explorer.envOrder: environment ids (not node ids) in manual order. */
   private envOrder: string[] = [];
   /** Each node's last failed load, kept while a retry is loading (docs/explorer-errors.md); cleared on success. */
@@ -274,15 +291,15 @@ export class TreeModel {
 
   /**
    * Loads children without expanding: used to fetch every environment's connection list at start-up
-   * (config only, no server calls), so labels and kind chips see the whole tree.
+   * (config only, no server calls), so labels and the engine filter see the whole tree.
    */
   async preload(ids: string[]): Promise<void> {
     await Promise.all(ids.filter((id) => !this.children.has(id)).map((id) => this.loadChildren(id)));
   }
 
-  /** Kinds present in the loaded connections, in order of first appearance, with counts. */
-  kinds(): KindSummary[] {
-    return this.kindList;
+  /** Engines present in the loaded connections, in order of first appearance, with counts. */
+  engines(): EngineSummary[] {
+    return this.engineList;
   }
 
   /** Applies explorer.envOrder. Listed environments come first in that order, the rest in order added. */
@@ -292,16 +309,49 @@ export class TreeModel {
     this.onChange();
   }
 
-  /** The kind being filtered on, if any; cleared automatically when that kind disappears. */
-  activeKind(): string | undefined {
-    return this.kindFilter;
+  /** Engines (connection kinds) switched off; an engine no connection has any more drops out. */
+  hiddenEngines(): ReadonlySet<string> {
+    return this.hidden;
   }
 
-  /** Shows only connections of one kind (and environments that have some); undefined shows all. */
-  setKindFilter(kind: string | undefined): void {
-    if (this.kindFilter === kind) return;
-    this.kindFilter = kind;
+  /** Hides connections of these engines, and environments left with none. Reads the built model only. */
+  setHiddenEngines(kinds: Iterable<string>): void {
+    const next = new Set([...kinds].filter((k) => this.engineList.some((e) => e.kind === k)));
+    if (next.size === this.hidden.size && [...next].every((k) => this.hidden.has(k))) return;
+    this.hidden = next;
     this.onChange();
+  }
+
+  /**
+   * Shows connections whose endpoint or environment name contains the text, ignoring case, and hides environments
+   * left with none. Collapses and expands nothing; reads the built model only (the caller debounces typing).
+   */
+  setTextFilter(text: string): void {
+    const next = text.trim().toLowerCase();
+    if (next === this.text) return;
+    this.text = next;
+    this.onChange();
+  }
+
+  /** Totals for the explorer footer. `matching` counts every connection the filters leave, open or not. */
+  summary(): ExplorerSummary {
+    let matching = 0;
+    for (const id of this.connectionKind.keys()) if (this.matches(id)) matching++;
+    return { environments: this.envIds().length, connections: this.connectionKind.size, matching };
+  }
+
+  private filtering(): boolean {
+    return this.text !== "" || this.hidden.size > 0;
+  }
+
+  /** Whether a listed connection passes the engine and text filters. */
+  private matches(id: string): boolean {
+    if (this.hidden.has(this.connectionKind.get(id) ?? "")) return false;
+    if (this.text === "") return true;
+    if (this.connectionSearch.get(id)?.includes(this.text)) return true;
+    const parent = this.parents.get(id);
+    const env = parent ? this.nodes.get(parent) : undefined;
+    return env?.kind === "environment" && env.label.toLowerCase().includes(this.text);
   }
 
   /** Refetches one already-loaded level, keeping descendants' caches. Used when config changes. */
@@ -359,9 +409,16 @@ export class TreeModel {
     const root = this.children.get("");
     if (root?.status !== "loaded") return out;
     let top = 0;
-    const filter = this.kindFilter;
+    const filter = this.filtering();
+    // Connections the filters leave, per environment; an environment with none is hidden while filtering.
+    const shown = new Map<string, number>();
+    if (filter)
+      for (const env of this.envIds()) {
+        const s = this.children.get(env);
+        if (s?.status === "loaded") shown.set(env, s.ids.filter((id) => this.matches(id)).length);
+      }
     const envs = this.orderedEnvs(this.envIds());
-    const loose = this.looseIds().filter((id) => !filter || this.connectionKind.get(id) === filter);
+    const loose = this.looseIds().filter((id) => !filter || this.matches(id));
     // With no environments at all, loose connections are the whole tree: flat at the root, no header.
     const flat = envs.length === 0;
 
@@ -380,8 +437,8 @@ export class TreeModel {
       for (const id of ids) {
         const node = this.nodes.get(id)!;
         const isEnv = node.kind === "environment";
-        if (filter && isEnv && !this.envKinds.get(id)?.get(filter)) continue;
-        if (filter && node.kind === "connection" && this.connectionKind.get(id) !== filter) continue;
+        if (filter && isEnv && !shown.get(id)) continue;
+        if (filter && node.kind === "connection" && !this.matches(id)) continue;
         const color = isEnv ? node.meta?.color : envColor;
         const ro = isEnv ? node.meta?.readOnly === "true" : readOnly;
         const env = isEnv ? id : envId;
@@ -409,7 +466,7 @@ export class TreeModel {
               badge: rowKind === "connection" ? kindBadge(node.meta?.connectionKind ?? node.icon) : undefined,
               count: isEnv
                 ? filter
-                  ? this.envKinds.get(id)?.get(filter)
+                  ? shown.get(id)
                   : Number(node.meta?.connectionCount) || loadedCount
                 : rowKind === "folder"
                   ? loadedCount
@@ -536,19 +593,18 @@ export class TreeModel {
       }));
     for (const [id, segments] of computeLabels(connections)) this.labels.set(id, segments);
 
-    // Kinds for the filter chips, from the same connection list.
+    // Engines for the engine filter, and what the text filter matches, from the same connection list.
     this.connectionKind.clear();
-    this.envKinds = new Map();
+    this.connectionSearch.clear();
     const totals = new Map<string, number>();
     for (const c of connections) {
       this.connectionKind.set(c.id, c.kind);
-      const perEnv = this.envKinds.get(c.envId) ?? new Map<string, number>();
-      perEnv.set(c.kind, (perEnv.get(c.kind) ?? 0) + 1);
-      this.envKinds.set(c.envId, perEnv);
+      this.connectionSearch.set(c.id, c.endpoint.toLowerCase());
       totals.set(c.kind, (totals.get(c.kind) ?? 0) + 1);
     }
-    this.kindList = [...totals].map(([kind, count]) => ({ kind, badge: kindBadge(kind), count }));
-    if (this.kindFilter && !totals.has(this.kindFilter)) this.kindFilter = undefined;
+    this.engineList = [...totals].map(([kind, count]) => ({ kind, badge: kindBadge(kind), count }));
+    // A new set, not an edit in place: the explorer holds the set it was given and compares by identity.
+    if ([...this.hidden].some((k) => !totals.has(k))) this.hidden = new Set([...this.hidden].filter((k) => totals.has(k)));
   }
 
   /** Whether a node is still listed: every ancestor is loaded and lists it. */
