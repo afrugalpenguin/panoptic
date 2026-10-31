@@ -44,6 +44,11 @@ describe("newEnvironment", () => {
     expect(newEnvironment("prod", envs, "id1")).toEqual({ environment: envs[0], created: false });
   });
 
+  it("refuses the name of the excluded environment (the one a moving connection is already in)", () => {
+    expect(newEnvironment("prod", envs, "id1", "p")).toEqual({ error: "It is already in Prod." });
+    expect(newEnvironment("dev", envs, "id1", "p")).toEqual({ environment: envs[1], created: false });
+  });
+
   it("refuses an empty name", () => {
     expect(newEnvironment("   ", envs, "id1")).toEqual({ error: "Name the environment." });
   });

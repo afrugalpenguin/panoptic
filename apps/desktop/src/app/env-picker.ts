@@ -27,16 +27,19 @@ export const toEnvironmentId = (value: string): string | null => (value === NO_E
 
 /**
  * The environment New environment... stands for: an existing one with that name (case-insensitive), or a new one
- * styled the way import styles them, with no connections.
+ * styled the way import styles them, with no connections. Naming the excluded environment is an error.
  */
 export function newEnvironment(
   name: string,
   existing: EnvironmentConfig[],
   id: string = crypto.randomUUID(),
+  exclude?: string,
 ): { environment: EnvironmentConfig; created: boolean } | { error: string } {
   const trimmed = name.trim();
   if (!trimmed) return { error: "Name the environment." };
   const same = existing.find((e) => e.name.toLowerCase() === trimmed.toLowerCase());
+  // The picker leaves out the environment a moving connection is already in, so it cannot be chosen by name either.
+  if (same && same.id === exclude) return { error: `It is already in ${same.name}.` };
   if (same) return { environment: same, created: false };
   return { environment: { id, name: trimmed, ...envStyleFor(trimmed, existing.length), connections: [] }, created: true };
 }
