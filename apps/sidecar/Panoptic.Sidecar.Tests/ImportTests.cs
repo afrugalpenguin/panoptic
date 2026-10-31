@@ -373,4 +373,47 @@ public sealed class ImportTests : IDisposable
         Assert.Empty(empty.Groups);
         Assert.Null(empty.Error);
     }
+
+    /// <summary>"Billion laughs": nine nested entities, 10^9 copies if expanded. A DTD in a settings file is refused.</summary>
+    private const string EntityBomb = """
+        <?xml version="1.0"?>
+        <!DOCTYPE lolz [
+          <!ENTITY a "lollollollollollollollollollol">
+          <!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">
+          <!ENTITY c "&b;&b;&b;&b;&b;&b;&b;&b;&b;&b;">
+          <!ENTITY d "&c;&c;&c;&c;&c;&c;&c;&c;&c;&c;">
+          <!ENTITY e "&d;&d;&d;&d;&d;&d;&d;&d;&d;&d;">
+          <!ENTITY f "&e;&e;&e;&e;&e;&e;&e;&e;&e;&e;">
+          <!ENTITY g "&f;&f;&f;&f;&f;&f;&f;&f;&f;&f;">
+          <!ENTITY h "&g;&g;&g;&g;&g;&g;&g;&g;&g;&g;">
+          <!ENTITY i "&h;&h;&h;&h;&h;&h;&h;&h;&h;&h;">
+        ]>
+        <RegisteredServersStore><x>&i;</x></RegisteredServersStore>
+        """;
+
+    [Fact]
+    public async Task Registered_servers_file_with_a_dtd_is_refused_quickly()
+    {
+        var path = Write("RegSrvr.xml", EntityBomb);
+        var run = Task.Run(() => ConnectionImporter.ParseRegisteredServers(path));
+        await Assert.ThrowsAsync<System.Xml.XmlException>(() => run.WaitAsync(TimeSpan.FromSeconds(5)));
+    }
+
+    [Fact]
+    public async Task Ssms_user_settings_file_with_a_dtd_is_refused_quickly()
+    {
+        var path = Write("UserSettings.xml", EntityBomb);
+        var run = Task.Run(() => ConnectionImporter.ParseSsmsUserSettings(path));
+        await Assert.ThrowsAsync<System.Xml.XmlException>(() => run.WaitAsync(TimeSpan.FromSeconds(5)));
+    }
+
+    [Fact]
+    public void Any_dtd_is_refused_not_just_huge_ones()
+    {
+        // .NET already caps entity expansion (MaxCharactersFromEntities), which is what stops the bomb above. Settings
+        // files never carry a DTD, so the importer refuses one outright instead of relying on the cap.
+        var path = Write("RegSrvr.xml", "<?xml version=\"1.0\"?>\n<!DOCTYPE r [ <!ENTITY e \"x\"> ]>\n<RegisteredServersStore>&e;</RegisteredServersStore>");
+        var ex = Assert.Throws<System.Xml.XmlException>(() => ConnectionImporter.ParseRegisteredServers(path));
+        Assert.Contains("DTD", ex.Message);
+    }
 }
