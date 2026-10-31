@@ -87,12 +87,13 @@ public static class Methods
             return Task.FromResult<Action<System.Text.Json.Utf8JsonWriter>>(w => w.WriteBooleanValue(true));
         };
 
-        // Tests unsaved settings. A null secret means "use the stored one" (editing an existing connection).
+        // Tests unsaved settings. A null secret means "use the stored one" (editing an existing connection), but only
+        // while the edit still points where it was saved for: never send it to a changed host, user or sign-in.
         methods["connection.test"] = async (p, ct) =>
         {
             var args = Rpc.Params(p, SidecarJson.Default.TestConnectionParams);
             var backend = tree.Validate(args.Connection);
-            var secret = args.Secret ?? store.GetSecret(args.Connection.Id);
+            var secret = args.Secret ?? store.GetSecretFor(args.Connection);
             backend.Forget(args.Connection.Id);
             var sw = Stopwatch.StartNew();
             TestConnectionResult result;

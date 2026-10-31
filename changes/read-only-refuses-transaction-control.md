@@ -1,0 +1,1 @@
+Fixed: On SQL Server, a read-only environment no longer lets writes through after a `COMMIT` or `ROLLBACK` in the same batch. Scripts containing `COMMIT`, `ROLLBACK` or dynamic SQL are now refused before they run, and procedures that commit internally are rolled back with the rest of the query.
