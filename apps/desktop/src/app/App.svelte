@@ -28,7 +28,7 @@
   import SettingsDialog from "./SettingsDialog.svelte";
   import StatusBar from "./StatusBar.svelte";
   import Tree from "./Tree.svelte";
-  import { environmentOrder, moveEnvironment, TreeModel, type KindSummary, type LoadReport, type Row } from "./tree-model";
+  import { environmentOrder, moveEnvironment, TreeModel, UNGROUPED, type KindSummary, type LoadReport, type Row } from "./tree-model";
   import { errorText, type Problem } from "./problems";
 
   let { info }: { info: StartupInfo } = $props();
@@ -97,7 +97,7 @@
   /** Loaded environments and their connections. Reads rows so it follows every tree change; preload loads all connections at start. */
   function seekEnvs(): SeekEnv[] {
     void rows;
-    return model.childIds("").flatMap((envId) => {
+    return model.envIds().flatMap((envId) => {
       const env = model.node(envId);
       if (!env) return [];
       const hosts: SeekHost[] = model
@@ -203,7 +203,7 @@
     const sidecarReadyEpochMs = nowEpochMs();
     config = await api!.config();
     await model.loadRoot();
-    await model.preload(model.childIds(""));
+    await model.preload(model.envIds());
 
     const fcp = await firstPaintEpochMs();
     openedMs = Math.round(sidecarReadyEpochMs - info.mainStartEpochMs);
@@ -262,8 +262,9 @@
   async function configChanged(next?: AppConfig) {
     config = next ?? (await api!.config());
     await model.reload("");
-    for (const id of model.childIds("")) await model.reload(id);
-    await model.preload(model.childIds(""));
+    // Environments' connection lists only: reloading a loose connection's children would call its server.
+    for (const id of model.envIds()) await model.reload(id);
+    await model.preload(model.envIds());
   }
 
   const envOf = (id: string) => config.environments.find((e) => e.id === id);
@@ -301,9 +302,22 @@
     else dialog = { kind: "connection", environmentId: envId };
   }
 
+  /** Drag onto an environment, Move to environment... and Remove from environment (null): the connection keeps its id. */
+  async function moveConnection(connectionId: string, environmentId: string | null) {
+    const found = connectionOf(connectionId);
+    if (!found || (found.env?.id ?? null) === environmentId) return;
+    try {
+      await configChanged(await api!.saveConnection(environmentId, found.connection));
+    } catch (e) {
+      lastLoad = { id: "", label: found.connection.name, count: 0, ms: 0, error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
   function openMenu(row: Row, x: number, y: number) {
     const items: (MenuItem | "separator")[] = [];
-    if (row.type === "error") {
+    if (row.type === "group" || row.type === "env-empty") {
+      // The Ungrouped header and the empty hint are not config of their own: nothing to edit or retry.
+    } else if (row.type === "error") {
       items.push({ label: "Copy error", run: () => navigator.clipboard.writeText(errorText(row.error)).catch(() => {}) });
       if (row.error.retryable) items.push({ label: "Retry", run: () => model.refresh(row.parentId) });
       items.push({ label: "Open Problems", run: () => openProblems(row.parentId) });
@@ -344,6 +358,7 @@
           run: () => found && (dialog = { kind: "connection", environmentId: found.env?.id ?? null, initial: found.connection }),
         });
         items.push(...actionItems(n, actionLabels, { ...on, refresh: () => (model.refresh(n.id), refreshQueryTabs(n.id)) }));
+        if (found?.env) items.push({ label: "Remove from environment", run: () => moveConnection(found.connection.id, null) });
         items.push("separator");
         items.push({
           label: "Remove connection",
@@ -504,7 +519,8 @@
   }
 
   function activate(row: Row) {
-    if (row.type === "node" && row.node.hasChildren) model.toggle(row.node.id);
+    if (row.type === "group") model.toggle(UNGROUPED);
+    else if (row.type === "node" && row.node.hasChildren) model.toggle(row.node.id);
     else if (row.type === "error") openProblems(row.parentId);
   }
 
@@ -578,8 +594,8 @@
       />
     {/if}
     <div class="tree-host">
-      {#if sidecar === "connected" && config.environments.length === 0}
-        <p class="hint muted">No environments yet.</p>
+      {#if sidecar === "connected" && config.environments.length === 0 && config.connections.length === 0}
+        <p class="hint muted">No connections yet.</p>
       {/if}
       <Tree
         bind:this={tree}
@@ -589,6 +605,7 @@
         onContextMenu={openMenu}
         onActivate={activate}
         onOpenProblem={openProblems}
+        onMoveConnection={moveConnection}
         disconnected={sidecar === "disconnected"}
         showKindBadge={settings.explorer.showKindBadge}
         rowFont={settings.explorer.rowFont}

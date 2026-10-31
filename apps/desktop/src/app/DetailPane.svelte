@@ -23,7 +23,10 @@
 </script>
 
 <section class="detail">
-  {#if row.type === "error"}
+  {#if row.type === "group"}
+    <header><h2>Ungrouped</h2></header>
+    <p class="muted">Connections not in an environment. Drag one onto an environment to group it.</p>
+  {:else if row.type === "error"}
     <h2 class="error">Could not load</h2>
     <p>{row.error.summary}{#if row.error.code} <span class="muted">({row.error.code})</span>{/if}</p>
     <pre class="message">{row.error.detail}</pre>

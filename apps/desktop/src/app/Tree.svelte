@@ -1,11 +1,14 @@
 <script lang="ts">
-  import type { Row, TreeModel } from "./tree-model";
+  import { dropTarget, selectableRow, UNGROUPED, type Row, type TreeModel } from "./tree-model";
   import ConnectionRow from "./rows/ConnectionRow.svelte";
   import EnvHeaderRow from "./rows/EnvHeaderRow.svelte";
+  import GroupHeaderRow from "./rows/GroupHeaderRow.svelte";
   import FolderRow from "./rows/FolderRow.svelte";
   import LeafRow from "./rows/LeafRow.svelte";
 
   const OVERSCAN_PX = 240;
+  /** A connection being dragged onto an environment (docs/explorer-ux.md, "Grouping"). Carries the connection id. */
+  const CONNECTION_MIME = "application/x-panoptic-connection";
   const TYPE_TO_JUMP_MS = 700;
 
   let {
@@ -15,6 +18,7 @@
     onContextMenu,
     onActivate,
     onOpenProblem,
+    onMoveConnection = () => {},
     disconnected = false,
     showKindBadge = true,
     rowFont = "mono",
@@ -26,6 +30,8 @@
     onActivate: (row: Row) => void;
     /** Click on an error row: show its entry in the Problems tab. */
     onOpenProblem: (parentId: string) => void;
+    /** A connection was dropped on an environment (its id) or on the Ungrouped header (null). */
+    onMoveConnection?: (connectionId: string, environmentId: string | null) => void;
     /** The sidecar is down (ADR 0005): every connection row says so until it answers ping again. */
     disconnected?: boolean;
     /** explorer.showKindBadge and explorer.rowFont: CSS switches on the tree, no row recomputation. */
@@ -39,6 +45,8 @@
   let focused = $state(false);
   let typed = "";
   let typedAt = 0;
+  /** The row a connection is being dragged over, highlighted as the drop target. */
+  let dropKey = $state<string>();
 
   const totalHeight = $derived(rows.length ? rows[rows.length - 1].top + rows[rows.length - 1].height : 0);
   const selectedIndex = $derived(rows.findIndex((r) => r.key === selectedKey));
@@ -60,20 +68,25 @@
 
   /** Visible rows grouped by environment, so --env is set once per group element. */
   const groups = $derived.by(() => {
-    const out: { envId: string; color?: string; rows: Row[] }[] = [];
+    const out: { envId: string; color?: string; loose: boolean; rows: Row[] }[] = [];
     for (let i = start; i < end; i++) {
       const row = rows[i];
       const last = out[out.length - 1];
       if (last && last.envId === row.envId) last.rows.push(row);
-      else out.push({ envId: row.envId, color: row.envColor, rows: [row] });
+      else out.push({ envId: row.envId, color: row.envColor, loose: row.loose, rows: [row] });
     }
     return out;
   });
   const windowTop = $derived(start < rows.length ? rows[start].top - rows[start].gapBefore : 0);
 
-  function select(index: number) {
+  /** Selects the row at index, or the nearest selectable one in direction dir (then the other way). */
+  function select(index: number, dir: 1 | -1 = 1) {
     if (rows.length === 0) return;
-    const i = Math.max(0, Math.min(rows.length - 1, index));
+    const from = Math.max(0, Math.min(rows.length - 1, index));
+    let i = from;
+    while (rows[i] && !selectableRow(rows[i])) i += dir;
+    if (!rows[i]) for (i = from; rows[i] && !selectableRow(rows[i]); ) i -= dir;
+    if (!rows[i]) return;
     selectedKey = rows[i].key;
     const { top, height: h } = rows[i];
     if (top < scroller.scrollTop) scroller.scrollTop = top;
@@ -91,7 +104,8 @@
   }
 
   function toggle(row: Row) {
-    if (row.type === "node" && row.node.hasChildren) model.toggle(row.node.id);
+    if (row.type === "group") model.toggle(UNGROUPED);
+    else if (row.type === "node" && row.node.hasChildren) model.toggle(row.node.id);
   }
 
   function onKeydown(e: KeyboardEvent) {
@@ -101,33 +115,44 @@
         select(selectedIndex + 1);
         break;
       case "ArrowUp":
-        select(selectedIndex - 1);
+        select(selectedIndex - 1, -1);
         break;
       case "PageDown":
         select(pageRows(1));
         break;
       case "PageUp":
-        select(pageRows(-1));
+        select(pageRows(-1), -1);
         break;
       case "Home":
         select(0);
         break;
       case "End":
-        select(rows.length - 1);
+        select(rows.length - 1, -1);
         break;
       case "ArrowRight":
+        if (row?.type === "group") {
+          if (!row.expanded) model.expand(UNGROUPED);
+          else select(selectedIndex + 1);
+          break;
+        }
         if (row?.type !== "node") break;
         if (row.node.hasChildren && !row.expanded) model.expand(row.node.id);
         else if (row.expanded) select(selectedIndex + 1);
         break;
       case "ArrowLeft": {
         if (!row) break;
+        if (row.type === "group" && row.expanded) {
+          model.collapse(UNGROUPED);
+          break;
+        }
         if (row.type === "node" && row.expanded) {
           model.collapse(row.node.id);
           break;
         }
         const parentId = row.type === "node" ? model.parentOf(row.node.id) : row.parentId;
-        const parentIndex = rows.findIndex((r) => r.key === parentId);
+        // A loose connection's parent is the root; under the Ungrouped header, that header stands for it.
+        const parentKey = parentId === "" && row.loose ? UNGROUPED : parentId;
+        const parentIndex = rows.findIndex((r) => r.key === parentKey);
         if (parentIndex >= 0) select(parentIndex);
         break;
       }
@@ -175,13 +200,42 @@
 
   /** Dragging a row into the query editor inserts the text its backend gave it (meta.dragText); Monaco's drop handler places it. */
   function onRowDragStart(e: DragEvent, row: Row) {
+    // A connection drags to regroup it; anything else drags its text into the editor.
+    const connectionId = row.type === "node" && row.node.kind === "connection" ? row.node.meta?.connectionId : undefined;
+    if (connectionId && e.dataTransfer) {
+      e.dataTransfer.setData(CONNECTION_MIME, connectionId);
+      e.dataTransfer.effectAllowed = "move";
+      return;
+    }
     const text = row.type === "node" ? row.node.meta?.dragText : undefined;
     if (!text || !e.dataTransfer) return e.preventDefault();
     e.dataTransfer.setData("text/plain", text);
     e.dataTransfer.effectAllowed = "copy";
   }
 
+  /** Only connection drags over environment headers, their empty rows and the Ungrouped header are accepted. */
+  function onRowDragOver(e: DragEvent, row: Row) {
+    if (!e.dataTransfer?.types.includes(CONNECTION_MIME) || dropTarget(row) === undefined) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    dropKey = row.key;
+  }
+
+  function onRowDragLeave(row: Row) {
+    if (dropKey === row.key) dropKey = undefined;
+  }
+
+  function onRowDrop(e: DragEvent, row: Row) {
+    const connectionId = e.dataTransfer?.getData(CONNECTION_MIME);
+    const target = dropTarget(row);
+    dropKey = undefined;
+    if (!connectionId || target === undefined) return;
+    e.preventDefault();
+    onMoveConnection(connectionId, target);
+  }
+
   function onRowMouseDown(e: MouseEvent, row: Row) {
+    if (!selectableRow(row)) return;
     selectedKey = row.key;
     if (e.button === 0 && (e.target as HTMLElement).classList.contains("chevron")) toggle(row);
   }
@@ -205,32 +259,39 @@
     <div class="window" style:transform="translateY({windowTop}px)">
       <!-- Environments are contiguous in the tree, so an env id appears at most once among the visible groups. -->
       {#each groups as group (group.envId)}
-        <div class="env-group" style:--env={group.color ?? "var(--text-muted)"}>
+        <div class="env-group" class:loose={group.loose} style:--env={group.color ?? "var(--text-muted)"}>
           {#each group.rows as row (row.key)}
             <!-- Keys are handled once on the tree (Enter on an error row opens Problems). -->
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <div
               class="tree-row {row.rowKind}"
               class:selected={row.key === selectedKey}
+              class:drop-over={row.key === dropKey}
               role="treeitem"
               tabindex="-1"
               aria-selected={row.key === selectedKey}
-              aria-expanded={row.type === "node" && row.node.hasChildren ? row.expanded : undefined}
+              aria-expanded={row.type === "group" || (row.type === "node" && row.node.hasChildren) ? row.expanded : undefined}
               style:height="{row.height}px"
               style:margin-top="{row.gapBefore}px"
               style:padding-left="{row.indent + 4 + (row.rowKind === "header" ? 6 : 0)}px"
               draggable={row.type === "node"}
               ondragstart={(e) => onRowDragStart(e, row)}
+              ondragover={(e) => onRowDragOver(e, row)}
+              ondragleave={() => onRowDragLeave(row)}
+              ondrop={(e) => onRowDrop(e, row)}
               onmousedown={(e) => onRowMouseDown(e, row)}
               onclick={() => row.type === "error" && onOpenProblem(row.parentId)}
               ondblclick={() => onActivate(row)}
               oncontextmenu={(e) => {
                 e.preventDefault();
+                if (!selectableRow(row)) return;
                 selectedKey = row.key;
                 onContextMenu(row, e.clientX, e.clientY);
               }}
             >
-              {#if row.type === "node" && row.rowKind === "header"}
+              {#if row.type === "group"}
+                <GroupHeaderRow {row} />
+              {:else if row.type === "node" && row.rowKind === "header"}
                 <EnvHeaderRow {row} />
               {:else if row.type === "node" && row.rowKind === "connection"}
                 <ConnectionRow {row} {disconnected} />
@@ -291,6 +352,21 @@
     --wash-hover: 22%;
     --wash-selected: 30%;
     box-shadow: inset 4px 0 0 var(--env);
+  }
+  /* No environment: no bar and no tint, only the neutral hover and selection washes. :where keeps these at the
+     specificity of the rules they override, so the hover and selected rules below still win. */
+  :where(.loose) > .tree-row {
+    box-shadow: none;
+  }
+  :where(.loose) > .tree-row.header {
+    box-shadow: none;
+    --wash: 0%;
+    --wash-hover: 11%;
+    --wash-selected: 22%;
+  }
+  .tree-row.drop-over {
+    outline: 1px dashed var(--brand-cyan);
+    outline-offset: -1px;
   }
   .tree-row:hover {
     --wash: var(--wash-hover);

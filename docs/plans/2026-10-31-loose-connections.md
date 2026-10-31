@@ -128,14 +128,14 @@ New exports: `UNGROUPED = "#ungrouped"`; row types `{ type: "group"; expanded; c
 
 ### Task 5: Tree rendering, drag and the menu
 
-**Files:** `Tree.svelte`, new `rows/GroupHeaderRow.svelte`, `rows/LeafRow.svelte` (the empty row's text), `DetailPane.svelte`, `App.svelte` (menu, move, preload callers, hint text), new `MoveDialog.svelte`.
+**Files:** `Tree.svelte`, new `rows/GroupHeaderRow.svelte`, `rows/LeafRow.svelte` (the empty row's text), `DetailPane.svelte`, `App.svelte` (menu, move, preload callers, hint text). The Move to environment... dialog needs Task 6's picker, so it lands there.
 
 No unit test (components); the rules are in Task 4's and Task 6's tests.
 - Tree: keyboard and mouse selection skip rows `selectableRow` rejects. Connection rows drag with type `application/x-panoptic-connection` (the connection id), effect `move`; rows with `dragText` keep their copy drag. Headers, the group row and empty rows accept that type (dragover prevents default only when `dropTarget(row) !== undefined`), highlight while hovered, and call `onMoveConnection(connectionId, envId | null)`.
 - Loose groups: the group element gets class `loose`, which removes the bar and uses `--text-muted` for the washes. No hex.
 - GroupHeaderRow: chevron, "Ungrouped" dimmed, count.
 - Empty row: muted "Empty - drag a connection here".
-- App: `moveConnection(id, envId)` saves the connection under the new environment (secret null keeps it), then `configChanged`; no-op when unchanged. Connection menu: "Move to environment..." (MoveDialog) and, when grouped, "Remove from environment". `model.preload(model.envIds())`. The tree hint becomes "No connections yet." and shows only with no environments and no connections.
+- App: `moveConnection(id, envId)` saves the connection under the new environment (secret null keeps it), then `configChanged`; no-op when unchanged. Connection menu: "Remove from environment" when grouped ("Move to environment..." comes with Task 6). `model.preload(model.envIds())`. The tree hint becomes "No connections yet." and shows only with no environments and no connections.
 - DetailPane: the group row shows "Ungrouped" and "Connections not in an environment."
 
 **Verify:** `pnpm check`, `pnpm test`.
