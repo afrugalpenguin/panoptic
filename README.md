@@ -84,8 +84,9 @@ without installing, unzip `Panoptic_<version>_x64-portable.zip` anywhere and run
 
 Builds are not code-signed yet. SmartScreen may warn on first install, and Microsoft Defender may
 quarantine `panoptic.exe` as `Trojan:Win32/Bearfoos.A!ml`, a false positive on an unsigned file.
-Until builds are signed, add a Defender folder exclusion for `%LOCALAPPDATA%\Panoptic` and
-reinstall. Details, and how updates are checked, are in [docs/install.md](docs/install.md).
+Until builds are signed, allow that detection in Defender's Protection history and reinstall; do
+not exclude the whole install folder. Details, and how updates are checked, are in
+[docs/install.md](docs/install.md).
 
 ## Develop
 

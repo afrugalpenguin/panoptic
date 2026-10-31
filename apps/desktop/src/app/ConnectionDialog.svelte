@@ -4,6 +4,7 @@
   import Dialog from "./Dialog.svelte";
   import { NEW_ENV, NO_ENV, toEnvironmentId } from "./env-picker";
   import EnvPicker from "./EnvPicker.svelte";
+  import { isLoopback } from "./loopback";
 
   let {
     api,
@@ -88,6 +89,17 @@
   /** Postgres signs Entra users in under their Entra name; blank means the name from the sign-in. */
   const entraUser = $derived(kind === "postgres" && auth === "entra");
   const placeholder = $derived(KINDS.find((k) => k.value === kind)!.placeholder);
+  /** Cosmos allows skipping the check for a localhost emulator only (the sidecar refuses otherwise). */
+  const trustWarning = $derived.by(() => {
+    if (!trust || kind === "cosmos" || !endpoint.trim() || isLoopback(endpoint)) return "";
+    const what =
+      auth === "entra"
+        ? "your Microsoft Entra sign-in token, which could then be used against other Azure databases for up to an hour"
+        : auth === "windows"
+          ? "your queries and their results"
+          : "the password";
+    return `The certificate of ${endpoint.trim()} won't be checked, so anyone able to intercept the connection could pose as it and capture ${what}. Only trust certificates for servers you control.`;
+  });
 
   $effect(() => {
     if (!authOptions.some((o) => o.value === auth)) auth = authOptions[0].value;
@@ -107,13 +119,33 @@
     };
   }
 
-  /** Blank secret while editing means "keep the stored one". */
-  const secretArg = () => (needsSecret ? (secret || (editing ? undefined : "")) : "");
+  /**
+   * A saved secret can be kept only while the edit still points where it was saved for: same type, server, sign-in,
+   * user and certificate trust (the sidecar enforces the same rule). Otherwise it has to be entered again.
+   */
+  const keepsSavedSecret = $derived.by(() => {
+    if (!initial) return false;
+    const c = config();
+    return (
+      c.kind === initial.kind &&
+      c.endpoint.toLowerCase() === initial.endpoint.toLowerCase() &&
+      c.auth === initial.auth &&
+      (c.user ?? null) === (initial.user ?? null) &&
+      c.trustServerCertificate === initial.trustServerCertificate
+    );
+  });
+  const secretName = $derived(auth === "key" ? "account key" : "password");
+
+  /** Blank secret means "keep the stored one" while that is allowed. */
+  const secretArg = () => (needsSecret ? (secret || (keepsSavedSecret ? undefined : "")) : "");
 
   function validate(): string {
     if (!endpoint.trim()) return kind === "cosmos" ? "Account URI is required" : "Server is required";
     if (login && !user.trim()) return "User is required";
-    if (needsSecret && !secret && !editing) return auth === "key" ? "Account key is required" : "Password is required";
+    if (needsSecret && !secret && !keepsSavedSecret)
+      return editing
+        ? `Enter the ${secretName} again: the server, user, sign-in or certificate setting changed, so the saved one is not sent.`
+        : auth === "key" ? "Account key is required" : "Password is required";
     return "";
   }
 
@@ -179,7 +211,7 @@
       type="password"
       bind:value={secret}
       autocomplete="off"
-      placeholder={editing ? "Leave blank to keep the saved one" : ""}
+      placeholder={keepsSavedSecret ? "Leave blank to keep the saved one" : ""}
     />
   {/if}
 
@@ -201,6 +233,7 @@
     <input type="checkbox" bind:checked={trust} />
     {kind === "cosmos" ? "Skip certificate validation (localhost emulator only)" : "Trust server certificate"}
   </label>
+  {#if trustWarning}<p class="full trust-warning">{trustWarning}</p>{/if}
 
   {#if test}
     <p class="full result" class:ok={test.ok}>
@@ -224,6 +257,14 @@
     gap: 6px;
     align-items: center;
     color: var(--text) !important;
+  }
+  .trust-warning {
+    margin: 0;
+    padding: 6px 10px;
+    border-radius: 4px;
+    color: var(--text);
+    background: color-mix(in srgb, var(--warn) 14%, transparent);
+    border-left: 3px solid var(--warn);
   }
   .result {
     margin: 0;

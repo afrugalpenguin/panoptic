@@ -82,6 +82,31 @@ public sealed class ConfigStore
         lock (_lock) return _file.Secrets.GetValueOrDefault(connectionId);
     }
 
+    /// <summary>
+    /// The stored secret for an edited, unsaved <paramref name="connection"/>, but only while it still points where the
+    /// secret was saved for (<see cref="SameSecretTarget"/>). Otherwise null: a stored password must never follow an
+    /// edit to another host, user or sign-in.
+    /// </summary>
+    public string? GetSecretFor(ConnectionConfig connection)
+    {
+        lock (_lock)
+        {
+            var stored = FindConnection(connection.Id)?.Connection;
+            return stored is not null && SameSecretTarget(stored, connection) ? _file.Secrets.GetValueOrDefault(connection.Id) : null;
+        }
+    }
+
+    /// <summary>
+    /// Whether a secret saved for <paramref name="a"/> may be used for <paramref name="b"/>: same kind, endpoint, auth,
+    /// user and certificate trust. Name, database and environment don't matter.
+    /// </summary>
+    private static bool SameSecretTarget(ConnectionConfig a, ConnectionConfig b) =>
+        a.Kind == b.Kind
+        && string.Equals(a.Endpoint, b.Endpoint, StringComparison.OrdinalIgnoreCase)
+        && a.Auth == b.Auth
+        && a.User == b.User
+        && a.TrustServerCertificate == b.TrustServerCertificate;
+
     /// <summary>Adds or replaces an environment, keeping its existing connections.</summary>
     public void SaveEnvironment(EnvironmentConfig environment)
     {
@@ -110,12 +135,15 @@ public sealed class ConfigStore
 
     /// <summary>
     /// Adds or replaces a connection, in an environment or (null) in none. Saving it somewhere else moves it. A null
-    /// secret keeps the stored one; empty clears it.
+    /// secret keeps the stored one, unless the edit changed where it would be sent (see <see cref="GetSecretFor"/>):
+    /// then the stored one is dropped. Empty clears it.
     /// </summary>
     public void SaveConnection(string? environmentId, ConnectionConfig connection, string? secret)
     {
         lock (_lock)
         {
+            var previous = FindConnection(connection.Id)?.Connection;
+            if (secret is null && previous is not null && !SameSecretTarget(previous, connection)) secret = "";
             var envs = _file.Config.Environments.ToList();
             var envIndex = environmentId is null ? -1 : envs.FindIndex(e => e.Id == environmentId);
             if (environmentId is not null && envIndex < 0) throw new RpcException(RpcException.InvalidParams, $"Unknown environment: {environmentId}");
