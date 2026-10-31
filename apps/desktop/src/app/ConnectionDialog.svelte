@@ -52,6 +52,8 @@
   // svelte-ignore state_referenced_locally
   let tenantId = $state(initial?.tenantId ?? "");
   // svelte-ignore state_referenced_locally
+  let clientId = $state(initial?.clientId ?? "");
+  // svelte-ignore state_referenced_locally
   let trust = $state(initial?.trustServerCertificate ?? false);
   let secret = $state("");
 
@@ -89,6 +91,7 @@
   /** Postgres signs Entra users in under their Entra name; blank means the name from the sign-in. */
   const entraUser = $derived(kind === "postgres" && auth === "entra");
   const placeholder = $derived(KINDS.find((k) => k.value === kind)!.placeholder);
+  const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   /** Cosmos allows skipping the check for a localhost emulator only (the sidecar refuses otherwise). */
   const trustWarning = $derived.by(() => {
     if (!trust || kind === "cosmos" || !endpoint.trim() || isLoopback(endpoint)) return "";
@@ -107,7 +110,7 @@
 
   // A test result describes the settings it ran with: any edit to them makes it stale, so it goes (#263).
   $effect(() => {
-    void [kind, endpoint, auth, user, database, tenantId, trust, secret];
+    void [kind, endpoint, auth, user, database, tenantId, clientId, trust, secret];
     test = null;
   });
 
@@ -121,6 +124,7 @@
       user: login || (entraUser && user.trim()) ? user.trim() : null,
       database: kind !== "cosmos" && database.trim() ? database.trim() : null,
       tenantId: auth === "entra" && tenantId.trim() ? tenantId.trim() : null,
+      clientId: auth === "entra" && clientId.trim() ? clientId.trim() : null,
       trustServerCertificate: trust,
     };
   }
@@ -148,6 +152,8 @@
   function validate(): string {
     if (!endpoint.trim()) return kind === "cosmos" ? "Account URI is required" : "Server is required";
     if (login && !user.trim()) return "User is required";
+    if (auth === "entra" && clientId.trim() && !GUID.test(clientId.trim()))
+      return "Client id must be an app's Application (client) ID, a GUID such as 11111111-2222-3333-4444-555555555555";
     if (needsSecret && !secret && !keepsSavedSecret)
       return editing
         ? `Enter the ${secretName} again: the server, user, sign-in or certificate setting changed, so the saved one is not sent.`
@@ -224,6 +230,8 @@
   {#if auth === "entra"}
     <label for="c-tenant">Tenant <span class="muted">(optional)</span></label>
     <input id="c-tenant" bind:value={tenantId} placeholder="Defaults to your work account's tenant" spellcheck="false" />
+    <label for="c-client">Client id <span class="muted">(optional)</span></label>
+    <input id="c-client" bind:value={clientId} placeholder="An app registration's ID, if your tenant needs its own" spellcheck="false" autocomplete="off" />
   {/if}
 
   {#if kind !== "cosmos"}

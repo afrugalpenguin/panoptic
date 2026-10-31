@@ -119,6 +119,9 @@ public sealed class TreeService(ConfigStore store, IReadOnlyDictionary<string, I
         var backend = BackendFor(connection);
         if (!backend.AuthsFor(connection.Kind).Contains(connection.Auth))
             throw new RpcException(RpcException.InvalidParams, $"{connection.Kind} connections do not support auth '{connection.Auth}'");
+        // Sent to Entra as the app to sign in as, so only ever a plain GUID (an app's Application (client) ID).
+        if (!string.IsNullOrWhiteSpace(connection.ClientId) && !Guid.TryParseExact(connection.ClientId.Trim(), "D", out _))
+            throw new RpcException(RpcException.InvalidParams, "The client id must be an app's Application (client) ID, a GUID such as 11111111-2222-3333-4444-555555555555");
         return backend;
     }
 
