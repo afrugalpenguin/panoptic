@@ -81,7 +81,7 @@
           const version = model.getVersionId();
           const position = editor.getPosition();
           if (!position) return;
-          const { warnings } = await client.lint(model.getValue(), model.getOffsetAt(position), info.keys);
+          const { warnings } = await client.lint(model.getValue(), model.getOffsetAt(position), info.keys, info.options.language);
           if (model.isDisposed() || model.getVersionId() !== version) return;
           monaco!.editor.setModelMarkers(model, "panoptic-lint", warnings.map((w) => ({ ...range(model, w.start, w.end), severity: monaco!.MarkerSeverity.Warning, message: w.message })));
         }, LINT_DELAY_MS);

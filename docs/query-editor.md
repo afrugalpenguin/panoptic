@@ -68,7 +68,7 @@ Connect, explorer refresh on that node, a DDL statement executed from any tab on
 
 ## Completion engine
 
-Runs in a web worker using Monaco's custom language worker plumbing. The worker holds its own copy of each loaded catalog. The main thread sends `(modelVersion, text, cursorOffset, languageId, databaseKey)` and receives a completion list. The provider is registered for `tsql` and `cosmos-sql`; trigger characters are `.`, `@`, and space after a keyword.
+Runs in a web worker using Monaco's custom language worker plumbing. The worker holds its own copy of each loaded catalog. The main thread sends `(modelVersion, text, cursorOffset, languageId, databaseKey)` and receives a completion list. The provider is registered for `tsql`, `cosmos-sql` and `pgsql` (Postgres: docs/connectors/postgres.md, "IntelliSense"); trigger characters are `.`, `@`, and space after a keyword.
 
 ### Context resolution: a scanner, not a parser
 
@@ -84,7 +84,7 @@ Runs in a web worker using Monaco's custom language worker plumbing. The worker 
   - after `CAST(x AS`, `DECLARE @x`, `CONVERT(`: types
   - anywhere else: keywords and built-in functions
 - Cosmos: after the FROM alias and `.` (conventionally `c.`): sampled paths of the bound container, nested completion as the user types further segments; after `FROM`: the container name and `c`; bare position: keywords and system functions.
-- Keyword items insert in the casing set by `editor.keywordCase`. Default is lowercase for `tsql` and uppercase for `cosmos-sql`.
+- Keyword items insert in the casing set by `editor.keywordCase`. Default is lowercase for `tsql` and `pgsql`, uppercase for `cosmos-sql`.
 
 ### Hover
 
@@ -117,7 +117,7 @@ SQL Server reports 208 (invalid object name), 4104 (multi-part identifier could 
 
 ```
 editor.intellisense        bool   default true (per app; a per-connection override is deferred)
-editor.keywordCase         enum   lower | upper | preserve   default lower for tsql, upper for cosmos-sql
+editor.keywordCase         enum   lower | upper | preserve   default lower for tsql and pgsql, upper for cosmos-sql
 editor.catalogSampleDocs   int    default 50, range 10 to 500
 editor.autoRefreshOnDdl    bool   default true
 editor.warnUnknownNames    bool   default true   (off with IntelliSense)

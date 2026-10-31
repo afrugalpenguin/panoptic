@@ -68,3 +68,33 @@ describe("distance", () => {
     expect([distance("Ordr", "order"), distance("abc", "abc"), distance("abc", "xbz"), distance("", "ab")]).toEqual([1, 0, 2, 2]);
   });
 });
+
+describe("pgsql", () => {
+  const shop: DatabaseCatalog = {
+    stamp: "p",
+    schemas: ["public", "sales"],
+    types: [],
+    objects: [
+      { name: "customer", schema: "public", kind: "table", columns: [{ name: "full_name", type: "text", nullable: true }, { name: "Signed On", type: "date", nullable: true }] },
+      { name: "Order", schema: "sales", kind: "table", columns: [] },
+      { name: "order_total", schema: "sales", kind: "fn", params: [] },
+      { name: "refresh_totals", schema: "public", kind: "proc", params: [] },
+    ],
+  };
+  const pg = new Index(shop);
+
+  it("double-quotes names that are not plain lower case", () => {
+    expect(suggestObject(pg, ["ordr"], "objects", "pgsql")).toEqual({ label: "sales.Order", insertText: 'sales."Order"' });
+    expect(suggestColumn(() => pg, [{ name: "customer" }], "signed_on", undefined, "pgsql")).toEqual({ label: "Signed On", insertText: '"Signed On"' });
+  });
+
+  it("suggests functions and procedures for an undefined routine", () => {
+    expect(suggestObject(pg, ["order_totl"], "routines", "pgsql")?.label).toBe("sales.order_total");
+    expect(suggestObject(pg, ["refresh_total"], "routines", "pgsql")?.label).toBe("public.refresh_totals");
+    expect(suggestObject(pg, ["ordr"], "routines", "pgsql")).toBeUndefined();
+  });
+
+  it("skips the public object the name already resolves to", () => {
+    expect(suggestObject(pg, ["customer"], "objects", "pgsql")).toBeUndefined();
+  });
+});

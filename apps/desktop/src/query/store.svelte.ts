@@ -5,10 +5,10 @@ import { CatalogStore, type CatalogNotice } from "./catalog.svelte";
 import type { Options } from "./intellisense/engine";
 import { findName, lineAt, locatable, quotedName, type Found } from "./intellisense/locate";
 import type { ModelInfo } from "./intellisense/providers";
-import { contextAt, isDdl, lineOffset, statementsAtLine, tablesIn } from "./intellisense/scanner";
+import { contextAt, isDdl, lineOffset, nameChains, statementsAtLine, tablesIn, tokenize, type Language } from "./intellisense/scanner";
 import type { Suggestion } from "./intellisense/suggest";
 import type { SuggestRequest } from "./intellisense/worker";
-import type { CellValue, MessageNotification, QueryScope, QuerySummary, QueryTarget, ResultColumn, RowsNotification } from "./types";
+import type { CellValue, MessageNotification, QueryLanguage, QueryScope, QuerySummary, QueryTarget, ResultColumn, RowsNotification } from "./types";
 
 export interface QueryApi {
   executeQuery: (request: { queryId: string; nodeId: string; text: string; database?: string }) => Promise<QuerySummary>;
@@ -41,6 +41,10 @@ export interface QueryMessage {
 
 /** Errors whose quoted name can be looked up in the catalog: objects, columns, procedures. */
 const SUGGESTABLE = new Set([208, 207, 2812]);
+/** Postgres: undefined table, column, function. 42P01 also covers "missing FROM-clause entry", hence the wording check. */
+const PG_SUGGESTABLE = new Set(["42P01", "42703", "42883"]);
+const PG_UNDEFINED = /\bdoes not exist\b/;
+const ENGINE_LANGUAGE: Record<QueryLanguage, Language> = { sql: "tsql", cosmos: "cosmos-sql", pgsql: "pgsql" };
 /** A Postgres name, dotted and "quoted" parts included, or any other run of word characters: what an error marks. */
 const PG_TOKEN = /^(?:"(?:[^"]|"")*"|[\p{L}_][\p{L}\p{N}_$]*)(?:\.(?:"(?:[^"]|"")*"|[\p{L}_][\p{L}\p{N}_$]*))*|^\w+/u;
 let nextMessageId = 0;
@@ -190,13 +194,8 @@ export class QueryWorkspace {
     this.databaseKeys.set(connection, { ...this.databaseKeys.get(connection), [database.toLowerCase()]: key });
   }
 
-  /** IntelliSense for Postgres needs the pgsql dialect in the engine (#118); until then its tabs get colouring only. */
-  private hasIntelliSense(tab: QueryTab): boolean {
-    return this.editor.intellisense && tab.target.language !== "pgsql";
-  }
-
   private async loadCatalog(tab: QueryTab): Promise<void> {
-    if (!this.api.catalogGet || !this.hasIntelliSense(tab)) return;
+    if (!this.api.catalogGet || !this.editor.intellisense) return;
     tab.catalogError = undefined;
     try {
       const result = await this.api.catalogGet(tab.target.nodeId, tab.database);
@@ -238,11 +237,11 @@ export class QueryWorkspace {
   /** What the tab's editor completes against; undefined when IntelliSense is off. Read on every request. */
   intellisense(tab: QueryTab): () => ModelInfo | undefined {
     return () => {
-      if (!this.hasIntelliSense(tab)) return undefined;
+      if (!this.editor.intellisense) return undefined;
       const parts = this.scopeOf(tab.target);
       const databases = this.databaseKeys.get(parts.connection) ?? {};
       const keys = [...new Set([tab.catalogKey, ...Object.values(databases)])].filter((k): k is string => !!k);
-      const options: Options = { language: tab.target.language === "cosmos" ? "cosmos-sql" : "tsql" };
+      const options: Options = { language: ENGINE_LANGUAGE[tab.target.language] };
       if (this.editor.keywordCase) options.keywordCase = this.editor.keywordCase;
       if (parts.container) options.container = parts.container;
       return {
@@ -253,7 +252,7 @@ export class QueryWorkspace {
           const entry = this.catalogs.get(key);
           return { key, catalog: entry?.catalog, version: entry?.version ?? 0 };
         }),
-        warnUnknownNames: this.editor.warnUnknownNames && tab.target.language === "sql",
+        warnUnknownNames: this.editor.warnUnknownNames && tab.target.language !== "cosmos",
         onMissing: (database) => void this.fetchDatabase(tab, database),
       };
     };
@@ -261,7 +260,6 @@ export class QueryWorkspace {
 
   intellisenseStatus(tab: QueryTab): { text: string; title?: string } {
     if (!this.editor.intellisense) return { text: "IntelliSense: off" };
-    if (!this.hasIntelliSense(tab)) return { text: "IntelliSense: not yet for Postgres", title: "Completion and checks for Postgres come in a later update." };
     if (tab.catalogError) return { text: "IntelliSense: error", title: tab.catalogError };
     const entry = tab.catalogKey ? this.catalogs.get(tab.catalogKey) : undefined;
     if (!entry) return { text: "IntelliSense: building" };
@@ -362,7 +360,7 @@ export class QueryWorkspace {
     tab.running = true;
     try {
       tab.summary = await this.api.executeQuery({ queryId: tab.queryId, nodeId: tab.target.nodeId, text, database: tab.database });
-      if (this.editor.autoRefreshOnDdl && tab.target.language === "sql" && isDdl(text)) {
+      if (this.editor.autoRefreshOnDdl && tab.target.language !== "cosmos" && isDdl(text, ENGINE_LANGUAGE[tab.target.language])) {
         this.forgetFailed(this.scopeOf(tab.target).connection);
         this.refreshCatalog(tab);
       }
@@ -415,6 +413,8 @@ export class QueryWorkspace {
     // The pushed row is a reactive proxy; a suggestion arriving later must update that, not the plain object.
     const row = tab.messages[tab.messages.push(message) - 1];
     if (found && p.number !== undefined && p.line !== undefined) void this.suggestFor(tab, row, p.number, p.line, found);
+    if (message.located && p.state && p.line !== undefined && PG_SUGGESTABLE.has(p.state) && PG_UNDEFINED.test(p.text))
+      void this.suggestForPostgres(tab, row, p.state, p.line, message.at!.start - tab.runOffset);
   }
 
   /**
@@ -485,11 +485,37 @@ export class QueryWorkspace {
     } else request = { number, parts, tables: [] };
     const useDatabase = contextAt(run, found.start, "tsql").useDatabase;
     if (useDatabase) request.useDatabase = useDatabase;
+    await this.applySuggestion(tab, row, request, info);
+  }
 
+  /**
+   * The same for a Postgres error, from the dotted name written at the server's position (at, in the run text): the
+   * table, the column with its qualifier and the statement's tables, or the function.
+   */
+  private async suggestForPostgres(tab: QueryTab, row: QueryMessage, state: string, line: number, at: number): Promise<void> {
+    const info = this.intellisense(tab)();
+    if (!this.api.suggest || !info) return;
+    const run = tab.runText;
+    const statement = statementsAtLine(run, line, "pgsql");
+    if (!statement) return;
+    const tokens = tokenize(run, "pgsql", statement.start, statement.end).filter((t) => t.type !== "comment");
+    const parts = nameChains(tokens).find((c) => c.tokens[0].start === at)?.parts;
+    if (!parts) return;
+    const request: SuggestRequest = { number: 0, state, language: "pgsql", parts, tables: [] };
+    if (state === "42703") {
+      request.parts = parts.slice(-1);
+      if (parts.length >= 2) request.qualifier = parts[parts.length - 2];
+      request.tables = tablesIn(run, statement.start, statement.end, "pgsql");
+    }
+    await this.applySuggestion(tab, row, request, info);
+  }
+
+  private async applySuggestion(tab: QueryTab, row: QueryMessage, request: SuggestRequest, info: ModelInfo): Promise<void> {
     const queryId = tab.queryId;
-    const suggestion = await this.api.suggest(request, info);
+    const suggestion = await this.api.suggest!(request, info);
     if (!suggestion || tab.queryId !== queryId) return;
-    row.text = `${row.text} Did you mean ${suggestion.label}?`;
+    // Postgres messages carry no full stop of their own.
+    row.text = `${row.text.endsWith(".") ? row.text : row.text + "."} Did you mean ${suggestion.label}?`;
     row.fix = suggestion;
   }
 }

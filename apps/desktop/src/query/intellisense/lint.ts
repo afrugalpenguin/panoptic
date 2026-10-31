@@ -4,8 +4,9 @@
 // because a warning on valid SQL is worse than a missed one; the server still reports what this lets through.
 
 import type { CatalogObject } from "../catalog.svelte";
-import type { Lookup } from "./engine";
-import { inColumnClause, nameChains, placedRefs, statementScan, type PlacedRef, type Token } from "./scanner";
+import { defaultSchema, type Lookup } from "./engine";
+import { PGSQL_FUNCTIONS, PGSQL_KEYWORDS, PGSQL_TYPES } from "./pgsql-words";
+import { inColumnClause, nameChains, placedRefs, statementScan, type Language, type PlacedRef, type Token } from "./scanner";
 import { TSQL_FUNCTIONS, TSQL_KEYWORDS, TSQL_TYPES } from "./tsql-words";
 
 export interface Warning {
@@ -15,17 +16,22 @@ export interface Warning {
 }
 
 /** Words that can stand where a column does without being one. */
-const NOT_COLUMNS = new Set(
-  [
-    ...TSQL_KEYWORDS, ...TSQL_FUNCTIONS, ...TSQL_TYPES,
-    "collate", "current_user", "session_user", "system_user", "user", "current_date", "escape", "range", "preceding", "following",
-    "unbounded", "current", "row", "first", "only", "nulls", "within", "inserted", "deleted",
-  ].map((w) => w.toLowerCase()),
-);
+const SHARED_NOT_COLUMNS = [
+  "collate", "current_user", "session_user", "system_user", "user", "current_date", "escape", "range", "preceding", "following",
+  "unbounded", "current", "row", "first", "only", "nulls", "within", "inserted", "deleted",
+];
+const notColumns = (words: string[]) => new Set([...words, ...SHARED_NOT_COLUMNS].map((w) => w.toLowerCase()));
+const NOT_COLUMNS: Record<Language, Set<string>> = {
+  tsql: notColumns([...TSQL_KEYWORDS, ...TSQL_FUNCTIONS, ...TSQL_TYPES]),
+  pgsql: notColumns([...PGSQL_KEYWORDS, ...PGSQL_FUNCTIONS, ...PGSQL_TYPES, "excluded", "current_timestamp", "localtime"]),
+  "cosmos-sql": notColumns([]),
+};
 /** Functions whose first argument is a date part keyword (day, mm, ...), not a column. */
 const DATE_PART_FUNCTIONS = new Set(["dateadd", "datediff", "datediff_big", "datename", "datepart", "datetrunc", "date_bucket"]);
-const SYSTEM_SCHEMAS = new Set(["sys", "information_schema"]);
+const SYSTEM_SCHEMAS = new Set(["sys", "information_schema", "pg_catalog"]);
 const CREATES = new Set(["table", "view", "synonym", "function", "proc", "procedure"]);
+/** Words between CREATE and the object kind: OR REPLACE, TEMP, UNLOGGED, MATERIALIZED... */
+const CREATE_MODIFIERS = new Set(["or", "alter", "replace", "temp", "temporary", "unlogged", "materialized", "global", "local"]);
 
 const lower = (t: Token | undefined) => (t && (t.type === "word" || t.type === "quoted") ? t.value.toLowerCase() : "");
 const isWord = (t: Token | undefined) => t?.type === "word";
@@ -39,8 +45,9 @@ function definedNames(earlier: Token[], tokens: Token[]): Set<string> {
     let at = -1;
     if (w === "create" || w === "alter") {
       at = i + 1;
-      if (lower(all[at]) === "or" && lower(all[at + 1]) === "alter") at += 2;
+      while (CREATE_MODIFIERS.has(lower(all[at]))) at++;
       at = CREATES.has(lower(all[at])) ? at + 1 : -1;
+      if (at >= 0 && lower(all[at]) === "if") at += lower(all[at + 1]) === "not" ? 3 : 2;
     } else if (w === "into" && all[i].type === "word") at = i + 1;
     if (at < 0) continue;
     const chain = nameChains(all.slice(at, at + 7))[0];
@@ -79,8 +86,10 @@ function close(tokens: Token[], open: number): number {
  * alias.column or table.column against that table's columns; a bare column only when the statement reads a single
  * table and has no subquery, and never for a word that could be an alias, keyword, function, type or date part.
  */
-export function unknownNames(lookup: Lookup, text: string, offset: number): Warning[] {
-  const { tokens, earlier, useDatabase } = statementScan(text, offset, "tsql");
+export function unknownNames(lookup: Lookup, text: string, offset: number, language: Language = "tsql"): Warning[] {
+  const { tokens, earlier, useDatabase } = statementScan(text, offset, language);
+  const pg = language === "pgsql";
+  const notColumn = NOT_COLUMNS[language];
   const index = lookup(useDatabase);
   if (!index || tokens.length === 0) return [];
   const warnings: Warning[] = [];
@@ -95,8 +104,10 @@ export function unknownNames(lookup: Lookup, text: string, offset: number): Warn
     if (r.call || r.dangling || database || name.startsWith("#")) return undefined;
     if (schema && SYSTEM_SCHEMAS.has(schema.toLowerCase())) return undefined;
     if (defined.has(name.toLowerCase()) || (r.keyword === "into" && selectsInto)) return undefined;
-    if (!schema && (aliases.has(name.toLowerCase()) || NOT_COLUMNS.has(name.toLowerCase()))) return undefined;
-    return index.find(name, schema) ?? null;
+    if (!schema && (aliases.has(name.toLowerCase()) || notColumn.has(name.toLowerCase()))) return undefined;
+    // Postgres looks in pg_catalog before the search path, so pg_class needs no schema.
+    if (pg && !schema && name.toLowerCase().startsWith("pg_")) return undefined;
+    return index.find(name, schema, defaultSchema(language)) ?? null;
   };
 
   const tables = new Map<PlacedRef, CatalogObject | null | undefined>();
@@ -149,11 +160,13 @@ export function unknownNames(lookup: Lookup, text: string, offset: number): Warn
     const next = tokens[i + 1];
     const word = t.value.toLowerCase();
     if (next?.text === "(" || next?.text === "." || prev?.text === "." || prev?.text === "$" || word.startsWith("#")) continue;
-    if (t.type === "word" && NOT_COLUMNS.has(word)) continue;
+    if (t.type === "word" && notColumn.has(word)) continue;
     if (lower(prev) === "as" || lower(prev) === "collate" || selectAliases.has(word)) continue;
     // Another name, a literal or ")" just before: an alias written without AS (or TOP n), not a column.
-    if (prev && (prev.type === "number" || prev.type === "string" || prev.text === ")" || ((prev.type === "word" || prev.type === "quoted") && !NOT_COLUMNS.has(lower(prev))))) continue;
+    if (prev && (prev.type === "number" || prev.type === "string" || prev.text === ")" || ((prev.type === "word" || prev.type === "quoted") && !notColumn.has(lower(prev))))) continue;
     if (prev?.text === "(" && DATE_PART_FUNCTIONS.has(lower(tokens[i - 2]))) continue;
+    // Postgres: the type after a :: cast, and the field in EXTRACT(year FROM x).
+    if (pg && (prev?.text === ":" || (prev?.text === "(" && lower(tokens[i - 2]) === "extract"))) continue;
     missing(only, t);
   }
   return warnings;

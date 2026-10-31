@@ -169,8 +169,8 @@ describe("QueryWorkspace", () => {
       const pg = { ...target, language: "pgsql" as const };
       const pgScript = 'select 1;\n\nselect o.idd, "Order Lines".qty\nfrom sales."order" o';
 
-      function failingPg(text: string) {
-        const { ws, api } = setup();
+      function failingPg(text: string, suggest?: (request: SuggestRequest) => Promise<Suggestion | undefined>) {
+        const { ws, api } = setup(suggest);
         const tab = ws.open(pg, text);
         const error = (message: { state?: string; line?: number; column?: number; text: string }) =>
           ws.handle("query.message", { queryId: api.executeQuery.mock.calls[0][0].queryId, kind: "error", elapsedMs: 1, ...message });
@@ -195,6 +195,36 @@ describe("QueryWorkspace", () => {
         error({ state: "42703", line: 3, column: 8, text: "Line 3: column o.idd does not exist" });
         expect(tab.messages[0].text).toBe("Line 5: column o.idd does not exist");
         expect(text.slice(tab.messages[0].at!.start, tab.messages[0].at!.end)).toBe("o.idd");
+      });
+
+      it("asks for a suggestion with the written name, state and statement tables", async () => {
+        const suggest = vi.fn(async (_: SuggestRequest) => ({ label: "sales.orders", insertText: "sales.orders" }));
+        const { ws, tab, error } = failingPg('select 1;\nselect * from sales."ordr" o', suggest);
+        ws.run(tab);
+        error({ state: "42P01", line: 2, column: 15, text: 'Line 2: relation "sales.ordr" does not exist' });
+        await vi.waitFor(() => expect(tab.messages[0].fix).toBeDefined());
+        expect(suggest.mock.calls[0][0]).toEqual({ number: 0, state: "42P01", language: "pgsql", parts: ["sales", "ordr"], tables: [] });
+        expect(tab.messages[0].text).toBe('Line 2: relation "sales.ordr" does not exist. Did you mean sales.orders?');
+      });
+
+      it("sends a column's qualifier and the statement's tables", async () => {
+        const suggest = vi.fn(async (_: SuggestRequest) => undefined);
+        const { ws, tab, error } = failingPg(pgScript, suggest);
+        ws.run(tab);
+        error({ state: "42703", line: 3, column: 8, text: "Line 3: column o.idd does not exist" });
+        await vi.waitFor(() => expect(suggest).toHaveBeenCalled());
+        expect(suggest.mock.calls[0][0]).toEqual({
+          number: 0, state: "42703", language: "pgsql", parts: ["idd"], qualifier: "o", tables: [{ name: "order", schema: "sales", alias: "o" }],
+        });
+      });
+
+      it("does not suggest for a missing FROM-clause entry, which shares 42P01", async () => {
+        const suggest = vi.fn(async (_: SuggestRequest) => undefined);
+        const { ws, tab, error } = failingPg(pgScript, suggest);
+        ws.run(tab);
+        error({ state: "42P01", line: 3, column: 15, text: 'Line 3: missing FROM-clause entry for table "Order Lines"' });
+        await Promise.resolve();
+        expect(suggest).not.toHaveBeenCalled();
       });
 
       it("marks the line's start when there is no column, and nothing without a line", () => {
@@ -334,14 +364,23 @@ describe("QueryWorkspace: IntelliSense", () => {
     expect(ws.intellisenseStatus(tab).text).toBe("IntelliSense: current");
   });
 
-  it("Postgres tabs list databases but load no catalog until the pgsql dialect lands", async () => {
+  it("Postgres tabs load their catalog and complete and check in the pgsql dialect", async () => {
     const { ws, api } = setupCatalog();
     const tab = ws.open({ ...target, language: "pgsql" }, "");
     await settle();
-    expect(api.catalogGet).not.toHaveBeenCalled();
+    expect(api.catalogGet).toHaveBeenCalledWith(target.nodeId, undefined);
     expect(tab.databases).toEqual(["Orders", "Sales"]);
-    expect(ws.intellisense(tab)()).toBeUndefined();
-    expect(ws.intellisenseStatus(tab).text).toBe("IntelliSense: not yet for Postgres");
+    expect(ws.intellisense(tab)()).toMatchObject({ options: { language: "pgsql" }, warnUnknownNames: true });
+    expect(ws.intellisenseStatus(tab).text).toBe("IntelliSense: building");
+  });
+
+  it("refreshes a Postgres catalog after DDL, reading dollar-quoted bodies as text", async () => {
+    const { ws, api } = setupCatalog();
+    const tab = ws.open({ ...target, language: "pgsql" }, "");
+    await ws.run(tab, "select $$drop table t$$");
+    expect(api.catalogRefresh).not.toHaveBeenCalled();
+    await ws.run(tab, "create table t (a int)");
+    expect(api.catalogRefresh).toHaveBeenCalledTimes(1);
   });
 
   it("switching database reloads the catalog and the query runs against it", async () => {

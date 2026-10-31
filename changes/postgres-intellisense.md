@@ -1,0 +1,1 @@
+Added: IntelliSense for PostgreSQL: completion, hover and unknown-name warnings that understand `"quoted"` names, `$$` bodies and `::` casts, and a "Did you mean" fix when a run fails on an undefined table, column or function.

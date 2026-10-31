@@ -3,6 +3,7 @@
 
 import type { CatalogObject, ContainerRef, DatabaseCatalog, PathRef } from "../catalog.svelte";
 import { COSMOS_FUNCTIONS, COSMOS_KEYWORDS } from "./cosmos-words";
+import { PGSQL_FUNCTIONS, PGSQL_KEYWORDS, PGSQL_TYPES } from "./pgsql-words";
 import { statementTokens, tablesAt, type Context, type Language, type TableRef, type Token } from "./scanner";
 import { TSQL_FUNCTIONS, TSQL_KEYWORDS, TSQL_TYPES } from "./tsql-words";
 
@@ -64,25 +65,36 @@ export class Index {
     return this.schemas.has(schema.toLowerCase());
   }
 
-  /** Without a schema, dbo wins, then the first by schema order. */
-  find(name: string, schema?: string): CatalogObject | undefined {
+  /** Without a schema, the default schema (dbo, or public in Postgres) wins, then the first by schema order. */
+  find(name: string, schema?: string, fallback = "dbo"): CatalogObject | undefined {
     if (schema) return this.bySchemaName.get(`${schema.toLowerCase()}.${name.toLowerCase()}`);
     const list = this.byName.get(name.toLowerCase());
-    return list?.find((o) => o.schema.toLowerCase() === "dbo") ?? list?.[0];
+    return list?.find((o) => o.schema.toLowerCase() === fallback) ?? list?.[0];
   }
 }
 
-const RESERVED = new Set(TSQL_KEYWORDS.map((k) => k.toLowerCase()));
+/** Where an unqualified name resolves first. */
+export function defaultSchema(language: Language): string {
+  return language === "pgsql" ? "public" : "dbo";
+}
 
-/** Brackets a name that is not a plain identifier or is a keyword. */
-export function quote(name: string): string {
+const RESERVED = new Set(TSQL_KEYWORDS.map((k) => k.toLowerCase()));
+const PG_RESERVED = new Set(PGSQL_KEYWORDS.map((k) => k.toLowerCase()));
+
+/**
+ * Brackets a T-SQL name that is not a plain identifier or is a keyword. A Postgres name is double-quoted unless it is
+ * plain lower case: unquoted names fold to lower case there, so "Order" written bare would name order.
+ */
+export function quote(name: string, language: Language = "tsql"): string {
+  if (language === "pgsql")
+    return /^[a-z_][a-z0-9_$]*$/.test(name) && !PG_RESERVED.has(name) ? name : `"${name.replaceAll('"', '""')}"`;
   return /^[A-Za-z_][\w@#$]*$/.test(name) && !RESERVED.has(name.toLowerCase()) ? name : `[${name.replaceAll("]", "]]")}]`;
 }
 
 const eq = (a: string | undefined, b: string | undefined) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 
-function resolve(lookup: Lookup, ref: TableRef): CatalogObject | undefined {
-  return lookup(ref.database)?.find(ref.name, ref.schema);
+function resolve(lookup: Lookup, ref: TableRef, language: Language): CatalogObject | undefined {
+  return lookup(ref.database)?.find(ref.name, ref.schema, defaultSchema(language));
 }
 
 class Items {
@@ -94,54 +106,64 @@ class Items {
 
 const OBJECT_KINDS = new Set(["table", "view", "synonym"]);
 
-function objectItems(items: Items, objects: CatalogObject[], qualified: boolean, kinds: (o: CatalogObject) => boolean): void {
+function objectItems(items: Items, objects: CatalogObject[], qualified: boolean, kinds: (o: CatalogObject) => boolean, language: Language): void {
+  const fallback = defaultSchema(language);
   for (const o of objects) {
     if (!kinds(o)) continue;
-    const dbo = o.schema.toLowerCase() === "dbo";
-    const insert = qualified ? `${quote(o.schema)}.${quote(o.name)}` : quote(o.name);
+    const dimmed = o.schema.toLowerCase() === fallback;
+    const insert = qualified ? `${quote(o.schema, language)}.${quote(o.name, language)}` : quote(o.name, language);
     items.add(0, {
-      label: qualified && !dbo ? `${o.schema}.${o.name}` : o.name,
+      label: qualified && !dimmed ? `${o.schema}.${o.name}` : o.name,
       kind: o.kind,
       insertText: insert,
       filterText: o.name,
-      ...(qualified && dbo ? { description: "dbo", dimmed: true } : {}),
+      ...(qualified && dimmed ? { description: fallback, dimmed: true } : {}),
     });
   }
 }
 
 /** Objects or procs for a dotted qualifier: [] every schema, [schema] or [database] (its schemas), [database, schema]. */
-function qualified(lookup: Lookup, qualifier: string[], kinds: (o: CatalogObject) => boolean): Completions {
+function qualified(lookup: Lookup, qualifier: string[], kinds: (o: CatalogObject) => boolean, language: Language): Completions {
   const items = new Items();
   const current = lookup();
   if (qualifier.length === 0) {
-    if (current) objectItems(items, current.catalog.objects, true, kinds);
+    if (current) objectItems(items, current.catalog.objects, true, kinds, language);
     return { items: items.list };
   }
   if (qualifier.length === 1) {
     const [name] = qualifier;
     if (current?.hasSchema(name)) {
-      objectItems(items, current.catalog.objects.filter((o) => eq(o.schema, name)), false, kinds);
+      objectItems(items, current.catalog.objects.filter((o) => eq(o.schema, name)), false, kinds, language);
       return { items: items.list };
     }
+    // Postgres cannot name another database, so a qualifier that is not a schema is not one either.
+    if (language === "pgsql") return { items: [] };
     const other = lookup(name);
     if (!other) return { items: [], missing: name };
-    for (const s of other.catalog.schemas) items.add(0, { label: s, kind: "schema", insertText: quote(s) });
+    for (const s of other.catalog.schemas) items.add(0, { label: s, kind: "schema", insertText: quote(s, language) });
     return { items: items.list };
   }
+  if (language === "pgsql") return { items: [] };
   const [database, schema] = qualifier.slice(-2);
   const other = lookup(database);
   if (!other) return { items: [], missing: database };
-  objectItems(items, other.catalog.objects.filter((o) => eq(o.schema, schema)), false, kinds);
+  objectItems(items, other.catalog.objects.filter((o) => eq(o.schema, schema)), false, kinds, language);
   return { items: items.list };
 }
 
 function cased(word: string, options: Options): string {
-  const mode = options.keywordCase ?? (options.language === "tsql" ? "lower" : "upper");
+  const mode = options.keywordCase ?? (options.language === "cosmos-sql" ? "upper" : "lower");
   return mode === "lower" ? word.toLowerCase() : mode === "upper" ? word.toUpperCase() : word;
 }
 
+const WORDS: Record<Language, [string[], string[]]> = {
+  tsql: [TSQL_KEYWORDS, TSQL_FUNCTIONS],
+  "cosmos-sql": [COSMOS_KEYWORDS, COSMOS_FUNCTIONS],
+  pgsql: [PGSQL_KEYWORDS, PGSQL_FUNCTIONS],
+};
+
 function keywordItems(items: Items, options: Options): void {
-  const [keywords, functions] = options.language === "tsql" ? [TSQL_KEYWORDS, TSQL_FUNCTIONS] : [COSMOS_KEYWORDS, COSMOS_FUNCTIONS];
+  const [keywords, functions] = WORDS[options.language];
   for (const f of functions) items.add(2, { label: cased(f, options), kind: "function", insertText: cased(f, options) });
   for (const k of keywords) items.add(3, { label: cased(k, options), kind: "keyword", insertText: cased(k, options) });
 }
@@ -169,15 +191,17 @@ function childPaths(containers: ContainerRef[], prefix: string[]): { label: stri
 
 export function complete(lookup: Lookup, ctx: Context, options: Options): Completions {
   const items = new Items();
+  const { language } = options;
+  const q = (name: string) => quote(name, language);
   switch (ctx.kind) {
     case "none":
       return { items: [] };
     case "objects":
-      return qualified(lookup, ctx.qualifier, (o) => OBJECT_KINDS.has(o.kind) || (o.kind === "fn" && !!o.columns));
+      return qualified(lookup, ctx.qualifier, (o) => OBJECT_KINDS.has(o.kind) || (o.kind === "fn" && !!o.columns), language);
     case "procs":
-      return qualified(lookup, ctx.qualifier, (o) => o.kind === "proc");
+      return qualified(lookup, ctx.qualifier, (o) => o.kind === "proc", language);
     case "columns": {
-      const resolved = ctx.tables.map((t) => ({ ref: t, object: resolve(lookup, t) }));
+      const resolved = ctx.tables.map((t) => ({ ref: t, object: resolve(lookup, t, language) }));
       const counts = new Map<string, number>();
       for (const { object } of resolved)
         for (const c of object?.columns ?? []) counts.set(c.name.toLowerCase(), (counts.get(c.name.toLowerCase()) ?? 0) + 1);
@@ -190,7 +214,7 @@ export function complete(lookup: Lookup, ctx: Context, options: Options): Comple
             kind: "column",
             detail: c.type,
             description: owner,
-            insertText: clash ? `${quote(owner)}.${quote(c.name)}` : quote(c.name),
+            insertText: clash ? `${q(owner)}.${q(c.name)}` : q(c.name),
             filterText: c.name,
           });
         }
@@ -199,13 +223,13 @@ export function complete(lookup: Lookup, ctx: Context, options: Options): Comple
       return { items: items.list };
     }
     case "aliasColumns": {
-      const object = resolve(lookup, ctx.table);
+      const object = resolve(lookup, ctx.table, language);
       if (!object && ctx.table.database && !lookup(ctx.table.database)) return { items: [], missing: ctx.table.database };
-      for (const c of object?.columns ?? []) items.add(1, { label: c.name, kind: "column", detail: c.type, insertText: quote(c.name) });
+      for (const c of object?.columns ?? []) items.add(1, { label: c.name, kind: "column", detail: c.type, insertText: q(c.name) });
       return { items: items.list };
     }
     case "params": {
-      const proc = lookup()?.find(ctx.proc, ctx.schema);
+      const proc = lookup()?.find(ctx.proc, ctx.schema, defaultSchema(language));
       for (const p of proc?.params ?? [])
         items.add(1, { label: p.name, kind: "param", detail: p.output ? `${p.type} output` : p.type, insertText: p.name });
       return { items: items.list };
@@ -214,7 +238,7 @@ export function complete(lookup: Lookup, ctx: Context, options: Options): Comple
       for (const name of ctx.names) items.add(1, { label: name, kind: "variable", insertText: name });
       return { items: items.list };
     case "types": {
-      const types = lookup()?.catalog.types.length ? lookup()!.catalog.types : TSQL_TYPES;
+      const types = lookup()?.catalog.types.length ? lookup()!.catalog.types : language === "pgsql" ? PGSQL_TYPES : TSQL_TYPES;
       for (const t of [...types].sort()) items.add(1, { label: t, kind: "type", insertText: t });
       return { items: items.list };
     }
@@ -263,7 +287,8 @@ export function hover(lookup: Lookup, text: string, offset: number, options: Pic
   }
 
   const name = parts[parts.length - 1];
-  const object = lookup(parts.length >= 3 ? parts[parts.length - 3] : undefined)?.find(name, parts.length >= 2 ? parts[parts.length - 2] : undefined);
+  const fallback = defaultSchema(options.language);
+  const object = lookup(parts.length >= 3 ? parts[parts.length - 3] : undefined)?.find(name, parts.length >= 2 ? parts[parts.length - 2] : undefined, fallback);
   if (object) return objectMarkdown(object);
 
   const tables = tablesAt(text, offset, options.language);
@@ -272,7 +297,7 @@ export function hover(lookup: Lookup, text: string, offset: number, options: Pic
       ? tables.filter((t) => eq(t.alias, parts[parts.length - 2])).concat(tables.filter((t) => eq(t.name, parts[parts.length - 2])))
       : tables;
   for (const ref of candidates) {
-    const owner = resolve(lookup, ref);
+    const owner = resolve(lookup, ref, options.language);
     const column = owner?.columns?.find((c) => eq(c.name, name));
     if (owner && column) return `**${column.name}** ${column.type}, ${column.nullable ? "null" : "not null"} (${owner.schema}.${owner.name})`;
   }

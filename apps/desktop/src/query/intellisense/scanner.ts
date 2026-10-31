@@ -2,7 +2,7 @@
 // parser: it finds the statement around the cursor, tokenizes it and reads the nearest significant keyword. Pure, so
 // it runs in the IntelliSense worker, which cannot load Monaco.
 
-export type Language = "tsql" | "cosmos-sql";
+export type Language = "tsql" | "cosmos-sql" | "pgsql";
 
 export interface Token {
   type: "word" | "quoted" | "var" | "string" | "comment" | "number" | "punct";
@@ -50,6 +50,11 @@ export interface CursorContext {
 
 const WORD_START = /[A-Za-z_#\u0080-￿]/;
 const WORD_PART = /[\w#$@\u0080-￿]/;
+// Postgres identifiers: # and @ are operators there, not temp tables and variables.
+const PG_WORD_START = /[A-Za-z_\u0080-￿]/;
+const PG_WORD_PART = /[\w$\u0080-￿]/;
+/** A dollar quote's opening tag at the start of the text: $$ or $tag$. */
+const DOLLAR_TAG = /^\$(?:[A-Za-z_\u0080-￿][\w\u0080-￿]*)?\$/;
 
 /** Tokens of text[from, to). from and to must not fall inside a token: 0, the end, or a statement boundary. */
 export function tokenize(text: string, language: Language, from = 0, to = text.length): Token[] {
@@ -80,6 +85,9 @@ function lex(
   emit: (type: Token["type"], start: number, end: number, closed: boolean) => boolean | void,
 ): void {
   const n = to;
+  const pg = language === "pgsql";
+  const wordStart = pg ? PG_WORD_START : WORD_START;
+  const wordPart = pg ? PG_WORD_PART : WORD_PART;
   let i = from;
   let stop = false;
   const push = (type: Token["type"], start: number, end: number, closed: boolean) => {
@@ -97,7 +105,7 @@ function lex(
       push("comment", i, lineEnd, false);
       i = lineEnd;
     } else if (c === "/" && next === "*") {
-      // T-SQL block comments nest.
+      // T-SQL and Postgres block comments nest.
       let depth = 0;
       let j = i;
       while (j < n) {
@@ -112,14 +120,21 @@ function lex(
       }
       push("comment", i, j, depth === 0);
       i = j;
-    } else if (c === "'" || ((c === "N" || c === "n") && next === "'" && language === "tsql") || (c === '"' && language === "cosmos-sql")) {
+    } else if (
+      c === "'" ||
+      ((c === "N" || c === "n") && next === "'" && language === "tsql") ||
+      ((c === "E" || c === "e") && next === "'" && pg) ||
+      (c === '"' && language === "cosmos-sql")
+    ) {
       const quote = c === '"' ? '"' : "'";
+      // Cosmos strings and Postgres E'' strings take backslash escapes.
+      const escapes = language === "cosmos-sql" || (pg && c !== "'");
       let j = text[i] === quote ? i + 1 : i + 2;
       let closed = false;
       while (j < n) {
-        if (language === "cosmos-sql" && text[j] === "\\") j += 2;
+        if (escapes && text[j] === "\\") j += 2;
         else if (text[j] === quote) {
-          if (language === "tsql" && text[j + 1] === quote) j += 2;
+          if (language !== "cosmos-sql" && text[j + 1] === quote) j += 2;
           else {
             j++;
             closed = true;
@@ -129,7 +144,20 @@ function lex(
       }
       push("string", i, Math.min(j, n), closed);
       i = Math.min(j, n);
-    } else if ((c === "[" || c === '"') && language === "tsql") {
+    } else if (c === "$" && pg && DOLLAR_TAG.test(text.slice(i, i + 64))) {
+      // $$ body $$ or $tag$ body $tag$: a string, whatever it holds.
+      const tag = DOLLAR_TAG.exec(text.slice(i, i + 64))![0];
+      const close = text.indexOf(tag, i + tag.length);
+      const closed = close >= 0 && close + tag.length <= n;
+      const end = closed ? close + tag.length : n;
+      push("string", i, end, closed);
+      i = end;
+    } else if (c === "$" && pg && next >= "0" && next <= "9") {
+      let j = i + 1;
+      while (j < n && text[j] >= "0" && text[j] <= "9") j++;
+      push("var", i, j, true);
+      i = j;
+    } else if ((c === "[" && language === "tsql") || (c === '"' && (language === "tsql" || pg))) {
       const close = c === "[" ? "]" : '"';
       let j = i + 1;
       let closed = false;
@@ -145,14 +173,14 @@ function lex(
       }
       push("quoted", i, Math.min(j, n), closed);
       i = j;
-    } else if (c === "@") {
+    } else if (c === "@" && !pg) {
       let j = i + 1;
       while (j < n && (WORD_PART.test(text[j]) || text[j] === "@")) j++;
       push("var", i, j, true);
       i = j;
-    } else if (WORD_START.test(c)) {
+    } else if (wordStart.test(c)) {
       let j = i + 1;
-      while (j < n && WORD_PART.test(text[j])) j++;
+      while (j < n && wordPart.test(text[j])) j++;
       push("word", i, j, true);
       i = j;
     } else if (c >= "0" && c <= "9") {
@@ -207,6 +235,9 @@ function blankLineIn(text: string, from: number, to: number): number {
  * comments and quoted names exactly as tokenize does, so a semicolon, blank line or GO inside them never splits.
  */
 function bounds(text: string, language: Language, blankLines = true): Bounds {
+  // Postgres has no GO and no USE, and a statement ends at its semicolon only (docs/plans/2026-10-30-postgres-design.md).
+  const tsqlish = language !== "pgsql";
+  if (!tsqlish) blankLines = false;
   const statements: Segment[] = [];
   const batches: Segment[] = [];
   const uses: Segment[] = [];
@@ -222,14 +253,14 @@ function bounds(text: string, language: Language, blankLines = true): Bounds {
   };
   lex(text, language, 0, text.length, (type, s, e) => {
     blank(s);
-    if (type === "word" && isGo(text, s, e)) {
+    if (type === "word" && tsqlish && isGo(text, s, e)) {
       statements.push({ start, end: s });
       batches.push({ start: batchStart, end: s });
       start = batchStart = e;
     } else if (type === "punct" && text[s] === ";") {
       statements.push({ start, end: s });
       start = e;
-    } else if (type === "word" && e - s === 3 && text.slice(s, e).toLowerCase() === "use") uses.push({ start: s, end: e });
+    } else if (type === "word" && tsqlish && e - s === 3 && text.slice(s, e).toLowerCase() === "use") uses.push({ start: s, end: e });
     previousEnd = e;
   });
   blank(text.length);
@@ -328,15 +359,17 @@ function nextSignificant(text: string, language: Language, from: number): Token 
 }
 
 /** True when the text runs DDL (CREATE, ALTER or DROP as keywords, not in strings, comments or quoted names). */
-export function isDdl(text: string): boolean {
-  return tokenize(text, "tsql").some((t) => ["create", "alter", "drop"].includes(lower(t)));
+export function isDdl(text: string, language: Language = "tsql"): boolean {
+  return tokenize(text, language).some((t) => ["create", "alter", "drop"].includes(lower(t)));
 }
 
 // Words that cannot be a table alias.
 const RESERVED = new Set(
   ("select from where join inner left right full outer cross on group order by having union except intersect with option " +
     "for as set values output apply pivot unpivot when then else end and or not in is like between exists into update delete " +
-    "insert exec execute go use declare begin case top distinct null merge using table").split(" "),
+    "insert exec execute go use declare begin case top distinct null merge using table " +
+    // Postgres clauses that can follow a table.
+    "limit offset fetch returning window lateral natural").split(" "),
 );
 
 type ClauseKind = "objects" | "procs" | "columns" | "keywords";
@@ -345,7 +378,7 @@ const CLAUSES: Record<string, ClauseKind> = {
   exec: "procs", execute: "procs",
   select: "columns", where: "columns", on: "columns", by: "columns", having: "columns", set: "columns", and: "columns", or: "columns",
   not: "columns", when: "columns", then: "columns", else: "columns", case: "columns", distinct: "columns", top: "columns", is: "columns",
-  in: "columns", like: "columns", between: "columns",
+  in: "columns", like: "columns", between: "columns", ilike: "columns", returning: "columns", call: "procs",
   union: "keywords", except: "keywords", intersect: "keywords", group: "keywords", order: "keywords", inner: "keywords", left: "keywords",
   right: "keywords", outer: "keywords", cross: "keywords", full: "keywords", declare: "keywords", begin: "keywords", if: "keywords",
   while: "keywords", return: "keywords", print: "keywords", use: "keywords", values: "keywords", as: "keywords", with: "keywords",
@@ -574,7 +607,8 @@ export function contextAt(text: string, offset: number, language: Language): Cur
   if (word && !(word.type === "quoted" && word.closed && offset === word.end)) {
     prefixStart = word.start;
     const raw = text.slice(word.start, offset);
-    prefix = word.type === "quoted" ? raw.slice(1).replaceAll("]]", "]") : raw;
+    const close = raw[0] === "[" ? "]" : '"';
+    prefix = word.type === "quoted" ? raw.slice(1).replaceAll(close + close, close) : raw;
   }
 
   const significant = all.filter((t) => t.type !== "comment");
@@ -591,7 +625,7 @@ export function contextAt(text: string, offset: number, language: Language): Cur
   const before = stmt.filter((t) => t.end <= prefixStart);
   const last = before[before.length - 1];
 
-  if (prefix.startsWith("@")) {
+  if (prefix.startsWith("@") && language === "tsql") {
     const batch = b.batches[containing(b.batches, offset)];
     const declared = tokenize(text, language, batch.start, batch.end).filter((t) => t.type !== "comment");
     return done({ kind: "variables", names: declaredVariables(declared) });
@@ -636,12 +670,13 @@ export function contextAt(text: string, offset: number, language: Language): Cur
 
   // Types: CONVERT( ... | CAST(x AS | ... DECLARE @x |
   const opens = unmatchedOpens(before);
+  if (language === "pgsql" && last?.text === ":" && before[before.length - 2]?.text === ":") return done({ kind: "types" });
   if (last?.text === "(" && ["convert", "try_convert"].includes(lower(before[before.length - 2]))) return done({ kind: "types" });
   if (lower(last) === "as") {
     const cast = opens.length > 0 && ["cast", "try_cast"].includes(lower(before[opens[0] - 1]));
     return done(cast ? { kind: "types" } : { kind: "none" });
   }
-  if (last?.type === "var" && declaringVariable(before)) return done({ kind: "types" });
+  if (last?.type === "var" && language === "tsql" && declaringVariable(before)) return done({ kind: "types" });
 
   const clause = nearestClause(before);
   if (!clause) return done({ kind: "keywords" });

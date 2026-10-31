@@ -1,5 +1,5 @@
-// Postgres keywords and built-in functions: colouring for the pgsql language (monaco.ts), and the words the pgsql
-// dialect will complete (#118).
+// Postgres keywords, built-in functions and types: colouring for the pgsql language (monaco.ts), and the words the
+// pgsql dialect completes and never reads as a column (engine.ts, lint.ts).
 
 export const PGSQL_KEYWORDS = [
   "ABORT", "ADD", "ALL", "ALTER", "ANALYZE", "AND", "ANY", "ARRAY", "AS", "ASC", "ATOMIC", "BEGIN", "BETWEEN", "BIGSERIAL",

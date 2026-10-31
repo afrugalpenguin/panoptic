@@ -99,6 +99,8 @@ Anything else shows the server's message.
 
 The engine (scanner, tokenizer, lint, error locator) takes a dialect, `tsql` or `pgsql`. For `pgsql`: double-quoted names instead of brackets, dollar quoting (`$$` and `$tag$`), `E''` strings, `::` casts, statements split on `;` only, Postgres keywords and builtins. Completions, hover, lint, error location and the did-you-mean quick fix all run through it. Postgres errors with a column get an exact marker without the token finder. Did-you-mean runs for 42P01 (undefined table), 42703 (undefined column) and 42883 (undefined function).
 
+As built: unqualified names resolve to `public` first, and names are double-quoted on insert unless plain lower case. There is no `USE`, and a qualifier that is not a schema is never read as a database (Postgres cannot query across databases), so no other catalog is fetched. The did-you-mean request carries the SQLSTATE and the dotted name written at the server's position; it runs only for messages that say "does not exist", because 42P01 is also "missing FROM-clause entry for table", where the alias is wrong, not the table. 42883 suggests functions and procedures. The unknown-name lint keeps its own not-a-column word list per dialect, so the Postgres keywords do not mute T-SQL warnings; it skips `pg_catalog`, `information_schema`, unqualified `pg_*` names, the type after `::` and the field in `extract(... from ...)`. Postgres tabs refresh their catalog after DDL, as SQL tabs do.
+
 ### T-SQL habits lint (PR 5)
 
 Warnings before running, in the `pgsql` editor only, through the existing lint and quick-fix machinery:

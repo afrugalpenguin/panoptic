@@ -1,6 +1,6 @@
 # PostgreSQL connector
 
-Status: in progress. The design is in [docs/plans/2026-10-30-postgres-design.md](../plans/2026-10-30-postgres-design.md) (ADR 0015); this page describes the connector as it lands, pull request by pull request. The tree, sign-in and connection dialog (#116), and queries with the read-only guard (#117), are in; IntelliSense (#118) and the T-SQL habits warnings (#119) follow.
+Status: in progress. The design is in [docs/plans/2026-10-30-postgres-design.md](../plans/2026-10-30-postgres-design.md) (ADR 0015); this page describes the connector as it lands, pull request by pull request. The tree, sign-in and connection dialog (#116), and queries with the read-only guard (#117), are in, and so is IntelliSense (#118); the T-SQL habits warnings (#119) follow.
 
 Covers PostgreSQL and Azure Database for PostgreSQL Flexible Server. Backend: `apps/sidecar/Panoptic.Sidecar/Backends/PostgresBackend.cs`, using Npgsql.
 
@@ -61,7 +61,15 @@ New query on a connection or database, and Select top 1000 on a table, view or m
 - **Errors** are marked at the exact line and column the server reports, with its `DETAIL:` and `HINT:` lines. An error inside a function names the function instead.
 - **Cancel** sends a cancel request to the server.
 
-IntelliSense for Postgres comes with #118; until then the status bar says "IntelliSense: not yet for Postgres".
+## IntelliSense
+
+Completion, hover and the unknown-name warnings work as they do for SQL Server, read in Postgres terms:
+
+- Names are double-quoted when inserted unless they are plain lower case, because unquoted names fold to lower case (`"Order"`, `"Full Name"`, but `customer`). An unqualified name resolves to `public` first, and `public` objects show their schema dimmed, as `dbo` does for SQL Server.
+- `"names"`, `$$` and `$tag$` bodies, `E'...'` strings and comments are read as such, so nothing inside a function body is completed or checked. Statements end at semicolons only. There is no `USE`, and a qualifier that is not a schema is never taken for another database.
+- Types complete after `::` and `CAST(x AS`; procedures and their parameters after `CALL`.
+- The warnings skip `pg_catalog`, `information_schema` and unqualified `pg_*` names, the type after `::`, the field in `extract(year from ...)`, and tables made earlier in the script (`CREATE TEMP TABLE`, `CREATE OR REPLACE VIEW`, `CREATE MATERIALIZED VIEW IF NOT EXISTS`, ...).
+- Did you mean: when a run fails with an undefined table (42P01), column (42703) or function (42883), the closest catalog name is added to the message and offered as a quick fix on the mark. A "missing FROM-clause entry" error shares 42P01 and gets no suggestion: the alias is what is wrong, not the table.
 
 ## Read-only environments
 
