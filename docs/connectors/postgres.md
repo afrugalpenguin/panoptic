@@ -1,6 +1,6 @@
 # PostgreSQL connector
 
-Status: in progress. The design is in [docs/plans/2026-10-30-postgres-design.md](../plans/2026-10-30-postgres-design.md) (ADR 0015); this page describes the connector as it lands, pull request by pull request. The tree, sign-in and connection dialog (#116), and queries with the read-only guard (#117), are in, and so are IntelliSense (#118) and the T-SQL habits warnings (#119).
+Status: shipped. The tree, sign-in and connection dialog (#116), queries with the read-only guard (#117), IntelliSense (#118) and the T-SQL habits warnings (#119) are all in. Client certificates (#120), AWS RDS IAM (#121) and Kerberos (#122) sign-in are still open. The design is in [docs/plans/2026-10-30-postgres-design.md](../plans/2026-10-30-postgres-design.md) (ADR 0015).
 
 Covers PostgreSQL and Azure Database for PostgreSQL Flexible Server. Backend: `apps/sidecar/Panoptic.Sidecar/Backends/PostgresBackend.cs`, using Npgsql.
 

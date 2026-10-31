@@ -9,4 +9,4 @@ drawing.
 | --- | --- | --- |
 | SQL Server, Azure SQL and Azure Synapse SQL | `sql`, `synapse` | [sql-server.md](sql-server.md) |
 | Cosmos DB for NoSQL | `cosmos` | [cosmos.md](cosmos.md) |
-| PostgreSQL, Azure Database for PostgreSQL (in progress) | `postgres` | [postgres.md](postgres.md) |
+| PostgreSQL, Azure Database for PostgreSQL | `postgres` | [postgres.md](postgres.md) |
