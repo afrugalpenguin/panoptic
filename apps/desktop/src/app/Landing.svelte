@@ -247,7 +247,7 @@
     width: 7px;
     height: 7px;
     border-radius: 50%;
-    background: var(--brand-amber);
+    background: var(--ok);
   }
   .link {
     padding: 0;
