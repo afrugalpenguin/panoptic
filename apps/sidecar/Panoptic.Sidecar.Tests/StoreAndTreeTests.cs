@@ -480,7 +480,54 @@ public sealed class TreeServiceTests : IDisposable
 
         var below = await tree.ChildrenAsync(conn.Id, default);
         Assert.Equal("thing", Assert.Single(below).Kind);
-        Assert.Equal(("c1", "pw", conn.Id, 2), backend.LastCall);
+        Assert.Equal(("c1", "pw", conn.Id, 1), backend.LastCall);
+    }
+
+    [Fact]
+    public async Task Connection_ids_leave_out_the_environment_and_ungrouped_ones_follow_the_environments()
+    {
+        var store = new ConfigStore(_path);
+        store.SaveEnvironment(new EnvironmentConfig("dev", "Dev", "#000", false, []));
+        store.SaveEnvironment(new EnvironmentConfig("empty", "Empty", "#000", false, []));
+        store.SaveConnection("dev", new ConnectionConfig("c1", "Orders", ConnectionKinds.Sql, "srv", AuthKinds.Sql), "pw");
+        store.SaveConnection(null, new ConnectionConfig("c2", "Loose", ConnectionKinds.Sql, "srv2", AuthKinds.Sql), "pw2");
+        var backend = new FakeBackend();
+        var tree = new TreeService(store, new Dictionary<string, IBackend> { [ConnectionKinds.Sql] = backend });
+
+        var root = await tree.ChildrenAsync("", default);
+        Assert.Equal(["env:dev", "env:empty", "conn:c2"], root.Select(n => n.Id));
+        Assert.Equal("connection", root[2].Kind);
+        Assert.False(root[1].HasChildren);
+        Assert.Equal("0", root[1].Meta!["connectionCount"]);
+        Assert.Equal("conn:c1", Assert.Single(await tree.ChildrenAsync("env:dev", default)).Id);
+
+        await tree.ChildrenAsync("conn:c2", default);
+        Assert.Equal(("c2", "pw2", "conn:c2", 1), backend.LastCall);
+    }
+
+    [Fact]
+    public void Targets_resolve_with_or_without_an_environment()
+    {
+        var store = new ConfigStore(_path);
+        store.SaveEnvironment(new EnvironmentConfig("dev", "Dev", "#000", true, []));
+        store.SaveConnection("dev", new ConnectionConfig("c1", "Orders", ConnectionKinds.Sql, "srv", AuthKinds.Sql), "pw");
+        store.SaveConnection(null, new ConnectionConfig("c2", "Loose", ConnectionKinds.Sql, "srv2", AuthKinds.Sql), "pw2");
+        var tree = new TreeService(store, new Dictionary<string, IBackend>());
+
+        Assert.Equal("dev", tree.ResolveTarget("conn:c1/db:Sales").Environment!.Id);
+        var loose = tree.ResolveTarget("conn:c2/db:Sales");
+        Assert.Null(loose.Environment);
+        Assert.Equal("Sales", loose.Database);
+        Assert.Equal("conn:c2", tree.ScopeOf("conn:c2/db:Sales").Connection);
+        Assert.Equal("conn:c1", tree.ScopeOf("conn:c1").Connection);
+    }
+
+    [Fact]
+    public async Task The_old_environment_prefixed_connection_id_is_invalid()
+    {
+        var tree = TreeWithOneConnection();
+        Assert.Equal(RpcException.InvalidParams, (await Assert.ThrowsAsync<RpcException>(() => tree.ChildrenAsync("env:dev/conn:c1", default))).Code);
+        Assert.Equal(RpcException.InvalidParams, Assert.Throws<RpcException>(() => tree.ResolveTarget("env:dev/conn:c1")).Code);
     }
 
     [Fact]
@@ -490,7 +537,7 @@ public sealed class TreeServiceTests : IDisposable
         store.SaveEnvironment(new EnvironmentConfig("dev", "Dev", "#000", false, []));
         var tree = new TreeService(store, new Dictionary<string, IBackend>());
 
-        var ex = await Assert.ThrowsAsync<RpcException>(() => tree.ChildrenAsync("env:dev/conn:gone", default));
+        var ex = await Assert.ThrowsAsync<RpcException>(() => tree.ChildrenAsync("conn:gone", default));
         Assert.Equal(RpcException.OperationFailed, ex.Code);
     }
 
@@ -506,9 +553,9 @@ public sealed class TreeServiceTests : IDisposable
     public void ResolveTarget_uses_the_node_then_the_connection_default_then_an_override()
     {
         var tree = TreeWithOneConnection();
-        Assert.Equal("Home", tree.ResolveTarget("env:dev/conn:c1").Database);
-        Assert.Equal("Sales", tree.ResolveTarget("env:dev/conn:c1/db:Sales").Database);
-        Assert.Equal("Other", tree.ResolveTarget("env:dev/conn:c1/db:Sales", "Other").Database);
+        Assert.Equal("Home", tree.ResolveTarget("conn:c1").Database);
+        Assert.Equal("Sales", tree.ResolveTarget("conn:c1/db:Sales").Database);
+        Assert.Equal("Other", tree.ResolveTarget("conn:c1/db:Sales", "Other").Database);
     }
 
     [Theory]
@@ -519,7 +566,7 @@ public sealed class TreeServiceTests : IDisposable
     {
         var tree = TreeWithOneConnection();
         var value = database == "x129" ? new string('x', 129) : database;
-        var ex = Assert.Throws<RpcException>(() => tree.ResolveTarget("env:dev/conn:c1", value));
+        var ex = Assert.Throws<RpcException>(() => tree.ResolveTarget("conn:c1", value));
         Assert.Equal(RpcException.InvalidParams, ex.Code);
     }
 }

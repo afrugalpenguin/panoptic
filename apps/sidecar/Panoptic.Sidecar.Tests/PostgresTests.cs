@@ -221,12 +221,12 @@ public class PostgresIntegrationTests(ITestOutputHelper output)
     private async Task<TreeNode[]> Expand(PostgresBackend backend, ConnectionConfig c, NodePath path, string? secret = null)
     {
         var sw = Stopwatch.StartNew();
-        var nodes = await backend.ChildrenAsync(c, secret ?? PgFactAttribute.Password, path, 2, CancellationToken.None);
+        var nodes = await backend.ChildrenAsync(c, secret ?? PgFactAttribute.Password, path, 1, CancellationToken.None);
         output.WriteLine($"{path}: {nodes.Length} nodes in {sw.ElapsedMilliseconds} ms");
         return nodes;
     }
 
-    private static NodePath Root => NodePath.Parse("env:dev/conn:pg1");
+    private static NodePath Root => NodePath.Parse("conn:pg1");
 
     [PgFact, Trait("Category", "PgIntegration")]
     public async Task Tree_walks_from_databases_to_columns_keys_and_indexes()

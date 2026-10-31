@@ -151,7 +151,7 @@ public sealed class PostgresBackend(Credentials credentials) : IQueryBackend
             sink.Message("info", e.Notice.InvariantSeverity == "WARNING" ? $"WARNING: {e.Notice.MessageText}" : e.Notice.MessageText);
         conn.Notice += notices;
 
-        var readOnly = target.Environment.ReadOnly;
+        var readOnly = target.ReadOnly;
         var committed = false;
         var failed = false;
         PostgresStatements.Statement? current = null;
@@ -266,7 +266,7 @@ public sealed class PostgresBackend(Credentials credentials) : IQueryBackend
         }
         catch (Exception ex) when (!committed && ex is NpgsqlException or InvalidOperationException)
         {
-            sink.Message("error", $"{target.Environment.Name} is read-only, but the rollback failed: {ex.Message}. "
+            sink.Message("error", $"{target.Environment!.Name} is read-only, but the rollback failed: {ex.Message}. "
                 + "The transaction was read-only, so the server refused any writes, and it ends when the connection closes.");
             return;
         }
@@ -284,7 +284,7 @@ public sealed class PostgresBackend(Credentials credentials) : IQueryBackend
         else
         {
             sink.RolledBack();
-            sink.Message("info", SqlBackend.RolledBackMessage(target.Environment.Name, failed));
+            sink.Message("info", SqlBackend.RolledBackMessage(target.Environment!.Name, failed));
         }
     }
 

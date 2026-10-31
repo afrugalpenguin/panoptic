@@ -69,8 +69,8 @@ public sealed class DragTextTests
     {
         var backend = new SqlBackend(new Credentials(_ => { }));
         var conn = new ConnectionConfig("sql1", "dev", ConnectionKinds.Sql, "127.0.0.1,14333", AuthKinds.Sql, User: "sa", TrustServerCertificate: true);
-        var root = NodePath.Parse("env:e/conn:sql1");
-        Task<TreeNode[]> Expand(NodePath path) => backend.ChildrenAsync(conn, SqlFactAttribute.Password, path, 2, default);
+        var root = NodePath.Parse("conn:sql1");
+        Task<TreeNode[]> Expand(NodePath path) => backend.ChildrenAsync(conn, SqlFactAttribute.Password, path, 1, default);
 
         var orders = (await Expand(root)).Single(n => n.Label == "Orders");
         Assert.Equal("Orders", orders.Meta!["dragText"]);

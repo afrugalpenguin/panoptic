@@ -2,7 +2,9 @@ namespace Panoptic.Sidecar;
 
 /// <summary>
 /// Node ids are paths of <c>type:value</c> segments joined by '/', values percent-encoded,
-/// e.g. <c>env:a1/conn:b2/db:orders/f:tables/o:dbo%1FOrders</c>. The root is the empty path.
+/// e.g. <c>conn:b2/db:orders/f:tables/o:dbo%1FOrders</c>. The root is the empty path; its children are the
+/// environments (<c>env:a1</c>) and the connections in no environment. A connection's id never includes its
+/// environment, so moving a connection keeps every id below it.
 /// Only the sidecar parses them; the UI treats ids as opaque.
 /// </summary>
 public sealed class NodePath

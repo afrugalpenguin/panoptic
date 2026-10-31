@@ -22,7 +22,7 @@ public class BackendIntegrationTests(ITestOutputHelper output)
         var password = SqlFactAttribute.Password!;
 
         var backend = new SqlBackend(NoEntra);
-        var root = NodePath.Parse("env:dev/conn:sql1");
+        var root = NodePath.Parse("conn:sql1");
 
         var dbs = await Expand(backend, DevSql, password, root);
         Assert.Contains(dbs, n => n.Label == "Orders");
@@ -89,7 +89,7 @@ public class BackendIntegrationTests(ITestOutputHelper output)
         }
 
         var limited = DevSql with { User = "panoptic_limited" };
-        var dbs = await Expand(backend, limited, limitedPassword, NodePath.Parse("env:dev/conn:sql1"));
+        var dbs = await Expand(backend, limited, limitedPassword, NodePath.Parse("conn:sql1"));
 
         Assert.Contains(dbs, d => d.Label == "Inventory");
         Assert.Contains(dbs, d => d.Label == "Orders");
@@ -111,7 +111,7 @@ public class BackendIntegrationTests(ITestOutputHelper output)
         // No Synapse emulator exists; this checks the folder shape and the external-table filter
         // against plain SQL Server, where the External tables folder is simply empty.
         var synapse = DevSql with { Kind = ConnectionKinds.Synapse };
-        var db = NodePath.Parse("env:dev/conn:sql1").Child("db", "Orders");
+        var db = NodePath.Parse("conn:sql1").Child("db", "Orders");
         var backend = new SqlBackend(NoEntra);
 
         var folders = await Expand(backend, synapse, password, db);
@@ -125,7 +125,7 @@ public class BackendIntegrationTests(ITestOutputHelper output)
     {
         var conn = new ConnectionConfig("cos1", "emulator", ConnectionKinds.Cosmos, "https://localhost:8081", AuthKinds.Key, TrustServerCertificate: true);
         var backend = new CosmosBackend(NoEntra);
-        var root = NodePath.Parse("env:dev/conn:cos1");
+        var root = NodePath.Parse("conn:cos1");
 
         await backend.TestAsync(conn, CosmosEmulatorKey, default);
 
@@ -162,7 +162,7 @@ public class BackendIntegrationTests(ITestOutputHelper output)
     private async Task<TreeNode[]> Expand(IBackend backend, ConnectionConfig conn, string secret, NodePath path)
     {
         var sw = Stopwatch.StartNew();
-        var nodes = await backend.ChildrenAsync(conn, secret, path, 2, default);
+        var nodes = await backend.ChildrenAsync(conn, secret, path, 1, default);
         output.WriteLine($"{sw.ElapsedMilliseconds,5} ms  {nodes.Length,4} nodes  {path.Id}");
         return nodes;
     }

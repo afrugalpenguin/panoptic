@@ -98,8 +98,13 @@ public sealed record NodeScopeParams(string NodeId);
 public sealed record NodeInvokeParams(string NodeId, string ActionId);
 /// <param name="Text">What the action produced, which the UI copies. Null: nothing to copy.</param>
 public sealed record NodeInvokeResult(string? Text);
-/// <summary>What a node id resolves to for running a query: its environment, connection and the database or container under it.</summary>
-public sealed record QueryTarget(EnvironmentConfig Environment, ConnectionConfig Connection, string? Database, string? Container);
+/// <summary>What a node id resolves to for running a query: its environment (null for a connection in none),
+/// connection and the database or container under it.</summary>
+public sealed record QueryTarget(EnvironmentConfig? Environment, ConnectionConfig Connection, string? Database, string? Container)
+{
+    /// <summary>Read-only is an environment's setting: a connection in no environment is never read-only.</summary>
+    public bool ReadOnly => Environment?.ReadOnly == true;
+}
 
 /// <summary>One server error in a failed query, sent with its query.message so the UI can place it in the editor.</summary>
 /// <param name="Number">The server's error number (208 invalid object name, 207 invalid column name, ...). 0 for a server
