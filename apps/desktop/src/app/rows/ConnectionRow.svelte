@@ -12,7 +12,7 @@
 <span class="endpoint"><SegmentedLabel label={row.label} /></span>
 {#if row.error}<WarningIcon small title="Failed to load. Expand to see why." />{/if}
 {#if row.loading}<span class="spinner" aria-label="Loading"></span>{/if}
-{#if disconnected}<span class="stale" title="The sidecar stopped. Reconnects when it is running again.">disconnected</span>
+{#if disconnected}<span class="stale" title="The database engine stopped. Reconnects when it is running again.">disconnected</span>
 {:else if row.stale}<span class="stale" title="Loaded a while ago. F5 to refresh.">stale</span>{/if}
 
 <style>

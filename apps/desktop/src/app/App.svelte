@@ -31,7 +31,7 @@
 
   let api = $state.raw<Api>();
   let sidecar = $state<"connecting" | "connected" | "disconnected">("connecting");
-  let sidecarText = $state("Starting...");
+  let sidecarText = $state("Starting database engine...");
   let config = $state<AppConfig>({ environments: [] });
   let rows = $state.raw<Row[]>([]);
   let problems = $state.raw<Problem[]>([]);
@@ -138,7 +138,7 @@
     sidecarText = view.text;
     // Its caches went with the process: drop what was loaded below the connections.
     if (view.lost) model.forgetConnections();
-    if (status.state === "failed") lastLoad = { id: "", label: "Sidecar", count: 0, ms: 0, error: `${status.error}. Restart Panoptic.` };
+    if (status.state === "failed") lastLoad = { id: "", label: "Database engine", count: 0, ms: 0, error: `${status.error}. Restart Panoptic.` };
   }
 
   async function onRunning() {
@@ -183,7 +183,7 @@
       sidecarStartupMs: ping.startupMs,
       sidecarMode: ping.mode,
     };
-    startup = `First paint ${timings.mainToFirstPaintMs} ms, sidecar ready ${timings.mainToSidecarReadyMs} ms (sidecar ${ping.startupMs} ms, ${ping.mode}, v${ping.version})`;
+    startup = `First paint ${timings.mainToFirstPaintMs} ms, engine ready ${timings.mainToSidecarReadyMs} ms (engine ${ping.startupMs} ms, ${ping.mode}, v${ping.version})`;
     if (info.benchMode === "startup") await finishBenchmark(timings);
     if (info.benchMode) return;
     settings = await api!.settings();

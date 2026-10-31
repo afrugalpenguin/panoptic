@@ -38,7 +38,7 @@ function run(sequence: (SidecarStatus | "ping")[]) {
 describe("sidecarView", () => {
   it("connects on first start without marking anything lost", () => {
     expect(run([{ state: "starting", attempt: 1 }, { state: "running", pid: 1 }, "ping"])).toEqual([
-      { indicator: "connecting", text: "Starting...", lost: false },
+      { indicator: "connecting", text: "Starting database engine...", lost: false },
       { indicator: "connected" },
     ]);
   });
@@ -54,20 +54,33 @@ describe("sidecarView", () => {
       "ping",
     ]);
     expect(seen.map((s) => s.indicator)).toEqual(["connecting", "connected", "disconnected", "disconnected", "connected"]);
-    expect(seen[2]).toEqual({ indicator: "disconnected", text: "Sidecar exited (code -1), connections disconnected", lost: true });
-    expect(seen[3]).toMatchObject({ text: "Restarting sidecar (attempt 2)...", lost: false });
+    expect(seen[2]).toEqual({ indicator: "disconnected", text: "Database engine exited (code -1), connections disconnected", lost: true });
+    expect(seen[3]).toMatchObject({ text: "Restarting database engine (attempt 2)...", lost: false });
   });
 
   it("reports an unknown exit code", () => {
-    expect(sidecarView("connected", { state: "exited", code: null })?.text).toBe("Sidecar exited (code unknown), connections disconnected");
+    expect(sidecarView("connected", { state: "exited", code: null })?.text).toBe("Database engine exited (code unknown), connections disconnected");
   });
 
   it("treats giving up and an intentional stop as lost, and a restart after a stop stays disconnected", () => {
-    expect(sidecarView("connected", { state: "failed", error: "x" })).toEqual({ indicator: "disconnected", text: "Sidecar stopped", lost: true });
+    expect(sidecarView("connected", { state: "failed", error: "x" })).toEqual({ indicator: "disconnected", text: "Database engine stopped", lost: true });
     const seen = run([{ state: "starting", attempt: 1 }, "ping", { state: "stopped" }, { state: "starting", attempt: 1 }, "ping"]);
     expect(seen.map((s) => s.indicator)).toEqual(["connecting", "connected", "disconnected", "disconnected", "connected"]);
-    expect(seen[2]).toEqual({ indicator: "disconnected", text: "Sidecar stopped for update", lost: true });
-    expect(seen[3]).toMatchObject({ text: "Starting...", lost: false });
+    expect(seen[2]).toEqual({ indicator: "disconnected", text: "Database engine stopped for update", lost: true });
+    expect(seen[3]).toMatchObject({ text: "Starting database engine...", lost: false });
+  });
+
+  it("never says sidecar to the user", () => {
+    const statuses: SidecarStatus[] = [
+      { state: "starting", attempt: 1 },
+      { state: "starting", attempt: 3 },
+      { state: "exited", code: 1 },
+      { state: "exited", code: null },
+      { state: "failed", error: "x" },
+      { state: "stopped" },
+    ];
+    for (const current of ["connecting", "connected", "disconnected"] as const)
+      for (const status of statuses) expect(sidecarView(current, status)?.text).not.toMatch(/sidecar/i);
   });
 });
 
@@ -86,7 +99,7 @@ describe("connectSidecar", () => {
       const pending = client.request("ping").catch((e: Error) => order.push(`rejected:${e.message}`));
       tauri.listeners.get("sidecar://status")!({ payload: status });
       await pending;
-      expect(order).toEqual([`status:${status.state}`, "rejected:sidecar stopped"]);
+      expect(order).toEqual([`status:${status.state}`, "rejected:database engine stopped"]);
     },
   );
 

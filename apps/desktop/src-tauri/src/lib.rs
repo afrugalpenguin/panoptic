@@ -173,7 +173,7 @@ fn supervise(app: AppHandle, generation: u32) {
                 failures = if started.elapsed() >= HEALTHY_AFTER { 1 } else { failures + 1 };
                 set_status(&app, SidecarStatus::Exited { code });
                 if failures >= MAX_CONSECUTIVE_FAILURES {
-                    set_status(&app, SidecarStatus::Failed { error: format!("sidecar exited {failures} times in a row (last code {code:?})") });
+                    set_status(&app, SidecarStatus::Failed { error: format!("database engine exited {failures} times in a row (last code {code:?})") });
                     return;
                 }
             }

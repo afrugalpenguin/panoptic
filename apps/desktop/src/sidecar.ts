@@ -37,7 +37,7 @@ export async function connectSidecar(
 ): Promise<RpcClient> {
   const client = new RpcClient((line) => invoke("sidecar_send", { line }), onNotification);
   const handle = (status: SidecarStatus) => {
-    if (status.state === "exited" || status.state === "failed" || status.state === "stopped") client.disconnect("sidecar stopped");
+    if (status.state === "exited" || status.state === "failed" || status.state === "stopped") client.disconnect("database engine stopped");
     onStatus(status);
   };
   await listen<string>("sidecar://message", (e) => client.receive(e.payload));
