@@ -30,9 +30,12 @@ var tree = new TreeService(store, BackendRegistry.Create(credentials));
 
 var startupMs = (DateTime.Now - Process.GetCurrentProcess().StartTime).TotalMilliseconds;
 var query = new Panoptic.Sidecar.Query.QueryService(store, tree, Notify);
+var catalogCache = new Panoptic.Sidecar.Catalog.CatalogCache(Environment.GetEnvironmentVariable("PANOPTIC_CATALOG") ?? Panoptic.Sidecar.Catalog.CatalogCache.DefaultFolder);
+// Snapshots of connections deleted while no sidecar was running (or before snapshots were removed on delete).
+_ = Task.Run(() => catalogCache.Prune(store.ConnectionIds()));
 var catalog = new Panoptic.Sidecar.Catalog.CatalogService(
     p => tree.ResolveTarget(p.NodeId, p.Database),
-    new Panoptic.Sidecar.Catalog.CatalogCache(Environment.GetEnvironmentVariable("PANOPTIC_CATALOG") ?? Panoptic.Sidecar.Catalog.CatalogCache.DefaultFolder),
+    catalogCache,
     new Panoptic.Sidecar.Catalog.CatalogSources(store, tree),
     (method, notice) => Notify(method, w => JsonSerializer.Serialize(w, notice, SidecarJson.Default.CatalogNotice)));
 var dispatcher = new JsonRpcDispatcher(Methods.Create(new SidecarInfo(Math.Round(startupMs, 1), version, mode), store, tree, query, catalog));

@@ -1,0 +1,9 @@
+<Project>
+  <!-- Lock NuGet versions, transitive ones included (packages.lock.json per project). On CI (GitHub sets CI=true)
+       restore fails if the lock file is missing or out of date, so a PR build and the release build use the same
+       packages. Locally, a changed PackageReference updates the lock file on the next restore: commit it. -->
+  <PropertyGroup>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
+  </PropertyGroup>
+</Project>

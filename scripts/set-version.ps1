@@ -18,6 +18,8 @@ $utf8 = New-Object System.Text.UTF8Encoding $false
 $files = @(
     @{ Path = 'apps\desktop\package.json'; Pattern = '(?m)^(  "version": ")[^"]+(")' },
     @{ Path = 'apps\desktop\src-tauri\Cargo.toml'; Pattern = '(?m)^(version = ")[^"]+(")' },
+    # The app's own entry in Cargo.lock, so the release's cargo build --locked still matches. Dependencies are untouched.
+    @{ Path = 'apps\desktop\src-tauri\Cargo.lock'; Pattern = '(?m)^(name = "panoptic"\r?\nversion = ")[^"]+(")' },
     @{ Path = 'apps\sidecar\Panoptic.Sidecar\Panoptic.Sidecar.csproj'; Pattern = '(<Version>)[^<]+(</Version>)' }
 )
 
@@ -31,4 +33,4 @@ foreach ($f in $files) {
     Write-Host "$($f.Path) -> $Version"
 }
 
-Write-Host "Run 'cargo update -p panoptic' in apps\desktop\src-tauri to refresh Cargo.lock, then commit on a branch and open a PR. Merging it to main starts the $($Version.Substring(0, $Version.LastIndexOf('.'))).x series; the release workflow sets the patch."
+Write-Host "Commit on a branch and open a PR. Merging it to main starts the $($Version.Substring(0, $Version.LastIndexOf('.'))).x series; the release workflow sets the patch."
