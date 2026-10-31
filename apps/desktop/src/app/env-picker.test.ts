@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { EnvironmentConfig } from "./api";
-import { NEW_ENV, newEnvironment, NO_ENV, pickerOptions, toEnvironmentId } from "./env-picker";
+import { NEW_ENV, newEnvironment, NO_ENV, pickerOptions, readOnlyMoveWarning, toEnvironmentId } from "./env-picker";
 import { envStyleFor } from "./import-plan";
 
 const env = (id: string, name: string): EnvironmentConfig => ({ id, name, color: "#000", readOnly: false, connections: [] });
@@ -46,5 +46,26 @@ describe("newEnvironment", () => {
 
   it("refuses an empty name", () => {
     expect(newEnvironment("   ", envs, "id1")).toEqual({ error: "Name the environment." });
+  });
+});
+
+describe("readOnlyMoveWarning", () => {
+  const prod = { ...env("p", "Prod"), readOnly: true };
+  const uat = env("u", "UAT");
+  const dr = { ...env("r", "DR"), readOnly: true };
+
+  it("warns when a move takes a connection out of a read-only environment", () => {
+    expect(readOnlyMoveWarning("uk-sql", prod, uat)).toBe(
+      'Move "uk-sql" from Prod to UAT? Prod is read-only and UAT is not, so its queries will no longer be rolled back.',
+    );
+    expect(readOnlyMoveWarning("uk-sql", prod, undefined)).toBe(
+      'Move "uk-sql" out of Prod? Prod is read-only, so its queries will no longer be rolled back.',
+    );
+  });
+
+  it("says nothing when the connection stays read-only or was not read-only", () => {
+    expect(readOnlyMoveWarning("uk-sql", prod, dr)).toBeUndefined();
+    expect(readOnlyMoveWarning("uk-sql", uat, undefined)).toBeUndefined();
+    expect(readOnlyMoveWarning("uk-sql", undefined, uat)).toBeUndefined();
   });
 });

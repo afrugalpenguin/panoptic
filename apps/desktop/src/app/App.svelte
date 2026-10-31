@@ -17,6 +17,7 @@
   import EnvironmentDialog from "./EnvironmentDialog.svelte";
   import ImportDialog from "./ImportDialog.svelte";
   import MoveDialog from "./MoveDialog.svelte";
+  import { readOnlyMoveWarning } from "./env-picker";
   import IconButton from "./IconButton.svelte";
   import KindChips from "./KindChips.svelte";
   import Landing from "./Landing.svelte";
@@ -334,6 +335,8 @@
   async function moveConnection(connectionId: string, environmentId: string | null) {
     const found = connectionOf(connectionId);
     if (!found || (found.env?.id ?? null) === environmentId) return;
+    const warning = readOnlyMoveWarning(found.connection.name, found.env, environmentId ? envOf(environmentId) : undefined);
+    if (warning && !confirm(warning)) return;
     try {
       await configChanged(await api!.saveConnection(environmentId, found.connection));
     } catch (e) {
