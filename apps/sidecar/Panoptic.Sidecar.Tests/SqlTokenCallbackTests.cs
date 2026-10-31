@@ -172,12 +172,29 @@ public class SqlTokenCallbackTests
             Assert.True(ct.IsCancellationRequested);
             return Task.FromResult(new AccessToken("tok", DateTimeOffset.UtcNow.AddHours(1)));
         });
-        var backend = new SqlBackend(new Credentials(_ => { }, t => { tenant = t; return credential; }));
+        var backend = new SqlBackend(new Credentials(_ => { }, k => { tenant = k.TenantId; return credential; }));
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             backend.OpenAsync(Entra with { TenantId = " 00000000-0000-0000-0000-000000000001 " }, null, "app", request.Token));
         Assert.Equal(1, credential.Calls);
         Assert.Equal("00000000-0000-0000-0000-000000000001", tenant);
+    }
+
+    [Fact]
+    public async Task Open_with_entra_signs_in_as_the_connection_client_id()
+    {
+        using var request = new CancellationTokenSource();
+        CredentialKey? key = null;
+        var credential = new FakeCredential((_, _) =>
+        {
+            request.Cancel();
+            return Task.FromResult(new AccessToken("tok", DateTimeOffset.UtcNow.AddHours(1)));
+        });
+        var backend = new SqlBackend(new Credentials(_ => { }, k => { key = k; return credential; }));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            backend.OpenAsync(Entra with { ClientId = " 11111111-2222-3333-4444-555555555555 " }, null, "app", request.Token));
+        Assert.Equal("11111111-2222-3333-4444-555555555555", key!.ClientId);
     }
 
     [Theory]

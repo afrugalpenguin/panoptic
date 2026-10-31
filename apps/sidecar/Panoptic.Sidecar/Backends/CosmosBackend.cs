@@ -374,7 +374,7 @@ public sealed class CosmosBackend(Credentials credentials) : IQueryBackend
         return c.Auth switch
         {
             AuthKinds.Key => new CosmosClient(c.Endpoint, secret ?? throw new RpcException(RpcException.InvalidParams, "Account key is required"), options),
-            AuthKinds.Entra => new CosmosClient(c.Endpoint, credentials.For(c.TenantId), options),
+            AuthKinds.Entra => new CosmosClient(c.Endpoint, credentials.For(c.TenantId, c.ClientId), options),
             _ => throw new RpcException(RpcException.InvalidParams, $"Cosmos does not support auth '{c.Auth}'"),
         };
     }

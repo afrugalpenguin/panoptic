@@ -583,7 +583,7 @@ public sealed class PostgresBackend(Credentials credentials) : IQueryBackend
                 if (string.IsNullOrWhiteSpace(user)) throw new RpcException(RpcException.InvalidParams, "User is required");
                 break;
             case AuthKinds.Entra:
-                var credential = credentials.For(c.TenantId);
+                var credential = credentials.For(c.TenantId, c.ClientId);
                 var token = await SignInAsync(credential, SignInBudget, c, database, ct);
                 if (string.IsNullOrWhiteSpace(user)) user = EntraUser(token.Token)
                     ?? throw new RpcException(RpcException.InvalidParams, "Enter the Entra user name (the role's name on the server): it could not be read from the sign-in.");

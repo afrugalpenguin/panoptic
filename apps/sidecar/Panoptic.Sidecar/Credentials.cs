@@ -6,27 +6,37 @@ using Microsoft.Identity.Client;
 
 namespace Panoptic.Sidecar;
 
+/// <summary>Which Entra credential: the tenant (\"\" for the default) and the app's client id (null for the default).</summary>
+public sealed record CredentialKey(string TenantId, string? ClientId);
+
 /// <summary>
 /// One Entra credential per tenant, shared by SQL and Cosmos connections (ADR 0007).
 /// Tries the WAM broker first, which can reuse the account signed in to Windows silently, and
 /// falls back to device-code flow if the broker is unavailable. Tokens are cached by MSAL in the
 /// user profile, encrypted with DPAPI. Tests pass <c>create</c> to supply their own credentials.
 /// </summary>
-public sealed class Credentials(Action<DeviceCodePrompt> onDeviceCode, Func<string, TokenCredential>? create = null)
+public sealed class Credentials(Action<DeviceCodePrompt> onDeviceCode, Func<CredentialKey, TokenCredential>? create = null)
 {
-    private readonly ConcurrentDictionary<string, TokenCredential> _byTenant = new();
+    private readonly ConcurrentDictionary<CredentialKey, TokenCredential> _byTenant = new();
 
-    public TokenCredential For(string? tenantId) =>
-        _byTenant.GetOrAdd(string.IsNullOrWhiteSpace(tenantId) ? "" : tenantId.Trim(), create ?? Create);
+    /// <summary>
+    /// The credential for a tenant and, optionally, an app registration other than Azure.Identity's default public
+    /// client (issue #262). Each pair has its own credential, so connections using different apps never share one.
+    /// </summary>
+    public TokenCredential For(string? tenantId, string? clientId = null) =>
+        _byTenant.GetOrAdd(
+            new CredentialKey(string.IsNullOrWhiteSpace(tenantId) ? "" : tenantId.Trim(), string.IsNullOrWhiteSpace(clientId) ? null : clientId.Trim()),
+            create ?? Create);
 
-    private TokenCredential Create(string tenantId)
+    private TokenCredential Create(CredentialKey key)
     {
-        var tenant = tenantId.Length == 0 ? null : tenantId;
+        var tenant = key.TenantId.Length == 0 ? null : key.TenantId;
         var cache = new TokenCachePersistenceOptions { Name = "panoptic" };
 
         var broker = new InteractiveBrowserCredential(new InteractiveBrowserCredentialBrokerOptions(ParentWindow())
         {
             TenantId = tenant,
+            ClientId = key.ClientId,
             TokenCachePersistenceOptions = cache,
             UseDefaultBrokerAccount = true,
         });
@@ -34,6 +44,7 @@ public sealed class Credentials(Action<DeviceCodePrompt> onDeviceCode, Func<stri
         var deviceCode = new DeviceCodeCredential(new DeviceCodeCredentialOptions
         {
             TenantId = tenant,
+            ClientId = key.ClientId,
             TokenCachePersistenceOptions = cache,
             DeviceCodeCallback = (info, _) =>
             {

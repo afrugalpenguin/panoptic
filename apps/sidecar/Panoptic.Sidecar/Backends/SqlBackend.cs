@@ -571,8 +571,8 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
                 conn = new SqlConnection(builder.ConnectionString);
                 break;
             case AuthKinds.Entra:
-                await SignInAsync(credentials.For(c.TenantId), SignInBudget, c, database, ct);
-                conn = new SqlConnection(builder.ConnectionString) { AccessTokenCallback = TokenCallbackFor(c.TenantId) };
+                await SignInAsync(credentials.For(c.TenantId, c.ClientId), SignInBudget, c, database, ct);
+                conn = new SqlConnection(builder.ConnectionString) { AccessTokenCallback = TokenCallbackFor(c.TenantId, c.ClientId) };
                 break;
             default:
                 throw new RpcException(RpcException.InvalidParams, $"SQL Server does not support auth '{c.Auth}'");
@@ -622,8 +622,8 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
     /// One callback per tenant credential. SqlClient keys its pool on the callback instance as well as the connection
     /// string, so a new lambda per open meant a new pool, and a fresh TCP, TLS and Entra login, on every expand.
     /// </summary>
-    public Func<SqlAuthenticationParameters, CancellationToken, Task<SqlAuthenticationToken>> TokenCallbackFor(string? tenantId) =>
-        _tokenCallbacks.GetOrAdd(credentials.For(tenantId), TokenCallback);
+    public Func<SqlAuthenticationParameters, CancellationToken, Task<SqlAuthenticationToken>> TokenCallbackFor(string? tenantId, string? clientId = null) =>
+        _tokenCallbacks.GetOrAdd(credentials.For(tenantId, clientId), TokenCallback);
 
     /// <summary>
     /// SqlClient cancels <c>token</c> when the connect timeout runs out. WaitAsync stops waiting then even if the

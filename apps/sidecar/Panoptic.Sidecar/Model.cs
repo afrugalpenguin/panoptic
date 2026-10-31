@@ -59,6 +59,7 @@ public sealed record ConnectionConfig(
     string? Database = null,
     string? TenantId = null,
     bool TrustServerCertificate = false,
+    string? ClientId = null,
     string? CertificateHostName = null,
     string? CertificateFile = null);
 

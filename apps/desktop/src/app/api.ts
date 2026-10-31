@@ -38,6 +38,8 @@ export interface ConnectionConfig {
   database?: string | null;
   tenantId?: string | null;
   trustServerCertificate: boolean;
+  /** Entra only: sign in as this app registration instead of the default public client. */
+  clientId?: string | null;
   /** SQL Server and Postgres: the name the certificate must match, when it isn't the server's (a private endpoint, an alias). */
   certificateHostName?: string | null;
   /** SQL Server and Postgres: a CA (or the server's own) certificate to trust for this connection only. */
