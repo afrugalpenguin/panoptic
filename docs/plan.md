@@ -4,9 +4,9 @@ Oct 29, 2026 · @Mac
 
 ## What it is
 
-A native, instant-start workbench whose core is one object explorer that holds every environment at once: dev, UAT, prod, client sandboxes, SQL Server and Cosmos side by side, same node shape all the way down. Everything else (query editor, results grid, agent handoff) hangs off a selected node. The target feel is SSMS's tree with Zed's responsiveness: window open in under 500 ms, any node expanded in under 300 ms, 100k-row grid scrolling at 60 fps.
+A native, instant-start workbench whose core is one object explorer that holds every environment at once: dev, UAT, prod, client sandboxes, SQL Server, Cosmos and Postgres side by side, same node shape all the way down. Everything else (query editor, results grid, agent handoff) hangs off a selected node. The target feel is a classic object-explorer tree with Zed's responsiveness: window open in under 500 ms, any node expanded in under 300 ms, 100k-row grid scrolling at 60 fps.
 
-Panoptic is a platform-agnostic SSMS replacement: the tree, query pane and grid that SSMS gives you for SQL Server, for every engine and every environment at once, at native speed. It earns its place by doing that well, not by adding features SSMS lacks.
+Panoptic is a cross-environment, cross-engine database tool: the tree, query pane and grid that each engine's own client gives you for one server, for every engine and every environment at once, at native speed. It earns its place by doing that well, not by rebuilding any vendor tool's admin surfaces.
 
 **Non-goals for v1**
 
@@ -36,7 +36,7 @@ Panoptic: seeing everything from one position. The Ctrl+P palette inside it is c
 | Telemetry | None | Fail-closed on anything that phones home. |
 | Distribution | Per-user NSIS installer on GitHub Releases, Tauri updater plugin checks on launch | The work laptop is the real test bed; it must pick up every build without manual installs. The update check is the one outbound call and goes only to GitHub Releases. |
 | Code signing | Unsigned (Authenticode) in M0, updater payloads signed with a Tauri updater key | Prove SmartScreen and Intune behaviour first; buy a certificate or Azure Trusted Signing only if install is blocked or before v1. |
-| Cross-environment diff | Not in v1 and not core; later, as a plugin | Panoptic is an SSMS replacement, not a comparison tool. The node contract makes a diff plugin cheap to add later, so nothing is lost by waiting. |
+| Cross-environment diff | Not in v1 and not core; later, as a plugin | Panoptic is a database tool, not a comparison tool. The node contract makes a diff plugin cheap to add later, so nothing is lost by waiting. |
 
 ## Prior art
 
