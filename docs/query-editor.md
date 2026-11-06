@@ -28,7 +28,7 @@ The explorer's Copy name and the editor quote SQL names differently on purpose. 
 | Copy name | table, view, procedure, function, synonym | always bracketed, schema-qualified, as SSMS copies | `[dbo].[Orders]` | `[dbo].[a]]b]` |
 | Copy name | database, column, key, index | always bracketed, name alone | `[Orders]`, `[Id]`, `[PK_Orders]` | `[odd]]col]` |
 | Copy name | Definition, folders | none: no Copy name | | |
-| Drag into the editor, IntelliSense | objects (schema-qualified), databases, columns | bracketed only when not a regular identifier or a keyword | `dbo.Orders`, `Id` | `dbo.[a]]b]`, `[odd]]col]` |
+| Drag into the editor, IntelliSense | objects (schema-qualified), databases, columns | bracketed only when not a regular identifier, or a keyword or reserved word (`TSQL_RESERVED`; Postgres double-quotes its non-unreserved keywords, `PGSQL_RESERVED`) | `dbo.Orders`, `Id` | `dbo.[a]]b]`, `[odd]]col]`, `[Rowcount]` |
 
 Keys and indexes cannot be dragged. Cosmos has no identifier quoting: Copy name copies the id of a database, container or item, the name of a stored procedure or trigger, `udf.<name>` for a UDF and the path of a partition key (`/a, /b` for a hierarchical key). Folders, throughput and indexing policy have no Copy name.
 

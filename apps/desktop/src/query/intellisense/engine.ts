@@ -4,9 +4,9 @@
 import type { CatalogObject, ContainerRef, DatabaseCatalog, PathRef } from "../catalog.svelte";
 import { COSMOS_FUNCTIONS, COSMOS_KEYWORDS } from "./cosmos-words";
 import { mdCode, mdText } from "./markdown";
-import { PGSQL_FUNCTIONS, PGSQL_KEYWORDS, PGSQL_TYPES } from "./pgsql-words";
+import { PGSQL_FUNCTIONS, PGSQL_KEYWORDS, PGSQL_RESERVED, PGSQL_TYPES } from "./pgsql-words";
 import { statementTokens, tablesAt, type Context, type Language, type TableRef, type Token } from "./scanner";
-import { TSQL_FUNCTIONS, TSQL_KEYWORDS, TSQL_TYPES } from "./tsql-words";
+import { TSQL_FUNCTIONS, TSQL_KEYWORDS, TSQL_RESERVED, TSQL_TYPES } from "./tsql-words";
 
 export type ItemKind =
   | "table" | "view" | "proc" | "fn" | "synonym" | "column" | "param" | "variable" | "schema" | "type" | "keyword" | "function"
@@ -79,11 +79,11 @@ export function defaultSchema(language: Language): string {
   return language === "pgsql" ? "public" : "dbo";
 }
 
-const RESERVED = new Set(TSQL_KEYWORDS.map((k) => k.toLowerCase()));
-const PG_RESERVED = new Set(PGSQL_KEYWORDS.map((k) => k.toLowerCase()));
+const RESERVED = new Set([...TSQL_KEYWORDS, ...TSQL_RESERVED].map((k) => k.toLowerCase()));
+const PG_RESERVED = new Set([...PGSQL_KEYWORDS, ...PGSQL_RESERVED].map((k) => k.toLowerCase()));
 
 /**
- * Brackets a T-SQL name that is not a plain identifier or is a keyword. A Postgres name is double-quoted unless it is
+ * Brackets a T-SQL name that is not a plain identifier or is a keyword or reserved word. A Postgres name is double-quoted unless it is
  * plain lower case: unquoted names fold to lower case there, so "Order" written bare would name order.
  */
 export function quote(name: string, language: Language = "tsql"): string {
