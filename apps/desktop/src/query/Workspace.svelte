@@ -78,12 +78,22 @@
     padding: 6px 6px 6px 12px;
     border-right: 1px solid var(--border);
     box-shadow: inset 0 3px 0 var(--band);
+    color: var(--text-muted);
     font-size: 12px;
     cursor: default;
     white-space: nowrap;
   }
+  .tab:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+  }
+  /* The environment band stays on top; the active tab adds an accent underline and full-strength text (issue #271). */
   .tab.on {
     background: var(--bg-pane);
+    color: var(--text);
+    box-shadow:
+      inset 0 3px 0 var(--band),
+      inset 0 -2px 0 var(--accent);
   }
   .icon {
     width: 14px;
