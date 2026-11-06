@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DatabaseCatalog } from "../catalog.svelte";
-import { complete, hover, Index, type Lookup, type Options } from "./engine";
+import { complete, hover, Index, quote, type Lookup, type Options } from "./engine";
 import { contextAt } from "./scanner";
 
 const orders: DatabaseCatalog = {
@@ -232,5 +232,22 @@ describe("pgsql dialect", () => {
   it("hovers a table in public", () => {
     const text = "select * from customer";
     expect(hover(pgLookup, text, text.length, pgsql)).toContain("**public\\.customer** table");
+  });
+});
+
+describe("quote", () => {
+  it("brackets T-SQL reserved words the completion list does not offer (#272)", () => {
+    expect(quote("Rowcount")).toBe("[Rowcount]");
+    expect(quote("user")).toBe("[user]");
+    expect(quote("Plan")).toBe("[Plan]");
+    expect(quote("RowCounter")).toBe("RowCounter");
+    expect(quote("Order")).toBe("[Order]");
+  });
+
+  it("double-quotes Postgres reserved words the completion list does not offer", () => {
+    expect(quote("user", "pgsql")).toBe('"user"');
+    expect(quote("position", "pgsql")).toBe('"position"');
+    expect(quote("timestamp", "pgsql")).toBe('"timestamp"');
+    expect(quote("customer", "pgsql")).toBe("customer");
   });
 });
