@@ -53,6 +53,14 @@
   /** Fixes from the last lint (T-SQL habits), valid only while the text is the version they were computed for. */
   let lintFixes: { version: number; fixes: QuickFix[] } | undefined;
 
+  /** Runs the selection if there is one, else everything. F5, Ctrl+Enter and the Run button (QueryView) all call this. */
+  export function run() {
+    const selection = editor?.getSelection();
+    const model = editor?.getModel();
+    if (!selection || !model || selection.isEmpty()) return onRun();
+    onRun(model.getValueInRange(selection), model.getOffsetAt(selection.getStartPosition()));
+  }
+
   onMount(() => {
     let disposed = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -117,12 +125,6 @@
       });
       editor.onDidChangeCursorPosition(() => lintNow?.());
 
-      const run = () => {
-        const selection = editor!.getSelection();
-        if (!selection || selection.isEmpty()) return onRun();
-        const model = editor!.getModel()!;
-        onRun(model.getValueInRange(selection), model.getOffsetAt(selection.getStartPosition()));
-      };
       // F5 and Ctrl+Enter, as in SSMS and Azure Data Studio.
       editor.addCommand(monaco.KeyCode.F5, run);
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, run);
