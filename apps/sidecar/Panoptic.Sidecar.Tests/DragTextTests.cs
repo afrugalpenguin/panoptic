@@ -30,6 +30,14 @@ public sealed class DragTextTests
     }
 
     [Fact]
+    public void Reserved_words_are_bracketed_even_when_completion_does_not_offer_them()
+    {
+        Assert.Equal("[Rowcount]", SqlBackend.DragName("Rowcount"));
+        Assert.Equal("[USER]", SqlBackend.DragName("USER"));
+        Assert.Equal("RowCounter", SqlBackend.DragName("RowCounter"));
+    }
+
+    [Fact]
     public void Javascript_end_of_string_semantics_hold()
     {
         // JS's /...$/ does not match before a trailing newline; .NET's $ would, so the sidecar uses \z.
@@ -55,6 +63,19 @@ public sealed class DragTextTests
         var ui = Regex.Matches(block.Groups[1].Value, "\"([^\"]*)\"").Select(m => m.Groups[1].Value).ToArray();
 
         Assert.Equal(ui, TsqlKeywords.All);
+        Assert.Equal(UiWords("tsql-words.ts", "TSQL_RESERVED"), TsqlKeywords.Reserved);
+    }
+
+    [Fact]
+    public void The_postgres_reserved_list_matches_the_uis() =>
+        Assert.Equal(UiWords("pgsql-words.ts", "PGSQL_RESERVED"), PostgresKeywords.All);
+
+    private static string[] UiWords(string fileName, string constant)
+    {
+        var source = File.ReadAllText(Path.Combine(RepoRoot(), "apps", "desktop", "src", "query", "intellisense", fileName));
+        var block = Regex.Match(source, $@"export const {constant} = \[(.*?)\];", RegexOptions.Singleline);
+        Assert.True(block.Success, $"{constant} not found in {fileName}");
+        return Regex.Matches(block.Groups[1].Value, "\"([^\"]*)\"").Select(m => m.Groups[1].Value).ToArray();
     }
 
     private static string RepoRoot()
