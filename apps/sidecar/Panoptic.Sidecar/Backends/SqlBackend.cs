@@ -137,11 +137,11 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
     public static string CopyName(string schema, string name) => $"{QuoteIdentifier(schema)}.{QuoteIdentifier(name)}";
 
     private static readonly Regex RegularIdentifier = new(@"^[A-Za-z_][A-Za-z0-9_@$#]*\z");
-    private static readonly HashSet<string> Keywords = [.. TsqlKeywords.All];
+    private static readonly HashSet<string> Keywords = [.. TsqlKeywords.All, .. TsqlKeywords.Reserved];
 
     /// <summary>
     /// A name as dragging it into the editor inserts it (node meta "dragText"): bracketed only when it is not a regular
-    /// identifier or is a keyword. The rule drag-text.ts in the UI used before this moved here.
+    /// identifier or is a keyword or reserved word. The rule drag-text.ts in the UI used before this moved here.
     /// </summary>
     public static string DragName(string name) =>
         RegularIdentifier.IsMatch(name) && !Keywords.Contains(name.ToUpperInvariant()) ? name : QuoteIdentifier(name);
