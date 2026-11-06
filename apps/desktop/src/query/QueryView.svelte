@@ -36,7 +36,8 @@
     return () => clearInterval(t);
   });
 
-  const elapsed = $derived(((tab.running ? now : tab.startedAt + (tab.summary?.elapsedMs ?? 0)) - tab.startedAt) / 1000);
+  // now ticks every 100 ms, so just after a run starts it can still be behind startedAt: never show "-0.0 s".
+  const elapsed = $derived(Math.max(0, (tab.running ? now : tab.startedAt + (tab.summary?.elapsedMs ?? 0)) - tab.startedAt) / 1000);
   const current = $derived(tab.view >= 0 ? tab.results[tab.view] : undefined);
   // Each tab has its own QueryView (keyed in Workspace), but read the props at call time all the same.
   const intellisense = () => workspace.intellisense(tab)();
@@ -92,6 +93,7 @@
   <div class="toolbar">
     {#if tab.running}
       <button class="cancel" onclick={() => workspace.cancel(tab)}>Cancel</button>
+      <span class="running" role="status">Running... {elapsed.toFixed(1)} s</span>
     {:else}
       <button
         class="primary"
@@ -123,9 +125,7 @@
       >{status.text}</button
     >
     <span style:flex="1"></span>
-    {#if tab.running}
-      <span class="muted">Running... {elapsed.toFixed(1)} s</span>
-    {:else if tab.summary}
+    {#if tab.summary && !tab.running}
       <span class="muted">
         {tab.summary.cancelled ? "Cancelled" : tab.summary.error ? "Failed" : "Done"} in {(tab.summary.elapsedMs / 1000).toFixed(2)} s
         {#if tab.summary.requestCharge != null}, {tab.summary.requestCharge.toFixed(2)} RU{/if}
@@ -170,6 +170,7 @@
   <div class="splitter" role="separator" aria-orientation="horizontal" onpointerdown={startResize}></div>
 
   <div class="results">
+    {#if tab.running}<div class="progress" role="progressbar" aria-label="Query running"></div>{/if}
     <div class="result-tabs">
       {#each tab.results as set, i}
         <button class:on={tab.view === i} onclick={() => (tab.view = i)}>
@@ -206,14 +207,23 @@
             {/if}
           {/each}
           {#if tab.error && !tab.messages.some((m) => m.kind === "error")}<div class="error">{tab.error}</div>{/if}
-          {#if !tab.messages.length && !tab.error}<p class="muted">{tab.running ? "Running..." : "No messages."}</p>{/if}
+          {#if !tab.messages.length && !tab.error}
+            {#if tab.running}{@render waiting()}{:else}<p class="muted">No messages.</p>{/if}
+          {/if}
         </div>
+      {:else if tab.running}
+        {@render waiting()}
       {:else}
-        <p class="muted pad">{tab.running ? "Waiting for the first rows..." : "Run a query to see results here."}</p>
+        <p class="muted pad">Run a query to see results here.</p>
       {/if}
     </div>
   </div>
 </div>
+
+<!-- Where the results will appear, while the query has produced none yet (issue #274). -->
+{#snippet waiting()}
+  <div class="waiting"><span class="spinner"></span>Running... {elapsed.toFixed(1)} s</div>
+{/snippet}
 
 <style>
   .view {
@@ -370,5 +380,67 @@
   .pad {
     padding: 12px;
     margin: 0;
+  }
+  /* Running feedback (issue #274): timer beside Cancel, a bar over the results, a spinner where results will appear. */
+  .running {
+    color: var(--accent);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .progress {
+    position: relative;
+    height: 2px;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--accent) 20%, transparent);
+  }
+  .progress::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 30%;
+    background: var(--accent);
+    animation: slide 1.2s ease-in-out infinite;
+  }
+  @keyframes slide {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(340%);
+    }
+  }
+  .waiting {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 100%;
+    min-height: 60px;
+    color: var(--text);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+  }
+  .spinner {
+    width: 12px;
+    height: 12px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .progress::before {
+      width: 100%;
+      animation: none;
+      opacity: 0.6;
+    }
+    .spinner {
+      animation-duration: 2s;
+    }
   }
 </style>
