@@ -23,6 +23,7 @@
   } = $props();
 
   let editorHost = $state<HTMLDivElement>();
+  let queryEditor = $state<QueryEditor>();
   // Never auto-connect: the last used connection is only pre-selected, and Enter or a click picks it.
   const pick = (row: SeekRow) => row.kind === "host" && onConnect(tab, row.host);
 
@@ -97,7 +98,7 @@
       <button
         class="primary"
         disabled={!tab.target}
-        onclick={() => workspace.run(tab)}
+        onclick={() => (queryEditor ? queryEditor.run() : workspace.run(tab))}
         title={tab.target ? "Run (F5 or Ctrl+Enter); runs the selection if there is one" : "Choose a connection first"}>Run</button
       >
     {/if}
@@ -155,6 +156,7 @@
 
   <div class="editor-host" bind:this={editorHost}>
     <QueryEditor
+      bind:this={queryEditor}
       bind:text={tab.text}
       language={tab.target?.language}
       {intellisense}
