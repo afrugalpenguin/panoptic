@@ -10,6 +10,7 @@
 <span class="chevron" class:open={row.expanded}></span>
 {#if row.badge}<KindBadge badge={row.badge} />{/if}
 <span class="endpoint"><SegmentedLabel label={row.label} /></span>
+{#if row.secondary}<span class="name" title="Display name">{row.secondary}</span>{/if}
 {#if row.certificateUnchecked}<span class="cert-unchecked" title="Trust server certificate is on: this server's certificate is not checked, so an interceptor could pose as it. Edit the connection to change it.">cert not checked</span>{/if}
 {#if row.error}<WarningIcon small title="Failed to load. Expand to see why." />{/if}
 {#if row.loading}<span class="spinner" aria-label="Loading"></span>{/if}
@@ -32,5 +33,16 @@
     display: flex;
     min-width: 0;
     font: 12.5px/1 var(--row-font);
+  }
+  /* The name gives way first: the endpoint is what tells two connections apart. */
+  .name {
+    flex: 0 1000 auto;
+    min-width: 0;
+    margin-left: 6px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text-muted);
+    font: 11px/1 var(--font-ui);
+    white-space: nowrap;
   }
 </style>

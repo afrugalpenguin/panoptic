@@ -518,6 +518,27 @@ describe("TreeModel", () => {
       expect(model.rows().map((r) => r.key)).toEqual(["dev", "dev/s1", "dev/s2", "dev/c1", "prod"]);
     });
 
+    it("text filter also matches a connection's display name", async () => {
+      const { model } = fixture({ "": [env("dev")], dev: [{ ...conn("dev/a", "sql"), label: "Orders reporting" }, conn("dev/b", "sql")] });
+      await model.loadRoot();
+      await model.preload(["dev"]);
+      await model.toggle("dev");
+      model.setTextFilter("REPORTING");
+      expect(model.rows().map((r) => r.key)).toEqual(["dev", "dev/a"]);
+      expect(model.summary().matching).toBe(1);
+    });
+
+    it("shows a connection's display name after its endpoint when the two differ", async () => {
+      const named = { ...conn("dev/a", "sql"), label: "Orders reporting" };
+      const unnamed = { ...conn("dev/b", "sql"), label: "DEV/B.X.COM" };
+      const host = { ...conn("dev/c", "sql"), label: "dev/c" };
+      const { model } = fixture({ "": [env("dev")], dev: [named, unnamed, host] });
+      await model.loadRoot();
+      await model.toggle("dev");
+      const secondary = Object.fromEntries(model.rows().map((r) => [r.key, r.type === "node" ? r.secondary : undefined]));
+      expect(secondary).toEqual({ dev: undefined, "dev/a": "Orders reporting", "dev/b": undefined, "dev/c": undefined });
+    });
+
     it("text and engine filters combine", async () => {
       const model = await loaded();
       await model.toggle("dev");

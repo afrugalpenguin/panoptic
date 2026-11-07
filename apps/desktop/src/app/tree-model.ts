@@ -73,6 +73,15 @@ export type Row =
 /** Whether keys and clicks can select the row. */
 export const selectableRow = (row: Row) => row.type !== "env-empty";
 
+/**
+ * A connection's display name, shown muted after its endpoint, when it says something the endpoint does not: not
+ * when the endpoint already contains it, as with a name left as the server or its host.
+ */
+const connectionName = (node: TreeNode) => {
+  const name = node.label.trim();
+  return name && !(node.meta?.endpoint ?? "").toLowerCase().includes(name.toLowerCase()) ? name : undefined;
+};
+
 /** Trust server certificate on a server that isn't this machine. Some kinds (Cosmos) only allow it for a local emulator. */
 const certificateUnchecked = (node: TreeNode) =>
   node.meta?.trustServerCertificate === "true" &&
@@ -481,7 +490,7 @@ export class TreeModel {
                 : rowKind === "folder"
                   ? loadedCount
                   : undefined,
-              secondary: node.meta?.partitionKey ?? node.meta?.detail,
+              secondary: rowKind === "connection" ? connectionName(node) : (node.meta?.partitionKey ?? node.meta?.detail),
               error: state?.status === "error" ? state.error : undefined,
             },
             out.length === 0,
@@ -599,6 +608,7 @@ export class TreeModel {
         id: n.id,
         kind: n.meta?.connectionKind ?? n.icon,
         endpoint: n.meta?.endpoint ?? n.label,
+        name: n.label,
         envId: this.parents.get(n.id) ?? "",
       }));
     for (const [id, segments] of computeLabels(connections)) this.labels.set(id, segments);
@@ -609,7 +619,9 @@ export class TreeModel {
     const totals = new Map<string, number>();
     for (const c of connections) {
       this.connectionKind.set(c.id, c.kind);
-      this.connectionSearch.set(c.id, c.endpoint.toLowerCase());
+      // Endpoint and display name, apart so a match cannot span the two.
+      this.connectionSearch.set(c.id, `${c.endpoint}
+${c.name}`.toLowerCase());
       totals.set(c.kind, (totals.get(c.kind) ?? 0) + 1);
     }
     this.engineList = [...totals].map(([kind, count]) => ({ kind, badge: kindBadge(kind), count }));

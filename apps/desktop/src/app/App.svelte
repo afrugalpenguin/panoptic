@@ -24,7 +24,7 @@
   import { livePlace, type SeekEnv, type SeekHost, type SeekIndex, type SeekRow } from "./seek";
   import { keyCommand } from "./shortcuts";
   import { loadUsage, recordUse, saveUsage, type Place } from "./usage";
-  import { rowMenu } from "./row-menu";
+  import { rowMenu, type RowMenuContext } from "./row-menu";
   import Workspace from "../query/Workspace.svelte";
   import { preloadMonaco } from "../query/preload";
   import { intellisense, syncCatalogs } from "../query/intellisense/shared";
@@ -381,7 +381,13 @@
   }
 
   function openMenu(row: Row, x: number, y: number) {
-    const items = rowMenu(row, {
+    const items = rowMenu(row, menuContext());
+    if (items.length) menu = { x, y, items };
+  }
+
+  /** What the row menu reads and runs: the right-click menu and the detail pane's buttons. */
+  function menuContext(): RowMenuContext {
+    return {
       labels: actionLabels,
       envOrder: environmentOrder(settings.explorer.envOrder, config.environments.map((e) => e.id)),
       environment: envOf,
@@ -413,8 +419,7 @@
           [found.connection.id],
           () => api!.deleteConnection(found.connection.id),
         ),
-    });
-    if (items.length) menu = { x, y, items };
+    };
   }
 
   /** Opens a query tab against a row's node: New query, or Select top 1000 which also runs it. */
@@ -687,7 +692,7 @@
         onRestart={restartEngine}
       />
     {:else}
-      <DetailPane row={selectedRow} />
+      <DetailPane row={selectedRow} actions={rowMenu(selectedRow, menuContext())} />
     {/if}
   </main>
 
