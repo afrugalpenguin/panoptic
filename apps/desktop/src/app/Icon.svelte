@@ -1,9 +1,10 @@
 <script lang="ts">
-  // Compact glyph badges per node kind. Real icons can replace this map without touching the tree.
+  import { kindDescription } from "./kinds";
+  import KindBadge from "./rows/KindBadge.svelte";
+
+  // Compact glyph badges per node kind. Real icons can replace this map without touching the tree. Connection
+  // kinds are not here: they draw with the sidecar's badge (kinds.ts), as the tree's connection rows do (#208).
   const GLYPHS: Record<string, [string, string]> = {
-    sql: ["S", "#1971c2"],
-    cosmos: ["C", "#7048e8"],
-    postgres: ["P", "#5f7a2e"],
     database: ["D", "#2f9e44"],
     folder: ["", "#868e96"],
     table: ["T", "#0c8599"],
@@ -27,10 +28,13 @@
   };
 
   let { icon }: { icon: string } = $props();
+  const engine = $derived(kindDescription(icon));
   const glyph = $derived(GLYPHS[icon] ?? ["?", "#868e96"]);
 </script>
 
-{#if icon === "folder"}
+{#if engine}
+  <KindBadge badge={engine.badge} />
+{:else if icon === "folder"}
   <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
     <path d="M1.5 3.5h4l1.5 1.5h7.5v8h-13z" fill="none" stroke={glyph[1]} stroke-width="1.2" />
   </svg>
