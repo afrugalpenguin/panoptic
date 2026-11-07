@@ -11,6 +11,8 @@
     onCheckNow,
     hasChangelog,
     onWhatsNew,
+    onExportConnections,
+    onImportConnections,
     onClose,
   }: {
     settings: AppSettings;
@@ -21,8 +23,28 @@
     hasChangelog: boolean;
     /** Opens the What's new tab with the full history. */
     onWhatsNew: () => void;
+    /** Writes a connections backup (#28); resolves to a line saying what was written, or undefined if cancelled. */
+    onExportConnections: () => Promise<string | undefined>;
+    /** Picks a backup file and opens its import preview; rejects with why when the file cannot be read. */
+    onImportConnections: () => Promise<void>;
     onClose: () => void;
   } = $props();
+
+  let backupStatus = $state("");
+  async function exportConnections() {
+    try {
+      backupStatus = (await onExportConnections()) ?? backupStatus;
+    } catch (e) {
+      backupStatus = `Export failed: ${e instanceof Error ? e.message : e}`;
+    }
+  }
+  async function importConnections() {
+    try {
+      await onImportConnections();
+    } catch (e) {
+      backupStatus = `Could not read the backup: ${e instanceof Error ? e.message : e}`;
+    }
+  }
 
   const MODES: { value: UpdateCheckMode; label: string; help: string }[] = [
     { value: "startup", label: "On startup", help: "Checks GitHub Releases once each time Panoptic starts." },
@@ -57,7 +79,7 @@
       case "downloading":
         return `Downloading v${update.next}...`;
       case "ready":
-        return `v${update.next} is ready; restart from the status bar`;
+        return `v${update.next} is downloaded and installs when you close Panoptic, or restart now from the status bar`;
       case "error":
         return `Check failed: ${update.message}`;
       case "installFailed":
@@ -102,6 +124,16 @@
     >
     <span class="muted">{status}</span>
   </div>
+
+  <h3 class="full">Connections</h3>
+
+  <span></span>
+  <div class="check-now">
+    <button type="button" onclick={exportConnections}>Export to a file...</button>
+    <button type="button" onclick={importConnections}>Import from a backup...</button>
+  </div>
+  <span></span>
+  <p class="help muted">{backupStatus || "Environments and connections, to back up or move to another machine. Passwords and keys are never included."}</p>
 
   <h3 class="full">Explorer</h3>
 

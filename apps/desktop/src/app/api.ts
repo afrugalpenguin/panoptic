@@ -15,7 +15,7 @@ export type NodeError = Sidecar.NodeError;
 /** A registered connection kind ("sql", "cosmos"...): open-ended, described by the sidecar (KindDescription). */
 export type ConnectionKind = string;
 /** entraKeys: Cosmos, signing in with Entra to fetch the account's read-only key through Azure Resource Manager (#65). */
-export type AuthKind = "entra" | "entraKeys" | "sql" | "key" | "windows" | "password";
+export type AuthKind = "entra" | "entraKeys" | "sql" | "key" | "windows" | "password" | "certificate";
 
 /** What the UI shows for a connection kind (backends.describe). */
 export type KindDescription = Narrow<Sidecar.KindDescription, { auths: { id: AuthKind; label: string }[] }>;
@@ -62,10 +62,17 @@ export function createApi(rpc: RpcClient) {
       // Sign-in can include an interactive Entra prompt, so allow longer than a normal call.
       rpc.request<TestConnectionResult>("connection.test", { connection, secret: secret ?? null }, 180_000, signal),
     scanImports: () => rpc.request<ImportSource[]>("import.scan", undefined, 30_000),
+    /** Connections backups (#28): the sidecar reads and writes the file; secrets are never in it. */
+    exportBackup: (path: string) => rpc.request<Sidecar.BackupExportResult>("backup.export", { path }),
+    readBackup: (path: string) => rpc.request<Sidecar.BackupPreview>("backup.read", { path }),
+    importBackup: (path: string, connections: number[]) => rpc.request<Sidecar.BackupImportResult>("backup.import", { path, connections }),
     // A query can legitimately run for a long time; the user cancels it, so no RPC timeout applies.
     executeQuery: (request: { queryId: string; nodeId: string; text: string; database?: string }) =>
       rpc.request<import("../query/types").QuerySummary>("query.execute", request, 2_147_483_647),
     cancelQuery: (queryId: string) => rpc.request<boolean>("query.cancel", { queryId }),
+    /** Save all rows past the row limit (#287): no timeout, as for a run; a large result takes as long as it takes. */
+    saveAll: (request: { queryId: string; nodeId: string; text: string; database?: string; path: string; format: "csv" | "json" }) =>
+      rpc.request<Sidecar.QuerySaveResult>("query.saveAll", request, 2_147_483_647),
     queryTemplate: (nodeId: string, action: "selectTop" | "newQuery") =>
       rpc.request<Narrow<Sidecar.QueryTemplateResult, { language: QueryLanguage }>>("query.template", { nodeId, action }),
     /** The connection, database and container a node's query tabs belong to, and their names. */

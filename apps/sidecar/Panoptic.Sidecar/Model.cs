@@ -46,6 +46,8 @@ public static class AuthKinds
     public const string Windows = "windows";
     /// <summary>User name and password (Postgres). SQL Server's equivalent is <see cref="Sql"/>.</summary>
     public const string Password = "password";
+    /// <summary>A client certificate and key (mutual TLS, Postgres). The secret is the key's passphrase, if it has one.</summary>
+    public const string Certificate = "certificate";
 
     /// <summary>An auth as the connection dialog lists it.</summary>
     public static AuthOption Option(string id) => new(id, id switch
@@ -56,6 +58,7 @@ public static class AuthKinds
         EntraKeys => "Entra ID (fetch account keys)",
         Windows => "Windows",
         Password => "Username and password",
+        Certificate => "Client certificate",
         _ => id,
     });
 }
@@ -106,7 +109,9 @@ public sealed record ConnectionConfig(
     bool TrustServerCertificate = false,
     string? ClientId = null,
     string? CertificateHostName = null,
-    string? CertificateFile = null);
+    string? CertificateFile = null,
+    string? ClientCertificateFile = null,
+    string? ClientKeyFile = null);
 
 public sealed record EnvironmentConfig(string Id, string Name, string Color, bool ReadOnly, List<ConnectionConfig> Connections);
 
@@ -128,6 +133,14 @@ public sealed record TestConnectionResult(bool Ok, double ElapsedMs, string? Err
 /// <param name="Database">Overrides the database the node resolves to (the tab's database picker).</param>
 public sealed record QueryRequest(string QueryId, string NodeId, string Text, string? Database = null);
 public sealed record QueryCancelParams(string QueryId);
+
+/// <summary>query.saveAll (#287): run the text again and write its first result set, every row, to Path as Format
+/// ("csv" or "json"). QueryId cancels it through query.cancel, like a run.</summary>
+public sealed record QuerySaveRequest(string QueryId, string NodeId, string Text, string Path, string Format, string? Database = null);
+
+/// <param name="Error">Why nothing was saved: refused, failed or the file could not be written. Null on success.</param>
+/// <param name="Note">Saved, with something to know (CSV columns that appeared late).</param>
+public sealed record QuerySaveResult(int Rows, bool Cancelled, string? Error = null, string? Note = null);
 /// <param name="Truncated">The set reached the row limit (EditorSettings.MaxRows) and had more rows, which were not kept.</param>
 public sealed record ResultSetSummary(int RowCount, bool Truncated = false);
 /// <param name="RolledBack">Read-only environment, and the guard transaction was still open and rolled back.</param>
@@ -253,6 +266,11 @@ public sealed record StoreFile(AppConfig Config, Dictionary<string, string> Secr
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(TreeNode[]))]
 [JsonSerializable(typeof(KindDescription[]))]
+[JsonSerializable(typeof(Backup.BackupPathParams))]
+[JsonSerializable(typeof(Backup.BackupImportParams))]
+[JsonSerializable(typeof(Backup.BackupExportResult))]
+[JsonSerializable(typeof(Backup.BackupPreview))]
+[JsonSerializable(typeof(Backup.BackupImportResult))]
 [JsonSerializable(typeof(NodeError))]
 [JsonSerializable(typeof(AppConfig))]
 [JsonSerializable(typeof(AppSettings))]
@@ -268,6 +286,8 @@ public sealed record StoreFile(AppConfig Config, Dictionary<string, string> Secr
 [JsonSerializable(typeof(Import.ImportSource[]))]
 [JsonSerializable(typeof(QueryRequest))]
 [JsonSerializable(typeof(QueryCancelParams))]
+[JsonSerializable(typeof(QuerySaveRequest))]
+[JsonSerializable(typeof(QuerySaveResult))]
 [JsonSerializable(typeof(QuerySummary))]
 [JsonSerializable(typeof(QueryTemplateParams))]
 [JsonSerializable(typeof(QueryTemplateResult))]

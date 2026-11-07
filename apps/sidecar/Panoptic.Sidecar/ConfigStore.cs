@@ -116,7 +116,10 @@ public sealed class ConfigStore
         && a.User == b.User
         && a.TrustServerCertificate == b.TrustServerCertificate
         && string.Equals(a.CertificateHostName?.Trim() ?? "", b.CertificateHostName?.Trim() ?? "", StringComparison.OrdinalIgnoreCase)
-        && string.Equals(a.CertificateFile?.Trim() ?? "", b.CertificateFile?.Trim() ?? "", StringComparison.OrdinalIgnoreCase);
+        && string.Equals(a.CertificateFile?.Trim() ?? "", b.CertificateFile?.Trim() ?? "", StringComparison.OrdinalIgnoreCase)
+        // A key passphrase belongs to its key (#120).
+        && string.Equals(a.ClientCertificateFile?.Trim() ?? "", b.ClientCertificateFile?.Trim() ?? "", StringComparison.OrdinalIgnoreCase)
+        && string.Equals(a.ClientKeyFile?.Trim() ?? "", b.ClientKeyFile?.Trim() ?? "", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Adds or replaces an environment, keeping its existing connections.</summary>
     public void SaveEnvironment(EnvironmentConfig environment)
@@ -189,13 +192,25 @@ public sealed class ConfigStore
     /// </summary>
     private void RefuseDuplicate(ConnectionConfig connection, ConnectionConfig? previous)
     {
-        static string Identity(ConnectionConfig c) => $"{c.Kind}|{c.Auth}|{Import.ImportKey.Of(c.Endpoint, c.User, c.Database)}";
-        var key = Identity(connection);
-        if (previous is not null && string.Equals(key, Identity(previous), StringComparison.OrdinalIgnoreCase)) return;
-        var existing = _file.Config.Environments.SelectMany(e => e.Connections).Concat(_file.Config.Connections)
-            .FirstOrDefault(c => c.Id != connection.Id && string.Equals(key, Identity(c), StringComparison.OrdinalIgnoreCase));
+        if (previous is not null && string.Equals(Identity(connection), Identity(previous), StringComparison.OrdinalIgnoreCase)) return;
+        var existing = Duplicate(connection);
         if (existing is not null)
             throw new RpcException(RpcException.InvalidParams, $"This server is already added as \"{existing.Name}\". Edit that connection instead, or set a different user or database.");
+    }
+
+    private static string Identity(ConnectionConfig c) => $"{c.Kind}|{c.Auth}|{Import.ImportKey.Of(c.Endpoint, c.User, c.Database)}";
+
+    private ConnectionConfig? Duplicate(ConnectionConfig connection)
+    {
+        var key = Identity(connection);
+        return _file.Config.Environments.SelectMany(e => e.Connections).Concat(_file.Config.Connections)
+            .FirstOrDefault(c => c.Id != connection.Id && string.Equals(key, Identity(c), StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>Another connection that makes the same connection (the rule <see cref="SaveConnection"/> refuses), or null.</summary>
+    public ConnectionConfig? FindDuplicate(ConnectionConfig connection)
+    {
+        lock (_lock) return Duplicate(connection);
     }
 
     /// <summary>Removes a connection. Its secret stays until <see cref="PurgeSecrets"/> (or the next start), as for an environment.</summary>

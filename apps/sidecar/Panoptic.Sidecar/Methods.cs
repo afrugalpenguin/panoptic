@@ -119,6 +119,26 @@ public static class Methods
             return Rpc.Result(result, SidecarJson.Default.TestConnectionResult);
         };
 
+        // Saved connections to and from one file (#28, ADR 0008): no secrets, merged on import. The sidecar reads and
+        // writes the file itself, so the UI needs no file access and the format stays in one place.
+        methods["backup.export"] = (p, _) =>
+        {
+            var args = Rpc.Params(p, SidecarJson.Default.BackupPathParams);
+            return Task.FromResult(Rpc.Result(Backup.ConnectionBackup.Export(store, args.Path), SidecarJson.Default.BackupExportResult));
+        };
+        methods["backup.read"] = (p, _) =>
+        {
+            var args = Rpc.Params(p, SidecarJson.Default.BackupPathParams);
+            return Task.FromResult(Rpc.Result(Backup.ConnectionBackup.Preview(store, tree, Backup.ConnectionBackup.Read(args.Path)), SidecarJson.Default.BackupPreview));
+        };
+        methods["backup.import"] = (p, _) =>
+        {
+            var args = Rpc.Params(p, SidecarJson.Default.BackupImportParams);
+            var result = Backup.ConnectionBackup.Import(store, tree, Backup.ConnectionBackup.Read(args.Path), args.Connections);
+            catalog?.Forget();
+            return Task.FromResult(Rpc.Result(result, SidecarJson.Default.BackupImportResult));
+        };
+
         // Reads other tools' saved connections on this machine. Flags ones that are already in Panoptic.
         methods["import.scan"] = (_, _) =>
         {
@@ -146,6 +166,9 @@ public static class Methods
             // Long-running: rows stream as query.rows notifications; this returns the summary at the end.
             methods["query.execute"] = async (p, ct) =>
                 Rpc.Result(await query.ExecuteAsync(Rpc.Params(p, SidecarJson.Default.QueryRequest), ct), SidecarJson.Default.QuerySummary);
+
+            methods["query.saveAll"] = async (p, ct) =>
+                Rpc.Result(await query.SaveAsync(Rpc.Params(p, SidecarJson.Default.QuerySaveRequest), ct), SidecarJson.Default.QuerySaveResult);
 
             methods["query.cancel"] = (p, _) =>
             {

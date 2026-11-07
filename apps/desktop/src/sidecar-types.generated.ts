@@ -19,6 +19,50 @@ export interface AuthOption {
   label: string;
 }
 
+export interface BackupExportResult {
+  environments: number;
+  connections: number;
+}
+
+export interface BackupImportParams {
+  path: string;
+  connections: number[];
+}
+
+export interface BackupImportResult {
+  environmentsCreated: number;
+  connectionsAdded: number;
+  skipped: number;
+}
+
+export interface BackupPathParams {
+  path: string;
+}
+
+export interface BackupPreview {
+  environments: BackupPreviewEnvironment[];
+  connections: BackupPreviewConnection[];
+}
+
+export interface BackupPreviewConnection {
+  index: number;
+  name: string;
+  kind: string;
+  endpoint: string;
+  auth: string;
+  user?: string | null;
+  database?: string | null;
+  environment?: string | null;
+  skip?: string | null;
+}
+
+export interface BackupPreviewEnvironment {
+  name: string;
+  color: string;
+  readOnly: boolean;
+  exists: boolean;
+}
+
 export interface CatalogNotice {
   key: string;
   state: string;
@@ -64,6 +108,8 @@ export interface ConnectionConfig {
   clientId?: string | null;
   certificateHostName?: string | null;
   certificateFile?: string | null;
+  clientCertificateFile?: string | null;
+  clientKeyFile?: string | null;
 }
 
 export interface ConnectionFields {
@@ -211,6 +257,22 @@ export interface QueryRequest {
   nodeId: string;
   text: string;
   database?: string | null;
+}
+
+export interface QuerySaveRequest {
+  queryId: string;
+  nodeId: string;
+  text: string;
+  path: string;
+  format: string;
+  database?: string | null;
+}
+
+export interface QuerySaveResult {
+  rows: number;
+  cancelled: boolean;
+  error?: string | null;
+  note?: string | null;
 }
 
 export interface QueryScope {

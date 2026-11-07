@@ -203,6 +203,35 @@ public sealed class BackendContractTests : IDisposable
     }
 
     [Fact]
+    public async Task Save_all_runs_a_lone_select_again_and_writes_every_row_past_the_limit()
+    {
+        var sidecar = Sidecar(maxRows: 1000);
+        var path = Path.Combine(_dir, "all.csv");
+
+        var result = await Call(sidecar, "query.saveAll", new { queryId = "s1", nodeId = "conn:f/db:main", text = "select n from widgets", path, format = "csv" });
+
+        Assert.Equal(1200, result.GetProperty("rows").GetInt32());
+        Assert.False(result.TryGetProperty("error", out _));
+        var lines = File.ReadAllLines(path);
+        Assert.Equal(1201, lines.Length);
+        Assert.Equal(["n", "1"], lines[..2]);
+        Assert.Equal("1200", lines[^1]);
+        Assert.DoesNotContain(_notes, n => n.Method == "query.rows" && n.Params.Contains("\"s1\""));
+    }
+
+    [Fact]
+    public async Task Save_all_refuses_a_script_that_could_change_data_and_writes_nothing()
+    {
+        var sidecar = Sidecar();
+        var path = Path.Combine(_dir, "none.csv");
+
+        var result = await Call(sidecar, "query.saveAll", new { queryId = "s2", nodeId = "conn:f/db:main", text = "write widgets", path, format = "csv" });
+
+        Assert.Contains("only a single SELECT", result.GetProperty("error").GetString());
+        Assert.False(File.Exists(path));
+    }
+
+    [Fact]
     public async Task Query_streams_rows_in_batches_and_returns_a_summary()
     {
         var sidecar = Sidecar();
