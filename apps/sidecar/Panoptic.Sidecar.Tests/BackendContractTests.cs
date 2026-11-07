@@ -25,7 +25,10 @@ public sealed class FakeBackend : IQueryBackend
             _ => [],
         });
 
-    public Task TestAsync(ConnectionConfig connection, string? secret, CancellationToken ct) => Task.CompletedTask;
+    /// <summary>"fake://broken" fails the way a driver whose native library is missing does (#167).</summary>
+    public Task TestAsync(ConnectionConfig connection, string? secret, CancellationToken ct) => connection.Endpoint == "fake://broken"
+        ? throw new TypeInitializationException("Fake.Driver", new DllNotFoundException("Unable to load DLL 'fake.native.dll'"))
+        : Task.CompletedTask;
 
     public void Forget(string connectionId) { }
 
@@ -231,6 +234,17 @@ public sealed class BackendContractTests : IDisposable
         var limit = Assert.Single(Notes("query.message"), m => m.GetProperty("text").GetString()!.Contains("row limit"));
         Assert.Equal("info", limit.GetProperty("kind").GetString());
         Assert.Equal("Result 1 shows the first 1,000 rows: the row limit in Settings. The rest were not loaded.", limit.GetProperty("text").GetString());
+    }
+
+    [Fact]
+    public async Task A_failed_connection_test_names_the_root_cause_not_just_the_outer_message()
+    {
+        var result = await Call(Sidecar(), "connection.test",
+            new { connection = new { id = "t", name = "Broken", kind = FakeBackend.Kind, endpoint = "fake://broken", auth = AuthKinds.Key }, secret = "k" });
+
+        Assert.False(result.GetProperty("ok").GetBoolean());
+        Assert.Equal("Part of the database engine failed to load. Reinstalling Panoptic usually fixes this. (DllNotFoundException: Unable to load DLL 'fake.native.dll')",
+            result.GetProperty("error").GetString());
     }
 
     [Fact]

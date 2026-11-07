@@ -10,7 +10,11 @@ import { QueryWorkspace } from "./store.svelte";
 import type { QuerySummary } from "./types";
 
 // Synthetic names only.
-const target = { nodeId: "env:dev/conn:c1/db:Orders", label: "Orders", connection: "sql-dev", envColor: "#2f9e44", readOnly: false, language: "sql" as const, capabilities: { databasePicker: true, unknownNameWarnings: true, ddlRefresh: true } };
+const target = {
+  nodeId: "conn:c1/db:Orders", label: "Orders", connection: "sql-dev", envColor: "#2f9e44", readOnly: false, language: "sql" as const,
+  capabilities: { databasePicker: true, unknownNameWarnings: true, ddlRefresh: true },
+  scope: { connection: "conn:c1", database: "Orders", label: "Orders", connectionLabel: "sql-dev" },
+};
 const seekIndex: SeekIndex = { environments: [], loose: [], usage: { recent: [] } } as unknown as SeekIndex;
 
 let mounted: Record<string, unknown> | undefined;

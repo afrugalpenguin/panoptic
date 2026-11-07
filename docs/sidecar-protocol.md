@@ -2,6 +2,14 @@
 
 The UI talks to the .NET sidecar over JSON-RPC 2.0 on stdin and stdout ([ADR 0005](adr/0005-sidecar-protocol.md)). This page specifies the parts of the protocol that grew after that decision: request cancellation and the methods the backend contract adds. All of it is additive to the original method set.
 
+## Diagnostics (stderr and the log)
+
+stderr is diagnostics only. The shell copies every stderr line to a rolling log, `%LOCALAPPDATA%\dev.panoptic.app\logs\sidecar.log` (rolled over to `sidecar.1.log` at 1 MB, checked at each start), along with its own start, exit and give-up lines, and keeps the last 20 lines in memory. When the supervisor gives up (5 quick exits in a row), the failure text names the exit code, the engine's last stderr line and the log path, so a start-up error reaches the user, not just "exited 5 times".
+
+What the sidecar writes there: an unexpected handler exception (not an `RpcException`) with its method name and stack trace, the store's own recovery and unavailable messages, and Entra fallback notes. Request params are never logged, because they can carry secrets, and driver messages are checked for secrets (#180).
+
+Exit codes: 3 means the store file exists but cannot be read (locked by another program, or no access). The file is left untouched, and stderr says so in plain words.
+
 ## Cancellation
 
 Any request can be cancelled with the notification `$/cancelRequest` `{ "id": <request id> }`, named and shaped as in LSP.

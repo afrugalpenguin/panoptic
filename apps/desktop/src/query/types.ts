@@ -70,6 +70,6 @@ export interface QueryTarget {
   language: QueryLanguage;
   /** From query.template. */
   capabilities: QueryCapabilities;
-  /** From query.template. Absent: read from the node id (nodeParts), as before the sidecar sent it. */
-  scope?: QueryScope;
+  /** From query.template. */
+  scope: QueryScope;
 }
