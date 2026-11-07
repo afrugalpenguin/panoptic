@@ -72,7 +72,7 @@ New query with nothing chosen opens "Query N", not connected: the editor (plain 
 
 ## Colours
 
-In `src/app/app.css`, no hex in components. `--brand-cyan` (`#24c8db`) and `--brand-amber` (`#ffc131`) are the icon's two colours, the same in both themes. `--landing-bg`, `--wordmark-faded`, `--kbd-bg` and `--kbd-border` take the design's values in the dark theme and are derived from existing tokens in the light one, so the page stays readable there. `--accent` (blue) is untouched.
+In `src/app/app.css`, no hex in components. `--brand-cyan` (`#24c8db`) and `--brand-amber` (`#ffc131`) are the icon's two colours, the same in both themes, for the logo and decoration only. Text and outlines in those hues use the role tokens `--text-amber`, `--text-cyan` and `--focus-ring` (the Seek box's border), which keep the brand values in the dark theme and darker AA values in the light one. `--landing-bg`, `--wordmark-faded`, `--kbd-bg` and `--kbd-border` take the design's values in the dark theme and are derived from existing tokens in the light one, so the page stays readable there. `--accent` (blue) is untouched.
 
 ## Interpretations
 

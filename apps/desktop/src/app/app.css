@@ -15,9 +15,14 @@
   --ok: #1a7f37;
   --bad: #cf222e;
   --warn: #9a6700;
-  /* The two colours of the logo (src-tauri/icons/icon.svg), the same in both themes. */
+  /* The two colours of the logo (src-tauri/icons/icon.svg), the same in both themes. For the logo and decoration
+     only: on the light theme they are too pale for text or indicators, which use the role tokens below. */
   --brand-cyan: #24c8db;
   --brand-amber: #ffc131;
+  /* The logo's hues as text and as a focus/active outline, AA in each theme (theme-contrast.test.ts). */
+  --text-amber: #8a5a00;
+  --text-cyan: #0a6f7c;
+  --focus-ring: #0a6f7c;
   /* Landing (docs/landing.md). Dark values are the design's; light ones are derived so the page stays readable. */
   --landing-bg: var(--bg);
   --wordmark-faded: color-mix(in srgb, var(--text) 5%, var(--bg));
@@ -51,6 +56,10 @@
     --ok: #3fb950;
     --bad: #f85149;
     --warn: #d29922;
+    /* The logo's own colours read well on the dark panes. */
+    --text-amber: #ffc131;
+    --text-cyan: #24c8db;
+    --focus-ring: #24c8db;
 
     --tree-bright: #ffffff;
     --tree-dim: #6a6a6a;

@@ -138,15 +138,15 @@
     gap: 10px;
     height: 56px;
     padding: 0 14px;
-    border: 1px solid var(--brand-cyan);
+    border: 1px solid var(--focus-ring);
     border-radius: 12px;
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand-cyan) 10%, transparent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--focus-ring) 10%, transparent);
     background: var(--bg-pane);
     cursor: text;
   }
   .glass {
     flex: none;
-    color: var(--brand-cyan);
+    color: var(--focus-ring);
   }
   input {
     flex: 1;
