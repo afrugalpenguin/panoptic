@@ -76,17 +76,6 @@ export function generateTree(targetNodes: number): TreeData {
   return tree;
 }
 
-/** Indices of visible nodes, in display order. O(n) thanks to preorder layout. */
-export function flatten(tree: TreeData, expanded: Uint8Array): Int32Array {
-  const out = new Int32Array(tree.count);
-  let n = 0;
-  for (let i = 0; i < tree.count; ) {
-    out[n++] = i;
-    i += expanded[i] ? 1 : tree.size[i];
-  }
-  return out.subarray(0, n);
-}
-
 export interface GridData {
   rowCount: number;
   columns: string[];

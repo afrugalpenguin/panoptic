@@ -25,3 +25,10 @@ export function summarise(deltas: number[]): FrameStats {
     over33: sorted.filter((d) => d > 2000 / 60).length,
   };
 }
+
+/** The middle value; for an even count, the mean of the two middle values. */
+export function median(values: number[]): number {
+  const s = [...values].sort((a, b) => a - b);
+  const mid = s.length >> 1;
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}

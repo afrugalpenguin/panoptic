@@ -1,21 +1,25 @@
+import "../app/app.css";
 import "./bench.css";
-import { flatten, generateGrid, generateTree, type GridData, type TreeData } from "./data";
-import { summarise, type FrameStats } from "./stats";
-import { svelte } from "./svelte";
-import type { Renderer } from "./types";
-import { vanilla } from "./vanilla";
+import { generateGrid, generateTree } from "./data";
+import { createTree, mountGrid, resultSet } from "./shipped.svelte";
+import { median, summarise, type FrameStats } from "./stats";
+import { openAll, treeSource } from "./tree-source";
 
 const TREE_NODES = 50_000;
 const GRID_ROWS = 100_000;
 const SCROLL_MS = 5_000;
 const ROUNDS = 3;
-const RENDERERS: Renderer[] = [vanilla, svelte];
 
+/** One round against the shipped explorer Tree (through TreeModel) and ResultGrid. */
 interface RunMetrics {
+  /** Mount with every environment open, as after Expand all at start-up. */
   treeMountMs: number;
-  treeExpandAllMs: number;
-  treeCollapseAllMs: number;
+  /** Every node open: the rows rebuilt from the model and rendered once. */
+  treeOpenAllMs: number;
+  /** One folder expanded inside the otherwise open tree, through the model as a click does. */
+  treeExpandOneMs: number;
   treeScroll: FrameStats;
+  treeCollapseAllMs: number;
   gridMountMs: number;
   gridScroll: FrameStats;
 }
@@ -31,8 +35,10 @@ export interface UiBenchResult {
   gridRows: number;
   rounds: number;
   scrollMs: number;
-  medians: Record<string, RunMetrics>;
-  raw: Record<string, RunMetrics[]>;
+  median: RunMetrics;
+  raw: RunMetrics[];
+  /** The results as the Markdown table for docs/benchmarks.md; bench.ps1 prints it. */
+  markdown: string;
 }
 
 const host = document.querySelector<HTMLElement>("#host")!;
@@ -41,15 +47,15 @@ const output = document.querySelector<HTMLElement>("#results")!;
 const runButton = document.querySelector<HTMLButtonElement>("#run")!;
 
 const frame = () => new Promise<number>((r) => requestAnimationFrame(r));
-/** Resolves after the browser has painted whatever the last synchronous work changed. */
+/** Resolves after the browser has painted whatever the last work changed. */
 const painted = async () => {
   await frame();
   await frame();
 };
 
-async function timed(work: () => void): Promise<number> {
+async function timed(work: () => unknown): Promise<number> {
   const t0 = performance.now();
-  work();
+  await work();
   await painted();
   return round(performance.now() - t0);
 }
@@ -70,6 +76,8 @@ async function scrollThrough(scroller: HTMLElement, durationMs: number): Promise
     scroller.scrollTop = p * max;
     if (p >= 1) break;
   }
+  // Let the last scroll event land before the caller unmounts the component.
+  await painted();
   return summarise(deltas);
 }
 
@@ -84,44 +92,45 @@ async function measureRefreshHz(): Promise<number> {
   return Math.round(1000 / summarise(deltas).p50);
 }
 
-async function runOnce(r: Renderer, tree: TreeData, grid: GridData): Promise<RunMetrics> {
+async function runOnce(source: ReturnType<typeof treeSource>, set: ReturnType<typeof resultSet>): Promise<RunMetrics> {
   host.replaceChildren();
-  const collapsed = new Uint8Array(tree.count);
-  const all = new Uint8Array(tree.count).fill(1);
+  const tree = await createTree(source);
+  let scroller!: HTMLElement;
+  const treeMountMs = await timed(() => (scroller = tree.mount(host)));
 
-  let view!: ReturnType<Renderer["mountTree"]>;
-  const treeMountMs = await timed(() => (view = r.mountTree(host, tree, flatten(tree, collapsed), collapsed)));
-  const treeExpandAllMs = await timed(() => view.setRows(flatten(tree, all), all));
-  const treeScroll = await scrollThrough(view.scroller, SCROLL_MS);
-  const treeCollapseAllMs = await timed(() => view.setRows(flatten(tree, collapsed), collapsed));
-  view.destroy();
-  host.replaceChildren();
-
-  let gridView!: ReturnType<Renderer["mountGrid"]>;
-  const gridMountMs = await timed(() => (gridView = r.mountGrid(host, grid)));
-  const gridScroll = await scrollThrough(gridView.scroller, SCROLL_MS);
-  gridView.destroy();
+  tree.setLive(false);
+  await openAll(tree.model, source, source.lastFolder);
+  tree.setLive(true);
+  const treeOpenAllMs = await timed(() => tree.render());
+  const treeExpandOneMs = await timed(() => tree.model.expand(source.lastFolder));
+  const treeScroll = await scrollThrough(scroller, SCROLL_MS);
+  const treeCollapseAllMs = await timed(() => tree.model.collapseAll());
+  tree.destroy();
   host.replaceChildren();
 
-  return { treeMountMs, treeExpandAllMs, treeCollapseAllMs, treeScroll, gridMountMs, gridScroll };
-}
+  let grid!: ReturnType<typeof mountGrid>;
+  const gridMountMs = await timed(() => (grid = mountGrid(host, set)));
+  const gridScroll = await scrollThrough(grid.scroller, SCROLL_MS);
+  grid.destroy();
+  host.replaceChildren();
 
-function median(values: number[]): number {
-  const s = [...values].sort((a, b) => a - b);
-  return s[Math.floor(s.length / 2)];
+  return { treeMountMs, treeOpenAllMs, treeExpandOneMs, treeScroll, treeCollapseAllMs, gridMountMs, gridScroll };
 }
 
 function medianMetrics(runs: RunMetrics[]): RunMetrics {
+  const ms = (key: "treeMountMs" | "treeOpenAllMs" | "treeExpandOneMs" | "treeCollapseAllMs" | "gridMountMs") =>
+    round(median(runs.map((r) => r[key])));
   const stats = (key: "treeScroll" | "gridScroll"): FrameStats => {
     const fields = Object.keys(runs[0][key]) as (keyof FrameStats)[];
-    return Object.fromEntries(fields.map((f) => [f, median(runs.map((r) => r[key][f]))])) as unknown as FrameStats;
+    return Object.fromEntries(fields.map((f) => [f, round(median(runs.map((r) => r[key][f])))])) as unknown as FrameStats;
   };
   return {
-    treeMountMs: median(runs.map((r) => r.treeMountMs)),
-    treeExpandAllMs: median(runs.map((r) => r.treeExpandAllMs)),
-    treeCollapseAllMs: median(runs.map((r) => r.treeCollapseAllMs)),
+    treeMountMs: ms("treeMountMs"),
+    treeOpenAllMs: ms("treeOpenAllMs"),
+    treeExpandOneMs: ms("treeExpandOneMs"),
     treeScroll: stats("treeScroll"),
-    gridMountMs: median(runs.map((r) => r.gridMountMs)),
+    treeCollapseAllMs: ms("treeCollapseAllMs"),
+    gridMountMs: ms("gridMountMs"),
     gridScroll: stats("gridScroll"),
   };
 }
@@ -130,22 +139,19 @@ export async function runAll(): Promise<UiBenchResult> {
   status.textContent = "Generating fixtures...";
   await painted();
   const tree = generateTree(TREE_NODES);
+  const source = treeSource(tree);
   const grid = generateGrid(GRID_ROWS);
+  const set = resultSet(grid);
   const refreshHz = await measureRefreshHz();
 
-  const raw: Record<string, RunMetrics[]> = Object.fromEntries(RENDERERS.map((r) => [r.name, []]));
-  for (let round = 0; round < ROUNDS; round++) {
-    // Alternate order each round so neither renderer always runs on a cold JIT.
-    const order = round % 2 ? [...RENDERERS].reverse() : RENDERERS;
-    for (const r of order) {
-      status.textContent = `Round ${round + 1}/${ROUNDS}: ${r.name}...`;
-      raw[r.name].push(await runOnce(r, tree, grid));
-    }
+  const raw: RunMetrics[] = [];
+  for (let r = 0; r < ROUNDS; r++) {
+    status.textContent = `Round ${r + 1}/${ROUNDS}...`;
+    raw.push(await runOnce(source, set));
   }
 
-  const medians = Object.fromEntries(RENDERERS.map((r) => [r.name, medianMetrics(raw[r.name])]));
   status.textContent = "Done.";
-  return {
+  const result: Omit<UiBenchResult, "markdown"> = {
     kind: "ui",
     date: new Date().toISOString(),
     refreshHz,
@@ -156,30 +162,30 @@ export async function runAll(): Promise<UiBenchResult> {
     gridRows: grid.rowCount,
     rounds: ROUNDS,
     scrollMs: SCROLL_MS,
-    medians,
+    median: medianMetrics(raw),
     raw,
   };
+  return { ...result, markdown: toMarkdown(result) };
 }
 
-export function toMarkdown(r: UiBenchResult): string {
-  const names = Object.keys(r.medians);
-  const row = (label: string, pick: (m: RunMetrics) => string) =>
-    `| ${label} | ${names.map((n) => pick(r.medians[n])).join(" | ")} |`;
+export function toMarkdown(r: Omit<UiBenchResult, "markdown">): string {
+  const m = r.median;
   const frames = (s: FrameStats) => `${s.p50} / ${s.p95} / ${s.p99} / ${s.max}`;
   const dropped = (s: FrameStats) => `${s.over25} / ${s.over33} of ${s.frames}`;
   return [
     `Medians of ${r.rounds} rounds. ${r.treeNodes} tree nodes, ${r.gridRows} grid rows, ${r.scrollMs / 1000} s scroll. Display ${r.refreshHz} Hz, DPR ${r.devicePixelRatio}, viewport ${r.viewport}.`,
     "",
-    `| Metric | ${names.join(" | ")} |`,
-    `| --- | ${names.map(() => "---").join(" | ")} |`,
-    row("Tree mount (ms)", (m) => `${m.treeMountMs}`),
-    row("Tree expand all 50k (ms)", (m) => `${m.treeExpandAllMs}`),
-    row("Tree collapse all (ms)", (m) => `${m.treeCollapseAllMs}`),
-    row("Tree scroll frame ms p50/p95/p99/max", (m) => frames(m.treeScroll)),
-    row("Tree scroll frames >25 / >33 ms", (m) => dropped(m.treeScroll)),
-    row("Grid mount 100k (ms)", (m) => `${m.gridMountMs}`),
-    row("Grid scroll frame ms p50/p95/p99/max", (m) => frames(m.gridScroll)),
-    row("Grid scroll frames >25 / >33 ms", (m) => dropped(m.gridScroll)),
+    "| Metric | Shipped Tree and ResultGrid |",
+    "| --- | --- |",
+    `| Tree mount, environments open (ms) | ${m.treeMountMs} |`,
+    `| Tree open all, ${r.treeNodes} rows rebuilt and rendered (ms) | ${m.treeOpenAllMs} |`,
+    `| Expand one folder in the open tree (ms) | ${m.treeExpandOneMs} |`,
+    `| Tree scroll frame ms p50/p95/p99/max | ${frames(m.treeScroll)} |`,
+    `| Tree scroll frames >25 / >33 ms | ${dropped(m.treeScroll)} |`,
+    `| Tree collapse all (ms) | ${m.treeCollapseAllMs} |`,
+    `| Grid mount, ${r.gridRows} rows (ms) | ${m.gridMountMs} |`,
+    `| Grid scroll frame ms p50/p95/p99/max | ${frames(m.gridScroll)} |`,
+    `| Grid scroll frames >25 / >33 ms | ${dropped(m.gridScroll)} |`,
   ].join("\n");
 }
 
@@ -191,7 +197,7 @@ async function run(): Promise<UiBenchResult> {
   runButton.disabled = true;
   try {
     const result = await runAll();
-    output.textContent = toMarkdown(result);
+    output.textContent = result.markdown;
     return result;
   } finally {
     runButton.disabled = false;
