@@ -57,7 +57,7 @@
       case "downloading":
         return `Downloading v${update.next}...`;
       case "ready":
-        return `v${update.next} is ready; restart from the status bar`;
+        return `v${update.next} is downloaded and installs when you close Panoptic, or restart now from the status bar`;
       case "error":
         return `Check failed: ${update.message}`;
       case "installFailed":

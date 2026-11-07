@@ -6,7 +6,8 @@
   import { afterPaint, finishBenchmark, firstPaintEpochMs, nowEpochMs, startupText, startupTimings, type StartupInfo } from "../startup";
   import { sidecarView } from "../sidecar-status";
   import { scheduleUpdateChecks } from "../update-schedule";
-  import { createUpdateChecker, currentVersion, type UpdateState } from "../updates";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { createUpdateChecker, currentVersion, installPendingUpdate, type UpdateState } from "../updates";
   import { parseChangelog, sectionsSince, type ChangelogSection } from "../whats-new";
   import { createApi, type Api, type AppConfig, type AppSettings, type ConnectionConfig, type DeviceCodePrompt, type EnvironmentConfig, type KindDescription, type TreeNode } from "./api";
   import { registerKinds } from "./kinds";
@@ -178,9 +179,30 @@
       if (!isAbortError(e.reason)) reportProblem("Unexpected error", e.reason);
     };
     window.addEventListener("unhandledrejection", onUnhandled);
+    // A downloaded update installs as the window closes, so it is not downloaded again next launch (#42). The window
+    // closes once this resolves; installing exits the process first.
+    let unlistenClose: (() => void) | undefined;
+    try {
+      getCurrentWindow()
+        .onCloseRequested(async () => void (await installPendingUpdate()))
+        .then((u) => (unlistenClose = u), () => {});
+    } catch {
+      // Not in the desktop shell (the preview): nothing to install.
+    }
     start();
-    return () => window.removeEventListener("unhandledrejection", onUnhandled);
+    return () => {
+      window.removeEventListener("unhandledrejection", onUnhandled);
+      unlistenClose?.();
+    };
   });
+
+  /** Restart now into a downloaded update; a running query would be stopped, so that asks first (#42). */
+  async function restartToUpdate() {
+    if (update?.kind !== "ready") return;
+    const running = workspace.tabs.some((t) => t.kind === "query" && t.running);
+    if (running && !(await ask({ title: "Restart to update?", body: "A query is still running. Restarting stops it.", action: "Restart" }))) return;
+    await update.install();
+  }
 
   let rpc: RpcClient | undefined;
   let runningBeforeConnected = false;
@@ -735,7 +757,7 @@
   </main>
 
   <div class="status-host">
-    <StatusBar {sidecar} {sidecarText} {inFlight} {lastLoad} {startup} {update} problems={problems.length} onOpenProblems={() => openProblems()} onCancelLoad={(id) => model.cancel(id)}
+    <StatusBar {sidecar} {sidecarText} {inFlight} {lastLoad} {startup} {update} onRestartToUpdate={restartToUpdate} problems={problems.length} onOpenProblems={() => openProblems()} onCancelLoad={(id) => model.cancel(id)}
       undo={undoText ? { text: undoText, run: () => undoDelete.undo() } : undefined} />
   </div>
 </div>

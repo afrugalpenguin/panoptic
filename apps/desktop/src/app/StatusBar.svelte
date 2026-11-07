@@ -12,6 +12,7 @@
     lastLoad,
     startup,
     update,
+    onRestartToUpdate,
     problems,
     onOpenProblems,
     onCancelLoad,
@@ -23,6 +24,8 @@
     lastLoad: LoadReport | undefined;
     startup: string;
     update: UpdateState | undefined;
+    /** Restart now into a downloaded update; otherwise it installs when Panoptic closes. */
+    onRestartToUpdate: () => void;
     /** Explorer errors; shown as a count badge that opens the Problems tab. */
     problems: number;
     onOpenProblems: () => void;
@@ -69,7 +72,8 @@
   {:else if update?.kind === "downloading"}
     <span class="item">Downloading v{update.next}...</span>
   {:else if update?.kind === "ready"}
-    <button class="update" onclick={() => update.kind === "ready" && update.install()}>Restart to update to v{update.next}</button>
+    <span class="item muted" title="Downloaded. It installs when you close Panoptic, so the next start is on it.">v{update.next} installs when you close Panoptic</span>
+    <button class="update" onclick={onRestartToUpdate}>Restart now</button>
   {:else if update?.kind === "error"}
     <span class="item muted" title={update.message}>Update check failed</span>
   {:else if update?.kind === "installFailed"}
