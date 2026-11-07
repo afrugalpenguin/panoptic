@@ -10,6 +10,9 @@ import { contextAt } from "./scanner";
 const slack = import.meta.env.CI ? 2 : 1;
 const INDEX_MS = 100 * slack;
 const COMPLETE_MS = 16 * slack;
+// Wall-clock cap for a whole test, not a budget: each test takes hundreds of timed calls, and on a loaded runner the
+// loop can outlast vitest's 5 s default while every p95 is within budget (#260). Only the p95 assertions decide.
+const TEST_TIMEOUT_MS = 60_000;
 
 const catalog: DatabaseCatalog = {
   stamp: "perf",
@@ -45,12 +48,15 @@ it("meets the indexing and completion budgets on a 5,000 object, 100,000 column 
   const columns = p95(() => complete(() => index, contextAt(source, offset, "tsql").context, { language: "tsql" }));
 
   const objects = complete(() => index, contextAt("select * from ", 14, "tsql").context, { language: "tsql" });
-  console.log(`IntelliSense perf: index ${indexMs.toFixed(1)} ms, columns p95 ${columns.toFixed(2)} ms, ${objects.items.length} objects listed`);
+  console.log(
+    `IntelliSense perf: index ${indexMs.toFixed(1)} ms, columns p95 ${columns.toFixed(2)} ms, ${objects.items.length} objects listed, total ${(performance.now() - start).toFixed(0)} ms`,
+  );
   expect(indexMs).toBeLessThan(INDEX_MS);
   expect(columns).toBeLessThan(COMPLETE_MS);
-});
+}, TEST_TIMEOUT_MS);
 
 it("meets the completion budget in a 5,000 line script", () => {
+  const start = performance.now();
   const index = new Index(catalog);
   const block = (i: number) =>
     [
@@ -84,9 +90,9 @@ it("meets the completion budget in a 5,000 line script", () => {
   expect(complete(() => index, contextAt(source, offset, "tsql").context, options).items).toHaveLength(20);
   expect(hover(() => index, source, hoverAt, options)).toContain("Column1");
   expect(unknownNames(() => index, source, offset)).toEqual([]);
-  console.log(`IntelliSense perf, 5,000 line script: middle p95 ${middleMs.toFixed(2)} ms, end p95 ${endMs.toFixed(2)} ms, hover p95 ${hoverMs.toFixed(2)} ms, unknown names p95 ${lintMs.toFixed(2)} ms`);
+  console.log(`IntelliSense perf, 5,000 line script: middle p95 ${middleMs.toFixed(2)} ms, end p95 ${endMs.toFixed(2)} ms, hover p95 ${hoverMs.toFixed(2)} ms, unknown names p95 ${lintMs.toFixed(2)} ms, total ${(performance.now() - start).toFixed(0)} ms`);
   expect(middleMs).toBeLessThan(COMPLETE_MS);
   expect(endMs).toBeLessThan(COMPLETE_MS);
   expect(hoverMs).toBeLessThan(COMPLETE_MS);
   expect(lintMs).toBeLessThan(COMPLETE_MS);
-});
+}, TEST_TIMEOUT_MS);
