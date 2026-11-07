@@ -502,6 +502,18 @@ public sealed class ConfigStoreTests : IDisposable
     [InlineData("null")]
     [InlineData("{}")] // deserialises, but with no config or secrets
     [InlineData("{\"config\":{},\"secrets\":{}}")]
+    // Deserialises, but a required member is null (#183): these used to crash the sidecar on every start.
+    [InlineData("{\"config\":{\"environments\":[{\"id\":\"dev\",\"name\":\"Dev\",\"color\":\"#000\",\"readOnly\":false,\"connections\":null}]},\"secrets\":{}}")]
+    [InlineData("{\"config\":{\"environments\":[null]},\"secrets\":{}}")]
+    [InlineData("{\"config\":{\"environments\":[{\"id\":null,\"name\":\"Dev\",\"color\":\"#000\",\"readOnly\":false,\"connections\":[]}]},\"secrets\":{}}")]
+    [InlineData("{\"config\":{\"environments\":[{\"id\":\"dev\",\"name\":null,\"color\":\"#000\",\"readOnly\":false,\"connections\":[]}]},\"secrets\":{}}")]
+    [InlineData("{\"config\":{\"environments\":[{\"id\":\"dev\",\"name\":\"Dev\",\"color\":\"#000\",\"readOnly\":false,\"connections\":[null]}]},\"secrets\":{}}")]
+    [InlineData("{\"config\":{\"environments\":[{\"id\":\"dev\",\"name\":\"Dev\",\"color\":\"#000\",\"readOnly\":false,\"connections\":[{\"id\":\"c1\",\"name\":\"a\",\"kind\":null,\"endpoint\":\"h\",\"auth\":\"sql\"}]}]},\"secrets\":{}}")]
+    [InlineData("{\"config\":{\"environments\":[],\"connections\":[{\"id\":\"c1\",\"name\":null,\"kind\":\"sql\",\"endpoint\":\"h\",\"auth\":\"sql\"}]},\"secrets\":{}}")]
+    [InlineData("{\"config\":{\"environments\":[],\"connections\":[{\"id\":null,\"name\":\"a\",\"kind\":\"sql\",\"endpoint\":\"h\",\"auth\":\"sql\"}]},\"secrets\":{}}")]
+    [InlineData("{\"config\":{\"environments\":[],\"connections\":[{\"id\":\"c1\",\"name\":\"a\",\"kind\":\"sql\",\"endpoint\":null,\"auth\":\"sql\"}]},\"secrets\":{}}")]
+    [InlineData("{\"config\":{\"environments\":[],\"connections\":[{\"id\":\"c1\",\"name\":\"a\",\"kind\":\"sql\",\"endpoint\":\"h\",\"auth\":null}]},\"secrets\":{}}")]
+    [InlineData("{\"config\":{\"environments\":[],\"connections\":[null]},\"secrets\":{}}")]
     public void Decryptable_but_undeserialisable_payload_is_moved_aside(string json)
     {
         WriteEncrypted(json);
@@ -511,6 +523,42 @@ public sealed class ConfigStoreTests : IDisposable
         Assert.Empty(store.Config.Environments);
         Assert.Null(store.GetSecret("c1"));
         Assert.Equal(Assert.Single(CorruptCopies()), store.RecoveredFrom);
+    }
+
+    [Fact]
+    public void A_write_that_would_not_load_again_is_refused_and_changes_nothing()
+    {
+        // Each of these used to be stored, and would crash (or, now, empty) the store on the next start.
+        var store = new ConfigStore(_path);
+        store.SaveEnvironment(new EnvironmentConfig("dev", "Dev", "#000", false, []));
+        store.SaveConnection("dev", new ConnectionConfig("c1", "a", "sql", "h", "sql"), "s");
+        var before = File.ReadAllBytes(_path);
+
+        Assert.Throws<RpcException>(() => store.Restore(new AppConfig([new EnvironmentConfig("dev", "Dev", "#000", false, null!)])));
+        Assert.Throws<RpcException>(() => store.SaveConnection("dev", new ConnectionConfig("c2", null!, "sql", "h2", "sql"), null));
+        Assert.Throws<RpcException>(() => store.SaveConnection(null, new ConnectionConfig("c3", "b", "sql", null!, "sql"), null));
+        Assert.Throws<RpcException>(() => store.SaveEnvironment(new EnvironmentConfig("uat", null!, "#000", false, [])));
+
+        Assert.Equal(before, File.ReadAllBytes(_path));
+        Assert.Equal("a", store.Config.Environments.Single().Connections.Single().Name);
+        var reloaded = new ConfigStore(_path);
+        Assert.Null(reloaded.RecoveredFrom);
+        Assert.Equal("s", reloaded.GetSecret("c1"));
+    }
+
+    [Fact]
+    public void Store_from_before_loose_connections_still_loads()
+    {
+        // Older stores have no top-level connections (or null); that is not corruption.
+        WriteEncrypted("{\"config\":{\"environments\":[{\"id\":\"dev\",\"name\":\"Dev\",\"color\":\"#000\",\"readOnly\":false,\"connections\":[{\"id\":\"c1\",\"name\":\"a\",\"kind\":\"sql\",\"endpoint\":\"h\",\"auth\":\"sql\"}]}],\"connections\":null},\"secrets\":{\"c1\":\"s\"}}");
+
+        var store = new ConfigStore(_path);
+
+        Assert.Null(store.RecoveredFrom);
+        Assert.Equal("a", store.Config.Environments.Single().Connections.Single().Name);
+        Assert.Empty(store.Config.Connections);
+        Assert.Equal("s", store.GetSecret("c1"));
+        Assert.Empty(CorruptCopies());
     }
 
     [Fact]

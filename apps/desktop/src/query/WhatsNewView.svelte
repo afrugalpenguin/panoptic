@@ -94,7 +94,7 @@
     line-height: 1.25;
   }
   .version {
-    color: var(--brand-amber);
+    color: var(--text-amber);
   }
   header p {
     margin: 4px 0 0;
@@ -167,10 +167,10 @@
     --c: var(--ok);
   }
   .changed {
-    --c: var(--brand-amber);
+    --c: var(--text-amber);
   }
   .fixed {
-    --c: var(--brand-cyan);
+    --c: var(--text-cyan);
   }
   .removed {
     --c: var(--bad);

@@ -1,0 +1,1 @@
+Fixed: a saved-connections file with a missing environment list or connection field no longer stops the database engine from starting; it is moved aside and Panoptic starts empty, as for other damaged files.
