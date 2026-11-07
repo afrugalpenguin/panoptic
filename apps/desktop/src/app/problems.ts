@@ -30,6 +30,14 @@ export function toNodeError(e: unknown): NodeError {
   return { summary: firstSentence(message), detail: message, retryable: true };
 }
 
+/**
+ * A failure outside the tree (start-up, a dropped engine message, an unhandled rejection) as a Problems tab entry
+ * (#197): filed under "Panoptic", with what was being done as its path. `seq` keeps each one's id unique.
+ */
+export function appProblem(seq: number, what: string, e: unknown, at = Date.now()): Problem {
+  return { nodeId: `app:${seq}`, env: "", connection: "Panoptic", path: [what], error: toNodeError(e), at };
+}
+
 export function firstSentence(message: string): string {
   const text = message.trim().split(/(?<=\.)\s|;\s|[\r\n]/)[0].trim() || "The request failed.";
   if (text.length < MAX_SUMMARY) return text;

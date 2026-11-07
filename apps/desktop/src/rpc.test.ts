@@ -62,6 +62,31 @@ describe("RpcClient", () => {
     vi.useRealTimers();
   });
 
+  it("on timeout, also sends $/cancelRequest so the sidecar stops the work (#197)", async () => {
+    vi.useFakeTimers();
+    const { client, sent, lastId } = setup();
+    const p = client.request("slow", undefined, 1000);
+    await Promise.resolve();
+    const id = lastId();
+    vi.advanceTimersByTime(1001);
+    await expect(p).rejects.toThrow(/timed out/);
+    expect(JSON.parse(sent[sent.length - 1])).toEqual({ jsonrpc: "2.0", method: "$/cancelRequest", params: { id } });
+    vi.useRealTimers();
+  });
+
+  it("reports lines it has to drop: not JSON, or an error reply with no id (#197)", () => {
+    const dropped: string[] = [];
+    const client = new RpcClient(async () => {}, undefined, (reason) => dropped.push(reason));
+    client.receive("Unhandled exception. System.NullReferenceException");
+    client.receive(JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }));
+    client.receive(JSON.stringify({ jsonrpc: "2.0", id: 999, result: 1 })); // a late reply: expected, not reported
+
+    expect(dropped).toEqual([
+      "Not a JSON-RPC message from the database engine: Unhandled exception. System.NullReferenceException",
+      "The database engine reported an error for no request: Parse error (-32700)",
+    ]);
+  });
+
   it("rejects every pending request when the sidecar disconnects", async () => {
     const { client } = setup();
     const p = client.request("ping");

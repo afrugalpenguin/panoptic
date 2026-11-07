@@ -1,6 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { RpcError } from "../rpc";
-import { errorText, errorTooltip, firstSentence, toNodeError } from "./problems";
+import { appProblem, errorText, errorTooltip, firstSentence, toNodeError } from "./problems";
+
+describe("appProblem", () => {
+  it("files a failure outside the tree under Panoptic, with what was being done as its path (#197)", () => {
+    expect(appProblem(3, "Loading the explorer", new Error("config timed out after 10000 ms. Retry later."), 1234)).toEqual({
+      nodeId: "app:3",
+      env: "",
+      connection: "Panoptic",
+      path: ["Loading the explorer"],
+      error: { summary: "config timed out after 10000 ms.", detail: "config timed out after 10000 ms. Retry later.", retryable: true },
+      at: 1234,
+    });
+  });
+
+  it("takes a plain reason as well as an error", () => {
+    expect(appProblem(1, "Database engine output", "Not a JSON-RPC message", 1).error.detail).toBe("Not a JSON-RPC message");
+  });
+});
 
 describe("toNodeError", () => {
   it("uses the sidecar's structured error", () => {

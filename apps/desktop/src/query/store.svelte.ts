@@ -84,6 +84,8 @@ export class QueryTab {
   database = $state<string>();
   /** Databases on the tab's connection, for the picker (SQL tabs only). */
   databases = $state.raw<string[]>([]);
+  /** Why the database list could not be loaded, when it could not (#197). */
+  databasesError = $state<string>();
   /** Which catalog completions read (docs/query-editor.md). */
   catalogKey = $state<string>();
   catalogError = $state<string>();
@@ -231,8 +233,10 @@ export class QueryWorkspace {
     if (!this.api.databases || !tab.target?.capabilities.databasePicker) return;
     try {
       tab.databases = await this.api.databases(this.scopeOf(tab.target).connection);
-    } catch {
+      tab.databasesError = undefined;
+    } catch (e) {
       tab.databases = [];
+      tab.databasesError = e instanceof Error ? e.message : String(e);
     }
   }
 
@@ -354,7 +358,9 @@ export class QueryWorkspace {
     const index = this.tabs.findIndex((t) => t.id === id);
     if (index < 0) return;
     const [tab] = this.tabs.splice(index, 1);
-    if (tab.kind === "query" && tab.running) void this.cancel(tab);
+    // The tab is gone, so there is nowhere to show a failed cancel (usually the engine stopping, which the status
+    // bar already says); it must not surface as an unhandled rejection (#197).
+    if (tab.kind === "query" && tab.running) this.cancel(tab).catch((e) => console.warn("Cancelling a closed tab's query failed:", e));
     if (this.activeId === id) this.activeId = this.tabs[Math.min(index, this.tabs.length - 1)]?.id;
   }
 

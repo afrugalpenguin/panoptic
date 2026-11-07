@@ -40,23 +40,27 @@ export class RpcClient {
   constructor(
     private readonly send: (line: string) => Promise<void>,
     private readonly onNotification: (method: string, params: unknown) => void = () => {},
+    /** A line that could not be matched to anything and was dropped, with why (#197). */
+    private readonly onDropped: (reason: string) => void = (reason) => console.warn(reason),
   ) {}
 
   /**
-   * Aborting `signal` rejects at once with an AbortError and sends $/cancelRequest so the sidecar stops
-   * the work; its late response, if any, is ignored.
+   * Aborting `signal` rejects at once with an AbortError, and a timeout with a "timed out" error; both send
+   * $/cancelRequest so the sidecar stops the work. A late response, if any, is ignored.
    */
   request<T = unknown>(method: string, params?: unknown, timeoutMs = DEFAULT_TIMEOUT_MS, signal?: AbortSignal): Promise<T> {
     if (signal?.aborted) return Promise.reject(new AbortError(method));
     const id = this.nextId++;
     return new Promise<T>((resolve, reject) => {
+      const cancel = () => this.send(JSON.stringify({ jsonrpc: "2.0", method: "$/cancelRequest", params: { id } })).catch(() => {});
       const timer = setTimeout(() => {
         this.settle(id, undefined, new Error(`${method} timed out after ${timeoutMs} ms`));
+        void cancel();
       }, timeoutMs);
       const onAbort = () => {
         if (!this.pending.has(id)) return;
         this.settle(id, undefined, new AbortError(method));
-        this.send(JSON.stringify({ jsonrpc: "2.0", method: "$/cancelRequest", params: { id } })).catch(() => {});
+        void cancel();
       };
       signal?.addEventListener("abort", onAbort, { once: true });
       const release = () => signal?.removeEventListener("abort", onAbort);
@@ -72,13 +76,18 @@ export class RpcClient {
     try {
       msg = JSON.parse(line);
     } catch {
+      this.onDropped(`Not a JSON-RPC message from the database engine: ${line}`);
       return;
     }
     if (typeof msg?.method === "string" && msg.id === undefined) {
       this.onNotification(msg.method, msg.params);
       return;
     }
-    if (typeof msg?.id !== "number") return;
+    if (typeof msg?.id !== "number") {
+      // JSON-RPC answers a request it could not even read with id null: no caller is waiting for it.
+      if (msg?.error) this.onDropped(`The database engine reported an error for no request: ${msg.error.message} (${msg.error.code})`);
+      return;
+    }
     this.settle(msg.id, msg.result, msg.error ? new RpcError(msg.error.code, msg.error.message, msg.error.data) : undefined);
   }
 
