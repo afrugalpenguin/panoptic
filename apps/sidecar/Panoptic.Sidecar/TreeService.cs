@@ -128,7 +128,41 @@ public sealed class TreeService(ConfigStore store, IReadOnlyDictionary<string, I
         if (!string.IsNullOrWhiteSpace(connection.ClientId) && !Guid.TryParseExact(connection.ClientId.Trim(), "D", out _))
             throw new RpcException(RpcException.InvalidParams, "The client id must be an app's Application (client) ID, a GUID such as 11111111-2222-3333-4444-555555555555");
         ValidateCertificateOptions(connection, kind);
+        ValidateClientCertificate(connection);
         return backend;
+    }
+
+    /// <summary>
+    /// Client certificate sign-in (#120): a user, and absolute paths to an existing certificate and key. A .pfx or .p12
+    /// holds both, so needs no key file. Other sign-ins take neither field, so nothing is sent that was not meant.
+    /// </summary>
+    private static void ValidateClientCertificate(ConnectionConfig c)
+    {
+        var certificate = c.ClientCertificateFile?.Trim();
+        var key = c.ClientKeyFile?.Trim();
+        static RpcException Bad(string message) => new(RpcException.InvalidParams, message);
+        if (c.Auth != AuthKinds.Certificate)
+        {
+            if (!string.IsNullOrEmpty(certificate) || !string.IsNullOrEmpty(key))
+                throw Bad("Client certificate and key files are only used with Client certificate sign-in.");
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(c.User)) throw Bad("User is required: the role the certificate's name maps to.");
+        if (string.IsNullOrEmpty(certificate)) throw Bad("Choose the client certificate file.");
+        RequireFile(certificate, "client certificate file", @"C:\certs\reader.crt");
+        var bundle = Backends.PostgresBackend.IsBundle(certificate);
+        if (string.IsNullOrEmpty(key))
+        {
+            if (!bundle) throw Bad("Choose the certificate's private key file, or use a .pfx file, which holds both.");
+            return;
+        }
+        RequireFile(key, "key file", @"C:\certs\reader.key");
+
+        static void RequireFile(string path, string what, string example)
+        {
+            if (!Path.IsPathFullyQualified(path)) throw Bad($"The {what} must be a full path, such as {example}.");
+            if (!File.Exists(path)) throw Bad($"The {what} {path} does not exist.");
+        }
     }
 
     /// <summary>

@@ -1,6 +1,6 @@
 # PostgreSQL connector
 
-Status: shipped. The tree, sign-in and connection dialog (#116), queries with the read-only guard (#117), IntelliSense (#118) and the T-SQL habits warnings (#119) are all in. Client certificates (#120), AWS RDS IAM (#121) and Kerberos (#122) sign-in are still open. The design is in [docs/plans/2026-10-30-postgres-design.md](../plans/2026-10-30-postgres-design.md) (ADR 0015).
+Status: shipped. The tree, sign-in and connection dialog (#116), queries with the read-only guard (#117), IntelliSense (#118) and the T-SQL habits warnings (#119) are all in. Client certificate sign-in (#120) is in too. AWS RDS IAM (#121) and Kerberos (#122) sign-in are still open. The design is in [docs/plans/2026-10-30-postgres-design.md](../plans/2026-10-30-postgres-design.md) (ADR 0015).
 
 Covers PostgreSQL and Azure Database for PostgreSQL Flexible Server. Backend: `apps/sidecar/Panoptic.Sidecar/Backends/PostgresBackend.cs`, using Npgsql.
 
@@ -10,13 +10,18 @@ Covers PostgreSQL and Azure Database for PostgreSQL Flexible Server. Backend: `a
 | --- | --- |
 | Server | `host` or `host:port`; port 5432 by default. |
 | Database | The database to connect to first, `postgres` when empty. Every Postgres connection is bound to one database, so the tree opens each database on its own connection. When set, the tree shows only this database. |
-| Authentication | Microsoft Entra ID, or username and password. Client certificates (#120), AWS RDS IAM (#121) and Kerberos (#122) are planned. |
-| User | The login. For Entra, optional: the Entra name of the Postgres role (a user principal name, or a group's name to sign in through the group). Left blank, it is the name of the account you sign in with. |
+| Authentication | Microsoft Entra ID, username and password, or client certificate. AWS RDS IAM (#121) and Kerberos (#122) are planned. |
+| User | The login. For a client certificate, the role the certificate's name maps to (required). For Entra, optional: the Entra name of the Postgres role (a user principal name, or a group's name to sign in through the group). Left blank, it is the name of the account you sign in with. |
 | Password | Username and password only. Stored DPAPI-encrypted in the local store, never sent to the UI. |
+| Client certificate | Client certificate only. A full path to the certificate to sign in with: PEM (`.crt`, `.pem`, `.cer`) with a key file, or a `.pfx`/`.p12` that holds the key too. The server checks it against its CA and, with `clientcert=verify-full` or `cert` in `pg_hba.conf`, that its name is the user. |
+| Key file | Client certificate only, not needed for a `.pfx`. A full path to the certificate's private key. |
+| Key passphrase | Client certificate only, optional: the key's (or the `.pfx`'s) passphrase. Stored DPAPI-encrypted like a password, and dropped when the certificate or key file changes. A PEM certificate goes to Npgsql as `SSL Certificate`, `SSL Key` and `SSL Password`; a `.pfx` is loaded by the sidecar with its key and passphrase, since Npgsql would load it without the key. |
 | Tenant | Optional, Entra only. |
 | Trust server certificate | Encrypts without validating the certificate. For local and dev servers only. Otherwise the certificate and host name are verified. Connections are always encrypted, so a server without TLS cannot be reached. The explorer marks such connections **cert not checked**. |
 | Certificate host name | Optional. The name the server's certificate must match when it isn't the endpoint's (a private endpoint, an alias). Only the TLS target name changes; the chain and name are still verified. |
 | Certificate file | Optional. A CA (or the server's own certificate) trusted for this connection only, as Npgsql's `RootCertificate` with full verification. Can't be combined with Trust server certificate. |
+
+Client certificate sign-in is tested against a real server: `scripts/pg-client-cert.sh` starts a PostgreSQL 17 that accepts only certificates, with throwaway certificates, and the `sidecar-pg` CI job runs `ClientCertificateIntegrationTests` against it (PEM key, passphrase-protected key, `.pfx`, and the refusals).
 
 Entra connections get tokens for `https://ossrdbms-aad.database.windows.net/.default` through the same credential as SQL and Cosmos (WAM first, then device code), with the same 3 minute allowance for a sign-in prompt. The token is sent as the password; every new physical connection asks the credential again, so an expired token is replaced from MSAL's cache.
 

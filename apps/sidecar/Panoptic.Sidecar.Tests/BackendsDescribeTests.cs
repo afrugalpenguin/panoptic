@@ -31,7 +31,7 @@ public sealed class BackendsDescribeTests : IDisposable
     [InlineData(ConnectionKinds.Sql, "entra,sql,windows", "Microsoft Entra ID,SQL login,Windows")]
     [InlineData(ConnectionKinds.Synapse, "entra,sql", "Microsoft Entra ID,SQL login")]
     [InlineData(ConnectionKinds.Cosmos, "entra,key", "Microsoft Entra ID,Account key")]
-    [InlineData(ConnectionKinds.Postgres, "entra,password", "Microsoft Entra ID,Username and password")]
+    [InlineData(ConnectionKinds.Postgres, "entra,password,certificate", "Microsoft Entra ID,Username and password,Client certificate")]
     public void Auths_are_the_ones_the_kind_accepts(string kind, string ids, string labels)
     {
         var auths = Described()[kind].Auths;

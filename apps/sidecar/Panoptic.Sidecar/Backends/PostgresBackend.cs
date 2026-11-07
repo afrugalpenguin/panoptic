@@ -1,3 +1,4 @@
+using System.Security.Cryptography.X509Certificates;
 using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
@@ -116,7 +117,7 @@ public sealed class PostgresBackend(Credentials credentials) : IQueryBackend
     /// <summary>Entra users sign in under their Entra name, which the optional user overrides.</summary>
     public KindDescription Describe(string kind) => new(
         kind, "PostgreSQL / Azure Database for PostgreSQL", "Server", "myserver.postgres.database.azure.com or host:5432",
-        [AuthKinds.Option(AuthKinds.Entra), AuthKinds.Option(AuthKinds.Password)],
+        [AuthKinds.Option(AuthKinds.Entra), AuthKinds.Option(AuthKinds.Password), AuthKinds.Option(AuthKinds.Certificate)],
         new KindBadge("PG", "#5f7a2e", "Postgres"),
         new ConnectionFields(Database: true, CertificateOptions: true, EntraUser: true, TrustLocalOnly: false));
 
@@ -579,6 +580,9 @@ public sealed class PostgresBackend(Credentials credentials) : IQueryBackend
     private static RpcException BadEndpoint(string endpoint) =>
         new(RpcException.InvalidParams, $"Invalid Postgres server '{endpoint}'. Use host or host:port.");
 
+    /// <summary>A .pfx or .p12: a client certificate bundled with its key.</summary>
+    public static bool IsBundle(string? file) => Path.GetExtension(file?.Trim() ?? "").ToLowerInvariant() is ".pfx" or ".p12";
+
     /// <summary>The connection string for one database. The password or token is supplied separately.</summary>
     public static NpgsqlConnectionStringBuilder Settings(ConnectionConfig c, string? database, string? user)
     {
@@ -594,6 +598,10 @@ public sealed class PostgresBackend(Credentials credentials) : IQueryBackend
             SslMode = c.TrustServerCertificate ? SslMode.Require : SslMode.VerifyFull,
             // A private CA (or the server's own certificate): trusted for this connection only, still with full checks.
             RootCertificate = string.IsNullOrWhiteSpace(c.CertificateFile) ? null : c.CertificateFile.Trim(),
+            // Client certificate sign-in (#120): a PEM certificate and its key. The key's passphrase is the secret,
+            // supplied separately like a password. A .pfx is loaded by Open instead (Npgsql drops its key).
+            SslCertificate = c.Auth == AuthKinds.Certificate && !IsBundle(c.ClientCertificateFile) ? c.ClientCertificateFile?.Trim() : null,
+            SslKey = c.Auth == AuthKinds.Certificate && !string.IsNullOrWhiteSpace(c.ClientKeyFile) ? c.ClientKeyFile.Trim() : null,
             Timeout = 15,
             CommandTimeout = 30,
             ApplicationName = "Panoptic",
@@ -607,6 +615,7 @@ public sealed class PostgresBackend(Credentials credentials) : IQueryBackend
         switch (c.Auth)
         {
             case AuthKinds.Password:
+            case AuthKinds.Certificate:
                 if (string.IsNullOrWhiteSpace(user)) throw new RpcException(RpcException.InvalidParams, "User is required");
                 break;
             case AuthKinds.Entra:
@@ -621,18 +630,26 @@ public sealed class PostgresBackend(Credentials credentials) : IQueryBackend
         }
 
         var settings = Settings(c, database, user);
-        var key = (c.Id, settings.Database!, $"{settings.ConnectionString};auth={c.Auth};tenant={c.TenantId};certhost={c.CertificateHostName}");
+        var key = (c.Id, settings.Database!, $"{settings.ConnectionString};auth={c.Auth};tenant={c.TenantId};certhost={c.CertificateHostName};clientcert={c.ClientCertificateFile}");
         var source = _sources.GetOrAdd(key, _ =>
         {
             var builder = new NpgsqlDataSourceBuilder(settings.ConnectionString);
             // A server reached by another name: the certificate must match this one instead of the endpoint. Only the
             // name changes; the chain and name are still checked by the platform, as for any VerifyFull connection.
-            if (!string.IsNullOrWhiteSpace(c.CertificateHostName))
-            {
-                var expected = c.CertificateHostName.Trim();
-                builder.UseSslClientAuthenticationOptionsCallback(o => o.TargetHost = expected);
-            }
+            var expected = string.IsNullOrWhiteSpace(c.CertificateHostName) ? null : c.CertificateHostName.Trim();
+            // A .pfx client certificate (#120): given only a path, Npgsql loads it without its private key and the
+            // server's request for a client certificate fails, so it is loaded here, with its passphrase.
+            var bundle = c.Auth == AuthKinds.Certificate && IsBundle(c.ClientCertificateFile)
+                ? X509CertificateLoader.LoadPkcs12FromFile(c.ClientCertificateFile!.Trim(), string.IsNullOrEmpty(secret) ? null : secret)
+                : null;
+            if (expected is not null || bundle is not null)
+                builder.UseSslClientAuthenticationOptionsCallback(o =>
+                {
+                    if (expected is not null) o.TargetHost = expected;
+                    if (bundle is not null) o.ClientCertificates = [bundle];
+                });
             if (tokens is not null) builder.UsePasswordProvider(_ => throw new NotSupportedException("Postgres connections open asynchronously."), tokens);
+            else if (c.Auth == AuthKinds.Certificate) builder.ConnectionStringBuilder.SslPassword = bundle is null && !string.IsNullOrEmpty(secret) ? secret : null;
             else builder.ConnectionStringBuilder.Password = secret ?? "";
             return builder.Build();
         });

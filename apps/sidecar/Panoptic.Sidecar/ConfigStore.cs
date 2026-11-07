@@ -116,7 +116,10 @@ public sealed class ConfigStore
         && a.User == b.User
         && a.TrustServerCertificate == b.TrustServerCertificate
         && string.Equals(a.CertificateHostName?.Trim() ?? "", b.CertificateHostName?.Trim() ?? "", StringComparison.OrdinalIgnoreCase)
-        && string.Equals(a.CertificateFile?.Trim() ?? "", b.CertificateFile?.Trim() ?? "", StringComparison.OrdinalIgnoreCase);
+        && string.Equals(a.CertificateFile?.Trim() ?? "", b.CertificateFile?.Trim() ?? "", StringComparison.OrdinalIgnoreCase)
+        // A key passphrase belongs to its key (#120).
+        && string.Equals(a.ClientCertificateFile?.Trim() ?? "", b.ClientCertificateFile?.Trim() ?? "", StringComparison.OrdinalIgnoreCase)
+        && string.Equals(a.ClientKeyFile?.Trim() ?? "", b.ClientKeyFile?.Trim() ?? "", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Adds or replaces an environment, keeping its existing connections.</summary>
     public void SaveEnvironment(EnvironmentConfig environment)

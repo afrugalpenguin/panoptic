@@ -56,6 +56,10 @@
   let certHost = $state(initial?.certificateHostName ?? "");
   // svelte-ignore state_referenced_locally
   let certFile = $state(initial?.certificateFile ?? "");
+  // svelte-ignore state_referenced_locally
+  let clientCert = $state(initial?.clientCertificateFile ?? "");
+  // svelte-ignore state_referenced_locally
+  let clientKey = $state(initial?.clientKeyFile ?? "");
   let secret = $state("");
 
   let busy = $state<"" | "testing" | "saving">("");
@@ -69,8 +73,14 @@
   const described = $derived(kinds.find((k) => k.kind === kind) ?? kinds[0]);
   const fields = $derived(described.fields);
   const authOptions = $derived(described.auths);
-  const login = $derived(auth === "sql" || auth === "password");
-  const needsSecret = $derived(login || auth === "key");
+  /** Client certificate sign-in (Postgres, #120): a certificate and key, and the key's passphrase as an optional secret. */
+  const certAuth = $derived(auth === "certificate");
+  /** A user is required: a login's name, or the role a client certificate maps to. */
+  const login = $derived(auth === "sql" || auth === "password" || certAuth);
+  const needsSecret = $derived(auth === "sql" || auth === "password" || auth === "key");
+  const showSecret = $derived(needsSecret || certAuth);
+  /** A .pfx or .p12 holds the key as well, so needs no key file. */
+  const bundle = $derived(/\.(pfx|p12)$/i.test(clientCert.trim()));
   /** Postgres signs Entra users in under their Entra name; blank means the name from the sign-in. */
   const entraUser = $derived(fields.entraUser && auth === "entra");
   const placeholder = $derived(described.endpointPlaceholder);
@@ -111,6 +121,8 @@
       trustServerCertificate: trust,
       certificateHostName: fields.certificateOptions && certHost.trim() ? certHost.trim() : null,
       certificateFile: fields.certificateOptions && certFile.trim() ? certFile.trim() : null,
+      clientCertificateFile: certAuth && clientCert.trim() ? clientCert.trim() : null,
+      clientKeyFile: certAuth && clientKey.trim() ? clientKey.trim() : null,
     };
   }
 
@@ -128,7 +140,9 @@
       (c.user ?? null) === (initial.user ?? null) &&
       c.trustServerCertificate === initial.trustServerCertificate &&
       same(c.certificateHostName, initial.certificateHostName) &&
-      same(c.certificateFile, initial.certificateFile)
+      same(c.certificateFile, initial.certificateFile) &&
+      same(c.clientCertificateFile, initial.clientCertificateFile) &&
+      same(c.clientKeyFile, initial.clientKeyFile)
     );
   });
   /** Optional text that compares blank-or-missing as equal, ignoring case and surrounding space. */
@@ -136,13 +150,15 @@
   const secretName = $derived(auth === "key" ? "account key" : "password");
 
   /** Blank secret means "keep the stored one" while that is allowed. */
-  const secretArg = () => (needsSecret ? (secret || (keepsSavedSecret ? undefined : "")) : "");
+  const secretArg = () => (showSecret ? (secret || (keepsSavedSecret ? undefined : "")) : "");
 
   function validate(): string {
     if (!endpoint.trim()) return `${described.endpointLabel} is required`;
     if (login && !user.trim()) return "User is required";
     if (auth === "entra" && clientId.trim() && !GUID.test(clientId.trim()))
       return "Client id must be an app's Application (client) ID, a GUID such as 11111111-2222-3333-4444-555555555555";
+    if (certAuth && !clientCert.trim()) return "Choose the client certificate file.";
+    if (certAuth && !clientKey.trim() && !bundle) return "Choose the certificate's private key file, or use a .pfx file, which holds both.";
     if (fields.certificateOptions && trust && (certHost.trim() || certFile.trim()))
       return "Turn off Trust server certificate to use a certificate host name or file: trusting skips the checks they set up.";
     if (needsSecret && !secret && !keepsSavedSecret)
@@ -150,6 +166,11 @@
         ? `Enter the ${secretName} again: the server, user, sign-in or certificate setting changed, so the saved one is not sent.`
         : auth === "key" ? "Account key is required" : "Password is required";
     return "";
+  }
+
+  async function browse(name: string, extensions: string[], set: (path: string) => void) {
+    const picked = await openFile({ multiple: false, directory: false, filters: [{ name, extensions }] });
+    if (typeof picked === "string") set(picked);
   }
 
   async function browseCertificate() {
@@ -212,8 +233,23 @@
     <input id="c-user" bind:value={user} placeholder="Defaults to the account you sign in with" spellcheck="false" autocomplete="off" />
   {/if}
 
-  {#if needsSecret}
-    <label for="c-secret">{auth === "key" ? "Account key" : "Password"}</label>
+  {#if certAuth}
+    <label for="c-client-cert">Client certificate</label>
+    <span class="file-row">
+      <input id="c-client-cert" bind:value={clientCert} placeholder="The certificate to sign in with (.crt, .pem, or a .pfx with its key)" spellcheck="false" autocomplete="off" />
+      <button type="button" onclick={() => browse("Certificates", ["crt", "pem", "cer", "pfx", "p12"], (p) => (clientCert = p))}>Browse...</button>
+    </span>
+    {#if !bundle}
+      <label for="c-client-key">Key file</label>
+      <span class="file-row">
+        <input id="c-client-key" bind:value={clientKey} placeholder="The certificate's private key (.key, .pem)" spellcheck="false" autocomplete="off" />
+        <button type="button" onclick={() => browse("Private keys", ["key", "pem"], (p) => (clientKey = p))}>Browse...</button>
+      </span>
+    {/if}
+  {/if}
+
+  {#if showSecret}
+    <label for="c-secret">{auth === "key" ? "Account key" : certAuth ? "Key passphrase" : "Password"}{#if certAuth} <span class="muted">(optional)</span>{/if}</label>
     <input
       id="c-secret"
       type="password"
