@@ -104,6 +104,13 @@ describe("node context menu", () => {
     expect(shortcutAction({ ctrlKey: true, metaKey: false, key: "n" }, undefined)).toBeUndefined();
   });
 
+  it("leaves Ctrl+Shift+N and Ctrl+Alt+N to the global shortcuts", () => {
+    const queryable = node(["newQuery", "refresh"]);
+    expect(shortcutAction({ ctrlKey: true, metaKey: false, shiftKey: true, key: "N" }, queryable)).toBeUndefined();
+    expect(shortcutAction({ ctrlKey: false, metaKey: true, shiftKey: true, key: "N" }, queryable)).toBeUndefined();
+    expect(shortcutAction({ ctrlKey: true, metaKey: false, altKey: true, key: "n" }, queryable)).toBeUndefined();
+  });
+
   it("falls back to the action id before the labels arrive", () => {
     expect(actionLabel("copyPath", {})).toBe("copyPath");
     expect(actionLabel("newQuery", {})).toBe("newQuery (Ctrl+N)");
