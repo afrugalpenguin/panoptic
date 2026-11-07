@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Kbd from "./Kbd.svelte";
   // The Seek box (docs/landing.md, "Seek"): an input over seek()'s rows. Ranking and keys live in seek.ts; this only
   // renders and forwards. Used by the landing (scope "all") and the unconnected query tab's picker ("connections").
   import { onMount } from "svelte";
@@ -99,7 +100,7 @@
       {placeholder}
       {onkeydown}
     />
-    {#if chip}<kbd>{chip}</kbd>{/if}
+    {#if chip}<Kbd keys={chip} />{/if}
   </label>
   {#if rows.length > 0}
     <ul id="{uid}-list" role="listbox" aria-label={label}>
@@ -178,15 +179,6 @@
   input::placeholder {
     color: var(--text-muted);
   }
-  kbd {
-    flex: none;
-    padding: 1px 6px;
-    border: 1px solid var(--kbd-border);
-    border-radius: 4px;
-    background: var(--kbd-bg);
-    color: var(--text-muted);
-    font: 11px var(--font-mono);
-  }
   ul {
     margin: 0;
     padding: 0;
@@ -199,7 +191,7 @@
     height: 32px;
     padding: 0 12px;
     border-radius: 6px;
-    font-size: 13px;
+    font-size: var(--fs-md);
     cursor: pointer;
   }
   li.on {
@@ -207,7 +199,7 @@
   }
   li.hint {
     color: var(--text-muted);
-    font-size: 12px;
+    font-size: var(--fs-sm);
     cursor: default;
   }
   .main {
@@ -219,13 +211,13 @@
     margin-left: auto;
     overflow: hidden;
     color: var(--text-muted);
-    font-size: 11px;
+    font-size: var(--fs-xs);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   /* 12px like the tree's rows: at 13px the mono names read heavier than the UI text beside them. */
   .main.mono {
-    font-size: 12px;
+    font-size: var(--fs-sm);
   }
   .mono {
     font-family: var(--font-mono);

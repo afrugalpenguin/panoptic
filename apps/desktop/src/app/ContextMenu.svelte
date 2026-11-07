@@ -54,6 +54,7 @@
       <div class="sep"></div>
     {:else}
       <button
+        class="ghost"
         role="menuitem"
         class:danger={item.danger}
         disabled={item.disabled}
@@ -75,14 +76,12 @@
     background: var(--bg-pane);
     border: 1px solid var(--border);
     border-radius: 6px;
-    box-shadow: 0 6px 24px rgb(0 0 0 / 0.25);
+    box-shadow: var(--shadow-popover);
   }
   button {
     display: block;
     width: 100%;
     text-align: left;
-    border: none;
-    background: none;
     padding: 4px 10px;
   }
   button:hover:not(:disabled),

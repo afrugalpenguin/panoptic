@@ -15,7 +15,7 @@
     height: 14px;
     border-radius: 3px;
     background: var(--badge);
-    color: #fff;
+    color: var(--on-badge);
     font: 700 9px/1 var(--font-ui);
     letter-spacing: -0.02em;
   }

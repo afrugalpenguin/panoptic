@@ -89,6 +89,6 @@
     grid-column: 2;
     margin: 0;
     color: var(--bad);
-    font-size: 12px;
+    font-size: var(--fs-sm);
   }
 </style>

@@ -18,5 +18,5 @@ export function kindDescription(kind: string): KindDescription | undefined {
 
 /** The badge for a kind (docs/explorer-ux.md, "Connection row"); an unknown kind gets its initial on neutral grey. */
 export function kindBadge(kind: string): KindBadge {
-  return registry.get(kind)?.badge ?? { letters: kind.charAt(0).toUpperCase() || "?", color: "#6a6a6a", name: kind };
+  return registry.get(kind)?.badge ?? { letters: kind.charAt(0).toUpperCase() || "?", color: "var(--kind-unknown)", name: kind };
 }

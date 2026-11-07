@@ -3,6 +3,26 @@
   --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   --font-mono: "Cascadia Mono", Consolas, monospace;
 
+  /* Type scale (docs/design-tokens.md). Sizes off the scale are being migrated onto it, not added to. */
+  --fs-2xs: 10px;
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 13px;
+  --fs-lg: 14px;
+  --fs-xl: 16px;
+  --fs-2xl: 20px;
+  --fs-3xl: 26px;
+  /* Spacing scale, for padding, margins and gaps. New and moved code uses it; existing px values migrate over time. */
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 10px;
+  --space-6: 12px;
+  --space-7: 16px;
+  --space-8: 20px;
+  --space-9: 24px;
+
   --bg: #f7f7f8;
   --bg-pane: #ffffff;
   --bg-hover: #eef0f3;
@@ -20,11 +40,11 @@
   --warn: #9a6700;
   /* The two colours of the logo (src-tauri/icons/icon.svg), the same in both themes. For the logo and decoration
      only: on the light theme they are too pale for text or indicators, which use the role tokens below. */
-  --brand-cyan: #24c8db;
-  --brand-amber: #ffc131;
+  --brand-primary: #24c8db;
+  --brand-secondary: #ffc131;
   /* The logo's hues as text and as a focus/active outline, AA in each theme (theme-contrast.test.ts). */
-  --text-amber: #8a5a00;
-  --text-cyan: #0a6f7c;
+  --text-brand-secondary: #8a5a00;
+  --text-brand-primary: #0a6f7c;
   --focus-ring: #0a6f7c;
   /* Landing (docs/landing.md). Dark values are the design's; light ones are derived so the page stays readable. */
   --landing-bg: var(--bg);
@@ -43,6 +63,24 @@
   --explorer-footer-bg: rgba(255, 255, 255, 0.9);
   --explorer-sticky-shadow: rgba(0, 0, 0, 0.15);
   --scrollbar-thumb: rgba(0, 0, 0, 0.3);
+
+  /* Object kinds in the explorer and detail pane: a letter on a tint of its colour (Icon.svelte). Both themes. */
+  --glyph-database: #2f9e44;
+  --glyph-table: #0c8599;
+  --glyph-view: #6741d9;
+  --glyph-proc: #e8590c;
+  --glyph-function: #d6336c;
+  --glyph-key: #f59f00;
+  --glyph-policy: #7048e8;
+  --glyph-neutral: #868e96;
+  /* Connection kind badges come from the sidecar (backends.describe); this is one it did not describe. */
+  --kind-unknown: #6a6a6a;
+  /* Letters on a filled badge. */
+  --on-badge: #ffffff;
+  /* Floating surfaces and what dims behind a modal. */
+  --shadow-popover: 0 6px 24px rgb(0 0 0 / 0.25);
+  --shadow-dialog: 0 12px 48px rgb(0 0 0 / 0.35);
+  --backdrop: rgb(0 0 0 / 0.35);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -63,8 +101,8 @@
     --bad: #f85149;
     --warn: #d29922;
     /* The logo's own colours read well on the dark panes. */
-    --text-amber: #ffc131;
-    --text-cyan: #24c8db;
+    --text-brand-secondary: #ffc131;
+    --text-brand-primary: #24c8db;
     --focus-ring: #24c8db;
 
     --tree-bright: #ffffff;
@@ -98,7 +136,7 @@ body {
 body {
   background: var(--bg);
   color: var(--text);
-  font: 13px/1.4 var(--font-ui);
+  font: var(--fs-md)/1.4 var(--font-ui);
   overflow: hidden;
   user-select: none;
 }
@@ -142,6 +180,23 @@ select {
   padding: 4px 6px;
   user-select: text;
 }
+/* A button with no border or background of its own: components add only their layout (docs/design-tokens.md). */
+button.ghost {
+  border: none;
+  background: none;
+}
+/* A button that reads as a link. */
+button.link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+button.link:hover {
+  text-decoration: underline;
+}
 input:focus,
 select:focus,
 button:focus-visible {
@@ -152,7 +207,7 @@ button:focus-visible {
 pre,
 code {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   user-select: text;
 }
 

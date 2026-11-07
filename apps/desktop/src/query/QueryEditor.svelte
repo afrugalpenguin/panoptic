@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type * as Monaco from "monaco-editor/editor/editor.api";
+  import { cssToken, EDITOR_THEME, editorTheme } from "./editor-theme";
   import { mdText } from "./intellisense/markdown";
   import { models, quickFixes, type ModelInfo, type QuickFix } from "./intellisense/providers";
   import type { QueryMessage } from "./store.svelte";
@@ -66,16 +67,23 @@
     let timer: ReturnType<typeof setTimeout> | undefined;
     const dark = window.matchMedia("(prefers-color-scheme: dark)");
 
+    // Re-defined on a scheme change: the tokens' values change with it.
+    const applyTheme = () => {
+      monaco?.editor.defineTheme(EDITOR_THEME, editorTheme(cssToken, dark.matches));
+      monaco?.editor.setTheme(EDITOR_THEME);
+    };
+
     import("./monaco").then((m) => {
       if (disposed) return;
       monaco = m.monaco;
+      monaco.editor.defineTheme(EDITOR_THEME, editorTheme(cssToken, dark.matches));
       editor = monaco.editor.create(host, {
         value: text,
         language: monacoLanguage(language),
-        theme: dark.matches ? "vs-dark" : "vs",
+        theme: EDITOR_THEME,
         automaticLayout: true,
         minimap: { enabled: false },
-        fontFamily: "Cascadia Mono, Consolas, monospace",
+        fontFamily: cssToken("--font-mono").trim() || "Cascadia Mono, Consolas, monospace",
         fontSize: 13,
         scrollBeyondLastLine: false,
         renderLineHighlight: "line",
@@ -133,12 +141,11 @@
       lintNow();
     });
 
-    const themeChanged = () => monaco?.editor.setTheme(dark.matches ? "vs-dark" : "vs");
-    dark.addEventListener("change", themeChanged);
+    dark.addEventListener("change", applyTheme);
     return () => {
       disposed = true;
       clearTimeout(timer);
-      dark.removeEventListener("change", themeChanged);
+      dark.removeEventListener("change", applyTheme);
       editor?.dispose();
     };
   });

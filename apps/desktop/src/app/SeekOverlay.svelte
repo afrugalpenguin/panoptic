@@ -70,9 +70,9 @@
     background: var(--bg-pane);
     border: 1px solid var(--border);
     border-radius: 16px;
-    box-shadow: 0 12px 48px rgb(0 0 0 / 0.35);
+    box-shadow: var(--shadow-dialog);
   }
   dialog::backdrop {
-    background: rgb(0 0 0 / 0.35);
+    background: var(--backdrop);
   }
 </style>

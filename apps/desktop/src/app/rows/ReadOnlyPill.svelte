@@ -13,7 +13,7 @@
     border: 1px solid var(--env);
     border-radius: 3px;
     color: var(--env);
-    font: 700 10px/1.2 var(--font-ui);
+    font: 700 var(--fs-2xs)/1.2 var(--font-ui);
     text-transform: uppercase;
     letter-spacing: 0.04em;
   }

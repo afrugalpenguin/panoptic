@@ -162,13 +162,13 @@
 <style>
   .help {
     margin: -4px 0 0;
-    font-size: 12px;
+    font-size: var(--fs-sm);
   }
   .check-now {
     display: flex;
     align-items: center;
     gap: 10px;
-    font-size: 12px;
+    font-size: var(--fs-sm);
   }
   .error {
     margin: 0;
@@ -178,7 +178,7 @@
     margin: 8px 0 0;
     padding-top: 10px;
     border-top: 1px solid var(--border);
-    font-size: 12px;
+    font-size: var(--fs-sm);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;

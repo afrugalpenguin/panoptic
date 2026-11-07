@@ -191,7 +191,7 @@
     background: var(--bg);
     color: var(--text);
     font: inherit;
-    font-size: 12px;
+    font-size: var(--fs-sm);
   }
   .filter input:focus {
     outline: 1px solid var(--accent);

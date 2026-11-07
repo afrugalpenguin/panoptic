@@ -1,6 +1,6 @@
 <script lang="ts">
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import logo from "../../src-tauri/icons/128x128@2x.png";
+  import logo from "../../src-tauri/icons/icon.svg";
   import { onMount } from "svelte";
   import { bullets, category, inlineTokens, openLink, sentenceCase, shortDate, subtitle } from "../whats-new";
   import type { WhatsNewTab } from "./store.svelte";
@@ -69,7 +69,7 @@
   .whats-new {
     height: 100%;
     overflow: auto;
-    font: 13px var(--font-ui);
+    font: var(--fs-md) var(--font-ui);
     user-select: text;
   }
   header {
@@ -81,8 +81,8 @@
     background: var(--bg-pane);
     /* The two-stripe edge: cyan, then amber, the logo's colours. */
     box-shadow:
-      inset 4px 0 0 var(--brand-cyan),
-      inset 8px 0 0 var(--brand-amber);
+      inset 4px 0 0 var(--brand-primary),
+      inset 8px 0 0 var(--brand-secondary);
   }
   header img {
     width: 64px;
@@ -94,16 +94,16 @@
   }
   h1 {
     margin: 0;
-    font-size: 26px;
+    font-size: var(--fs-3xl);
     font-weight: 600;
     line-height: 1.25;
   }
   .version {
-    color: var(--text-amber);
+    color: var(--text-brand-secondary);
   }
   header p {
     margin: 4px 0 0;
-    font-size: 13px;
+    font-size: var(--fs-md);
   }
   .timeline {
     padding: 8px 40px 24px;
@@ -127,11 +127,11 @@
     border-right-color: var(--accent);
   }
   .number {
-    font-size: 14px;
+    font-size: var(--fs-lg);
     font-weight: 600;
   }
   .date {
-    font-size: 11px;
+    font-size: var(--fs-xs);
     color: var(--text-muted);
   }
   .pill {
@@ -141,7 +141,7 @@
     border-radius: 8px;
     background: var(--bg-selected);
     color: var(--text);
-    font-size: 11px;
+    font-size: var(--fs-xs);
   }
   .notes {
     flex: 1;
@@ -161,7 +161,7 @@
     flex: none;
     width: 64px;
     border-radius: 4px;
-    font-size: 11px;
+    font-size: var(--fs-xs);
     font-weight: 600;
     text-align: center;
     color: var(--c);
@@ -172,10 +172,10 @@
     --c: var(--ok);
   }
   .changed {
-    --c: var(--text-amber);
+    --c: var(--text-brand-secondary);
   }
   .fixed {
-    --c: var(--text-cyan);
+    --c: var(--text-brand-primary);
   }
   .removed {
     --c: var(--bad);

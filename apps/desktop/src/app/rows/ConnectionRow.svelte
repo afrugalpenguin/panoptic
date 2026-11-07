@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Spinner from "../Spinner.svelte";
   import type { Row } from "../tree-model";
   import KindBadge from "./KindBadge.svelte";
   import SegmentedLabel from "./SegmentedLabel.svelte";
@@ -13,7 +14,7 @@
 {#if row.secondary}<span class="name" title="Display name">{row.secondary}</span>{/if}
 {#if row.certificateUnchecked}<span class="cert-unchecked" title="Trust server certificate is on: this server's certificate is not checked, so an interceptor could pose as it. Edit the connection to change it.">cert not checked</span>{/if}
 {#if row.error}<WarningIcon small title="Failed to load. Expand to see why." />{/if}
-{#if row.loading}<span class="spinner" aria-label="Loading"></span>{/if}
+{#if row.loading}<Spinner label="Loading" />{/if}
 {#if disconnected}<span class="stale" title="The database engine stopped. Reconnects when it is running again.">disconnected</span>
 {:else if row.stale}<span class="stale" title="Loaded a while ago. F5 to refresh.">stale</span>{/if}
 
@@ -42,7 +43,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     color: var(--text-muted);
-    font: 11px/1 var(--font-ui);
+    font: var(--fs-xs)/1 var(--font-ui);
     white-space: nowrap;
   }
 </style>

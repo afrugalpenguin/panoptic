@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Spinner from "../app/Spinner.svelte";
   import { onMount } from "svelte";
   import { save } from "@tauri-apps/plugin-dialog";
   import { writeTextFile } from "@tauri-apps/plugin-fs";
@@ -180,13 +181,13 @@
     {#if tab.running}<div class="progress" role="progressbar" aria-label="Query running"></div>{/if}
     <div class="result-tabs">
       {#each tab.results as set, i}
-        <button class:on={tab.view === i} onclick={() => (tab.view = i)}>
+        <button class="ghost" class:on={tab.view === i} onclick={() => (tab.view = i)}>
           Result {tab.results.length > 1 ? i + 1 : ""} <span class="muted"
             >({set.count.toLocaleString()} row{set.count === 1 ? "" : "s"}{tab.summary?.resultSets[i]?.truncated ? ", row limit reached" : ""})</span
           >
         </button>
       {/each}
-      <button class:on={tab.view === -1} class:has-error={!!tab.error} onclick={() => (tab.view = -1)}>
+      <button class="ghost" class:on={tab.view === -1} class:has-error={!!tab.error} onclick={() => (tab.view = -1)}>
         Messages {#if tab.messages.length}<span class="muted">({tab.messages.length})</span>{/if}
       </button>
       <span style:flex="1"></span>
@@ -208,7 +209,7 @@
         <div class="messages">
           {#each tab.messages as m (m.id)}
             {#if m.at}
-              <button class="row error" title="Show in the editor" onclick={() => workspace.reveal(tab, m)}
+              <button class="row error ghost" title="Show in the editor" onclick={() => workspace.reveal(tab, m)}
                 ><span class="muted time">{(m.elapsedMs / 1000).toFixed(2)} s</span>{m.text}</button
               >
             {:else}
@@ -231,7 +232,7 @@
 
 <!-- Where the results will appear, while the query has produced none yet (issue #274). -->
 {#snippet waiting()}
-  <div class="waiting"><span class="spinner"></span>Running... {elapsed.toFixed(1)} s</div>
+  <div class="waiting"><Spinner size={12} />Running... {elapsed.toFixed(1)} s</div>
 {/snippet}
 
 <style>
@@ -247,7 +248,7 @@
     gap: 10px;
     padding: 6px 10px;
     border-bottom: 1px solid var(--border);
-    font-size: 12px;
+    font-size: var(--fs-sm);
   }
   .toolbar button {
     padding: 2px 14px;
@@ -262,19 +263,16 @@
   .database {
     max-width: 220px;
     padding: 1px 4px;
-    font-size: 12px;
+    font-size: var(--fs-sm);
   }
   .databases-error {
     color: var(--warn);
-    font-size: 12px;
+    font-size: var(--fs-sm);
     cursor: help;
   }
   .toolbar .link {
-    padding: 0;
-    border: none;
-    background: none;
-    font-size: 11px;
-    cursor: pointer;
+    color: var(--text-muted);
+    font-size: var(--fs-xs);
   }
   .toolbar .link:hover {
     text-decoration: underline;
@@ -286,7 +284,7 @@
   .ro {
     margin-left: 6px;
     padding: 0 6px;
-    font-size: 10px;
+    font-size: var(--fs-2xs);
     color: var(--warn);
     border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
     border-radius: 8px;
@@ -297,7 +295,7 @@
     gap: 6px;
     max-width: 460px;
     padding: 10px 12px;
-    font-size: 12px;
+    font-size: var(--fs-sm);
   }
   .picker p {
     margin: 0;
@@ -328,12 +326,10 @@
     border-bottom: 1px solid var(--border);
   }
   .result-tabs button {
-    border: none;
     border-bottom: 2px solid transparent;
     border-radius: 0;
-    background: none;
     padding: 3px 10px;
-    font-size: 12px;
+    font-size: var(--fs-sm);
   }
   .result-tabs button.on {
     border-bottom-color: var(--accent);
@@ -354,7 +350,7 @@
     height: 100%;
     overflow: auto;
     padding: 8px 12px;
-    font: 12px/1.6 var(--font-mono);
+    font: var(--fs-sm)/1.6 var(--font-mono);
     user-select: text;
   }
   .time {
@@ -377,8 +373,6 @@
     display: block;
     width: 100%;
     padding: 0;
-    border: none;
-    background: none;
     font: inherit;
     text-align: left;
     cursor: pointer;
@@ -431,30 +425,14 @@
     height: 100%;
     min-height: 60px;
     color: var(--text);
-    font-size: 13px;
+    font-size: var(--fs-md);
     font-variant-numeric: tabular-nums;
-  }
-  .spinner {
-    width: 12px;
-    height: 12px;
-    border: 2px solid var(--border);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-  }
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
   }
   @media (prefers-reduced-motion: reduce) {
     .progress::before {
       width: 100%;
       animation: none;
       opacity: 0.6;
-    }
-    .spinner {
-      animation-duration: 2s;
     }
   }
 </style>

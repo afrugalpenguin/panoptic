@@ -482,7 +482,7 @@
     --wash-selected: 22%;
   }
   .tree-row.drop-over {
-    outline: 1px dashed var(--brand-cyan);
+    outline: 1px dashed var(--brand-primary);
     outline-offset: -1px;
   }
   .tree-row:hover {
@@ -499,7 +499,7 @@
     width: 12px;
     text-align: center;
     color: var(--text-muted);
-    font-size: 10px;
+    font-size: var(--fs-2xs);
     line-height: 1;
   }
   .tree-row :global(.chevron::before) {
@@ -513,24 +513,10 @@
   }
   .tree-row :global(.stale) {
     flex: none;
-    font-size: 10px;
+    font-size: var(--fs-2xs);
     padding: 0 5px;
     border-radius: 8px;
     border: 1px solid var(--border);
     color: var(--text-muted);
-  }
-  .tree-row :global(.spinner) {
-    flex: none;
-    width: 10px;
-    height: 10px;
-    border: 2px solid var(--border);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-  }
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
   }
 </style>

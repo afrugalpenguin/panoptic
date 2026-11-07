@@ -77,13 +77,13 @@
   }
   h2 {
     margin: 0;
-    font-size: 16px;
+    font-size: var(--fs-xl);
     font-weight: 600;
     user-select: text;
   }
   .kind {
     color: var(--text-muted);
-    font-size: 12px;
+    font-size: var(--fs-sm);
   }
   .swatch {
     width: 12px;

@@ -271,7 +271,7 @@
   }
   .source {
     margin-left: auto;
-    font-size: 11px;
+    font-size: var(--fs-xs);
   }
   ul {
     list-style: none;
@@ -299,7 +299,7 @@
   }
   .move {
     flex: none;
-    font-size: 11px;
+    font-size: var(--fs-xs);
     padding: 1px 4px;
   }
   li.added {
@@ -310,7 +310,7 @@
   }
   .endpoint,
   .auth {
-    font-size: 12px;
+    font-size: var(--fs-sm);
   }
   .auth {
     color: var(--text-muted);
@@ -320,14 +320,14 @@
     text-overflow: ellipsis;
   }
   .tag {
-    font-size: 10px;
+    font-size: var(--fs-2xs);
     padding: 0 6px;
     border-radius: 8px;
     border: 1px solid var(--border);
     color: var(--text-muted);
   }
   .note {
-    font-size: 11px;
+    font-size: var(--fs-xs);
     color: var(--warn);
   }
   .error {
@@ -335,7 +335,7 @@
   }
   .examined {
     margin-top: 12px;
-    font-size: 12px;
+    font-size: var(--fs-sm);
   }
   .examined summary {
     cursor: pointer;
@@ -352,7 +352,7 @@
     padding: 2px 0;
   }
   .examined code {
-    font-size: 11px;
+    font-size: var(--fs-xs);
     color: var(--text-muted);
     overflow: hidden;
     text-overflow: ellipsis;

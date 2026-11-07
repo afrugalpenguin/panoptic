@@ -1,5 +1,6 @@
 <script lang="ts">
-  import logo from "../../src-tauri/icons/32x32.png";
+  import Spinner from "../app/Spinner.svelte";
+  import logo from "../../src-tauri/icons/icon.svg";
   import ProblemsView from "./ProblemsView.svelte";
   import QueryView from "./QueryView.svelte";
   import WhatsNewView from "./WhatsNewView.svelte";
@@ -36,10 +37,10 @@
         onauxclick={(e) => e.button === 1 && workspace.close(tab.id)}
         title={tab.kind === "query" && tab.target ? `${tab.target.connection} / ${tab.target.label}` : tab.title}
       >
-        {#if tab.kind === "query" && tab.running}<span class="spinner"></span>{/if}
+        {#if tab.kind === "query" && tab.running}<Spinner size={9} />{/if}
         {#if tab.kind === "whats-new"}<img class="icon" src={logo} alt="" />{/if}
         <span class="title">{tab.title}</span>
-        <button class="close" aria-label="Close {tab.title}" onclick={(e) => (e.stopPropagation(), workspace.close(tab.id))}>x</button>
+        <button class="close ghost" aria-label="Close {tab.title}" onclick={(e) => (e.stopPropagation(), workspace.close(tab.id))}>x</button>
       </div>
     {/each}
   </div>
@@ -79,7 +80,7 @@
     border-right: 1px solid var(--border);
     box-shadow: inset 0 3px 0 var(--band);
     color: var(--text-muted);
-    font-size: 12px;
+    font-size: var(--fs-sm);
     cursor: default;
     white-space: nowrap;
   }
@@ -104,11 +105,9 @@
     text-overflow: ellipsis;
   }
   .close {
-    border: none;
-    background: none;
     padding: 0 5px;
     color: var(--text-muted);
-    font-size: 11px;
+    font-size: var(--fs-xs);
   }
   .close:hover {
     color: var(--text);
@@ -119,18 +118,5 @@
   }
   .body[hidden] {
     display: none;
-  }
-  .spinner {
-    width: 9px;
-    height: 9px;
-    border: 2px solid var(--border);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-  }
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
   }
 </style>

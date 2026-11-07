@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Spinner from "./Spinner.svelte";
   import { onMount } from "svelte";
   import type { UpdateState } from "../updates";
   import WarningIcon from "./rows/WarningIcon.svelte";
@@ -43,12 +44,12 @@
   <span class="item" title={startup}><span class="dot {sidecar}"></span>{sidecarText}</span>
 
   {#if undo}
-    <span class="item">{undo.text} - <button class="cancel" onclick={undo.run}>Undo</button></span>
+    <span class="item">{undo.text} - <button class="cancel ghost" onclick={undo.run}>Undo</button></span>
   {/if}
 
   <span class="item grow">
     {#if inFlight}
-      <span class="spinner"></span>Loading {inFlight.label}... {((now - inFlight.startedAt) / 1000).toFixed(1)} s
+      <Spinner />Loading {inFlight.label}... {((now - inFlight.startedAt) / 1000).toFixed(1)} s
       <button class="cancel" title="Stop loading {inFlight.label}" onclick={() => inFlight && onCancelLoad(inFlight.id)}>Cancel</button>
     {:else if lastLoad?.error}
       <span class="bad">{lastLoad.label}: {lastLoad.error}</span>
@@ -59,7 +60,7 @@
   </span>
 
   {#if problems > 0}
-    <button class="problems" title="Open Problems" onclick={onOpenProblems}>
+    <button class="problems ghost" title="Open Problems" onclick={onOpenProblems}>
       <WarningIcon small />{problems} problem{problems === 1 ? "" : "s"}
     </button>
   {/if}
@@ -83,7 +84,7 @@
     align-items: center;
     height: 24px;
     padding: 0 8px;
-    font-size: 12px;
+    font-size: var(--fs-sm);
     border-top: 1px solid var(--border);
     background: var(--bg-pane);
     white-space: nowrap;
@@ -120,16 +121,12 @@
     align-items: center;
     gap: 5px;
     padding: 0 8px;
-    font-size: 12px;
-    border: none;
-    background: none;
+    font-size: var(--fs-sm);
     color: var(--bad);
   }
   .cancel {
     padding: 0 6px;
-    font-size: 12px;
-    border: none;
-    background: none;
+    font-size: var(--fs-sm);
     color: var(--accent);
   }
   .cancel:hover,
@@ -138,22 +135,9 @@
   }
   .update {
     padding: 0 8px;
-    font-size: 12px;
+    font-size: var(--fs-sm);
     color: var(--on-accent);
     background: var(--accent-fill);
     border-color: var(--accent-fill);
-  }
-  .spinner {
-    width: 10px;
-    height: 10px;
-    border: 2px solid var(--border);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-  }
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
   }
 </style>

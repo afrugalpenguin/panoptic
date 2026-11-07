@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { GLYPHS } from "./glyphs";
+  import Kbd from "./Kbd.svelte";
   // The empty-workspace landing (docs/landing.md): shown when no tab is open and nothing is selected. Seek, a short
   // action list, the engine's status and a faded wordmark. Renders and forwards only; App does the work.
   import mark from "../../src-tauri/icons/icon.svg";
@@ -59,39 +61,32 @@
 
 {#snippet newQueryAction()}
   <li>
-    <button onclick={onNewQuery}>
-      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-        <path d="M3.5 1.5h6l3 3v10h-9z M9.5 1.5v3h3 M8 7.5v5 M5.5 10h5" fill="none" stroke="currentColor" stroke-width="1.3" />
-      </svg>
+    <button class="ghost" onclick={onNewQuery}>
+      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d={GLYPHS.query} fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" /></svg>
       <span class="label">New query</span>
-      <kbd>Ctrl N</kbd>
+      <Kbd keys="Ctrl N" />
     </button>
   </li>
 {/snippet}
 
 {#snippet newConnectionAction(why?: string)}
   <li>
-    <button onclick={onNewConnection}>
-      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-        <ellipse cx="7" cy="3.5" rx="4.5" ry="1.8" fill="none" stroke="currentColor" stroke-width="1.3" />
-        <path d="M2.5 3.5v8c0 1 2 1.8 4.5 1.8 M11.5 3.5V8 M2.5 7.5c0 1 2 1.8 4.5 1.8 M12 10.5v4 M10 12.5h4" fill="none" stroke="currentColor" stroke-width="1.3" />
-      </svg>
+    <button class="ghost" onclick={onNewConnection}>
+      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d={GLYPHS.connection} fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" /></svg>
       <span class="label">New connection</span>
       {#if why}<span class="why">{why}</span>{/if}
-      <kbd>Ctrl Shift N</kbd>
+      <Kbd keys="Ctrl Shift N" />
     </button>
   </li>
 {/snippet}
 
 {#snippet importAction(why?: string)}
   <li class:dim={!why}>
-    <button bind:this={importButton} onclick={onImport}>
-      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-        <path d="M8 2v8 M5 7l3 3 3-3 M2.5 11v2.5h11V11" fill="none" stroke="currentColor" stroke-width="1.3" />
-      </svg>
+    <button class="ghost" bind:this={importButton} onclick={onImport}>
+      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d={GLYPHS.import} fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" /></svg>
       <span class="label">Import</span>
       {#if why}<span class="why">{why}</span>{/if}
-      <kbd>Ctrl I</kbd>
+      <Kbd keys="Ctrl I" />
     </button>
   </li>
 {/snippet}
@@ -170,7 +165,7 @@
   }
   .name {
     color: var(--text-muted);
-    font-size: 16px;
+    font-size: var(--fs-xl);
     font-weight: 600;
     letter-spacing: 2.4px;
   }
@@ -179,12 +174,12 @@
   }
   .version {
     color: var(--text-muted);
-    font: 11px var(--font-mono);
+    font: var(--fs-xs) var(--font-mono);
   }
   .muted-line {
     margin: 0;
     color: var(--text-muted);
-    font-size: 12px;
+    font-size: var(--fs-sm);
   }
   .actions {
     margin: 8px 0 0;
@@ -201,11 +196,9 @@
     width: 100%;
     height: 44px;
     padding: 0 8px;
-    border: none;
     border-radius: 6px;
-    background: none;
     color: var(--text);
-    font: 13px var(--font-ui);
+    font: var(--fs-md) var(--font-ui);
     text-align: left;
     cursor: pointer;
   }
@@ -225,18 +218,12 @@
     min-width: 0;
     overflow: hidden;
     color: var(--text-muted);
-    font: 12px var(--font-ui);
+    font: var(--fs-sm) var(--font-ui);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  kbd {
+  .actions :global(kbd) {
     margin-left: auto;
-    padding: 1px 6px;
-    border: 1px solid var(--kbd-border);
-    border-radius: 4px;
-    background: var(--kbd-bg);
-    color: var(--text-muted);
-    font: 11px var(--font-mono);
   }
   .dim {
     opacity: 0.6;
@@ -251,24 +238,13 @@
     gap: 6px;
     margin: 0;
     color: var(--text-muted);
-    font: 11px var(--font-mono);
+    font: var(--fs-xs) var(--font-mono);
   }
   .dot {
     width: 7px;
     height: 7px;
     border-radius: 50%;
     background: var(--ok);
-  }
-  .link {
-    padding: 0;
-    border: none;
-    background: none;
-    color: var(--accent);
-    font: inherit;
-    cursor: pointer;
-  }
-  .link:hover {
-    text-decoration: underline;
   }
   .wordmark {
     position: absolute;
