@@ -1,0 +1,1 @@
+Fixed: unexplained explorer and connection test errors now name their real cause, such as a missing driver component, a certificate problem or a failed Entra sign-in, and the Problems tab lists the underlying errors.

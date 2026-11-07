@@ -618,10 +618,13 @@ public sealed class TreeServiceTests : IDisposable
     private sealed class FakeBackend : IBackend
     {
         public (string ConnectionId, string? Secret, string Path, int Start)? LastCall;
+        /// <summary>When set, listing children throws this, as a driver failure the backend did not map would.</summary>
+        public Exception? Fails;
 
         public Task<TreeNode[]> ChildrenAsync(ConnectionConfig connection, string? secret, NodePath path, int start, CancellationToken ct)
         {
             LastCall = (connection.Id, secret, path.Id, start);
+            if (Fails is not null) throw Fails;
             return Task.FromResult<TreeNode[]>([Nodes.Leaf(path.Child("x", "1"), "thing", "Thing", "thing")]);
         }
 
@@ -630,6 +633,32 @@ public sealed class TreeServiceTests : IDisposable
         public void Forget(string connectionId) { }
 
         public KindDescription Describe(string kind) => TestKinds.Describe(kind, AuthKinds.Sql);
+    }
+
+    [Fact]
+    public async Task An_unmapped_failure_names_its_cause_in_the_summary_and_keeps_the_inner_chain_in_the_detail()
+    {
+        // #192, the shape of #167: the outer message alone ("The type initializer ... threw an exception") hid the cause.
+        var store = new ConfigStore(_path);
+        store.SaveConnection(null, new ConnectionConfig("c1", "Orders", ConnectionKinds.Sql, "srv", AuthKinds.Sql, User: "app"), "pw");
+        var backend = new FakeBackend
+        {
+            Fails = new TypeInitializationException("Microsoft.Data.SqlClient.TdsParser",
+                new DllNotFoundException("Unable to load DLL 'Microsoft.Data.SqlClient.SNI.dll' or one of its dependencies.")),
+        };
+        var tree = new TreeService(store, new Dictionary<string, IBackend> { [ConnectionKinds.Sql] = backend });
+
+        var ex = await Assert.ThrowsAsync<RpcException>(() => tree.ChildrenAsync("conn:c1", default));
+
+        var error = ex.NodeError!;
+        Assert.Equal("Part of the database engine failed to load. Reinstalling Panoptic usually fixes this.", error.Summary);
+        Assert.Equal("load", error.Code);
+        Assert.False(error.Retryable);
+        Assert.StartsWith("The type initializer for 'Microsoft.Data.SqlClient.TdsParser' threw an exception.", error.Detail);
+        Assert.Contains("Caused by:\nDllNotFoundException: Unable to load DLL 'Microsoft.Data.SqlClient.SNI.dll' or one of its dependencies.", error.Detail);
+        Assert.Contains("Endpoint: srv", error.Detail);
+        Assert.Contains("Identity: SQL login app", error.Detail);
+        Assert.DoesNotContain("pw", error.Detail);
     }
 
     [Fact]

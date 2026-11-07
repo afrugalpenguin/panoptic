@@ -108,7 +108,9 @@ public static class Methods
             // Cancelled: let it reach the dispatcher, which answers RequestCancelled, rather than report a failed test.
             catch (Exception ex) when (!ct.IsCancellationRequested)
             {
-                result = new TestConnectionResult(false, Math.Round(sw.Elapsed.TotalMilliseconds), ex.Message);
+                // Our own refusals are already plain; anything else gets its root cause on the line too (#192).
+                var error = ex is RpcException ? ex.Message : NodeErrors.OneLine(ex);
+                result = new TestConnectionResult(false, Math.Round(sw.Elapsed.TotalMilliseconds), error);
             }
             finally
             {
