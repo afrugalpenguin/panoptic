@@ -76,7 +76,12 @@ public sealed class CosmosBackend(Credentials credentials) : IQueryBackend
         }
     }
 
-    public IReadOnlyList<string> AuthsFor(string kind) => [AuthKinds.Entra, AuthKinds.Key];
+    /// <summary>Skipping the certificate check is for the localhost emulator only (see TrustsCertificate).</summary>
+    public KindDescription Describe(string kind) => new(
+        kind, "Cosmos DB (NoSQL)", "Account URI", "https://myaccount.documents.azure.com:443/",
+        [AuthKinds.Option(AuthKinds.Entra), AuthKinds.Option(AuthKinds.Key)],
+        new KindBadge("C", "#1f7a74", "Cosmos"),
+        new ConnectionFields(Database: false, CertificateOptions: false, EntraUser: false, TrustLocalOnly: true));
 
     public void Forget(string connectionId)
     {

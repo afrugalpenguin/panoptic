@@ -38,7 +38,7 @@ public sealed class SecretBindingTests : IDisposable
 
         public void Forget(string connectionId) { }
 
-        public IReadOnlyList<string> AuthsFor(string kind) => [AuthKinds.Sql, AuthKinds.Key];
+        public KindDescription Describe(string kind) => TestKinds.Describe(kind, AuthKinds.Sql, AuthKinds.Key);
     }
 
     private JsonRpcDispatcher Sidecar()

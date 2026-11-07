@@ -29,7 +29,7 @@ public sealed class FakeBackend : IQueryBackend
 
     public void Forget(string connectionId) { }
 
-    public IReadOnlyList<string> AuthsFor(string kind) => [AuthKinds.Key];
+    public KindDescription Describe(string kind) => TestKinds.Describe(kind, AuthKinds.Key);
 
     public IReadOnlyDictionary<string, string> ActionLabels { get; } = new Dictionary<string, string> { ["copyPath"] = "Copy path" };
 
@@ -89,7 +89,7 @@ public sealed class BrowseOnlyBackend : IBackend
 
     public void Forget(string connectionId) { }
 
-    public IReadOnlyList<string> AuthsFor(string kind) => [AuthKinds.Key];
+    public KindDescription Describe(string kind) => TestKinds.Describe(kind, AuthKinds.Key);
 }
 
 /// <summary>

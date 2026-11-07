@@ -179,6 +179,9 @@ public static class Methods
         // Labels for the context menu: the UI renders a node's action ids with these.
         methods["node.actionLabels"] = (_, _) => Task.FromResult(Rpc.Result(tree.ActionLabels(), SidecarJson.Default.DictionaryStringString));
 
+        // Each connection kind as the UI shows it: labels, badge, auths and optional fields (#203).
+        methods["backends.describe"] = (_, _) => Task.FromResult(Rpc.Result(tree.Describe(), SidecarJson.Default.KindDescriptionArray));
+
         // Actions a backend adds, performed in the sidecar (no built-in backend has one). Null text: nothing to copy.
         methods["node.invoke"] = async (p, ct) =>
         {

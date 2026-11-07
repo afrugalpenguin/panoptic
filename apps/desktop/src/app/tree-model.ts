@@ -1,5 +1,5 @@
 import type { NodeError, TreeNode } from "./api";
-import { kindBadge, type KindBadge } from "./kinds";
+import { kindBadge, kindDescription, type KindBadge } from "./kinds";
 import { computeLabels, leafLabel, type LabelSegments } from "./labels";
 import { isLoopback } from "./loopback";
 import { isAbortError } from "../rpc";
@@ -73,9 +73,11 @@ export type Row =
 /** Whether keys and clicks can select the row. */
 export const selectableRow = (row: Row) => row.type !== "env-empty";
 
-/** Trust server certificate on a server that isn't this machine. Cosmos only allows it for a local emulator. */
+/** Trust server certificate on a server that isn't this machine. Some kinds (Cosmos) only allow it for a local emulator. */
 const certificateUnchecked = (node: TreeNode) =>
-  node.meta?.trustServerCertificate === "true" && node.meta?.connectionKind !== "cosmos" && !isLoopback(node.meta?.endpoint ?? "");
+  node.meta?.trustServerCertificate === "true" &&
+  !kindDescription(node.meta?.connectionKind ?? "")?.fields.trustLocalOnly &&
+  !isLoopback(node.meta?.endpoint ?? "");
 
 /**
  * Where a connection dropped on the row goes: an environment id (its header or its empty row), null for no

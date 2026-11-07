@@ -111,9 +111,16 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
         // Pooled connections are keyed by connection string, so changed settings get a new pool.
     }
 
-    /// <summary>Windows auth reaches SQL Server only; Synapse is Entra or SQL logins.</summary>
-    public IReadOnlyList<string> AuthsFor(string kind) =>
-        kind == ConnectionKinds.Sql ? [AuthKinds.Entra, AuthKinds.Sql, AuthKinds.Windows] : [AuthKinds.Entra, AuthKinds.Sql];
+    /// <summary>SQL Server and Synapse. Windows auth reaches SQL Server only; Synapse is Entra or SQL logins.</summary>
+    public KindDescription Describe(string kind) => kind == ConnectionKinds.Synapse
+        ? new(kind, "Azure Synapse SQL", "Server", "myworkspace.sql.azuresynapse.net or ...-ondemand...",
+            [AuthKinds.Option(AuthKinds.Entra), AuthKinds.Option(AuthKinds.Sql)],
+            new KindBadge("Sy", "#7b4fb5", "Synapse"), Fields)
+        : new(kind, "SQL Server / Azure SQL", "Server", "myserver.database.windows.net",
+            [AuthKinds.Option(AuthKinds.Entra), AuthKinds.Option(AuthKinds.Sql), AuthKinds.Option(AuthKinds.Windows)],
+            new KindBadge("S", "#2d5aa0", "SQL"), Fields);
+
+    private static readonly ConnectionFields Fields = new(Database: true, CertificateOptions: true, EntraUser: false, TrustLocalOnly: false);
 
     // --- Templates and names -----------------------------------------------------------------------------
 
