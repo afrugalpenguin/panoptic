@@ -47,6 +47,8 @@ const PG_UNDEFINED = /\bdoes not exist\b/;
 const ENGINE_LANGUAGE: Record<QueryLanguage, Language> = { sql: "tsql", cosmos: "cosmos-sql", pgsql: "pgsql" };
 /** A Postgres name, dotted and "quoted" parts included, or any other run of word characters: what an error marks. */
 const PG_TOKEN = /^(?:"(?:[^"]|"")*"|[\p{L}_][\p{L}\p{N}_$]*)(?:\.(?:"(?:[^"]|"")*"|[\p{L}_][\p{L}\p{N}_$]*))*|^\w+/u;
+/** Where a tab runs: the sidecar's scope, or the same parts read from a node id. Null or absent: the default. */
+type ScopeParts = Pick<QueryScope, "connection" | "database" | "container">;
 let nextMessageId = 0;
 
 /**
@@ -203,7 +205,7 @@ export class QueryWorkspace {
   }
 
   /** The tab's connection, database and container: the sidecar's scope, else read from the node id. */
-  private scopeOf(target: QueryTarget): QueryScope {
+  private scopeOf(target: QueryTarget): ScopeParts {
     return target.scope ?? nodeParts(target.nodeId);
   }
 
@@ -214,7 +216,7 @@ export class QueryWorkspace {
 
   /** The database of the node the tab was opened on; undefined for a connection, which runs in its default. */
   nodeDatabaseOf(tab: QueryTab): string | undefined {
-    return tab.target && this.scopeOf(tab.target).database;
+    return (tab.target && this.scopeOf(tab.target).database) ?? undefined;
   }
 
   /** The picker's choice; "" is "(connection default)", which drops the choice. */
@@ -324,11 +326,11 @@ export class QueryWorkspace {
   }
 
   /** Explorer refresh on a connection or database (its query.scope): rebuild the catalogs of query tabs open against it. */
-  refreshForScope(node: QueryScope): void {
-    this.forgetFailed(node.connection, node.database);
+  refreshForScope(node: ScopeParts): void {
+    this.forgetFailed(node.connection, node.database ?? undefined);
     for (const t of this.tabs) {
       if (t.kind !== "query" || !t.target || this.scopeOf(t.target).connection !== node.connection) continue;
-      if (node.database === undefined || node.database.toLowerCase() === this.databaseOf(t)?.toLowerCase()) this.refreshCatalog(t);
+      if (node.database == null || node.database.toLowerCase() === this.databaseOf(t)?.toLowerCase()) this.refreshCatalog(t);
     }
   }
 

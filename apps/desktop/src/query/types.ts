@@ -1,5 +1,6 @@
-// Mirrors the query records in apps/sidecar/Panoptic.Sidecar/Model.cs and the notifications
-// documented in Query/QueryService.cs.
+// The query records come generated from the sidecar (sidecar-types.generated.ts, ADR 0005). The notifications below
+// are written field by field in Query/QueryService.cs, not from records, so they are described here by hand.
+import type * as Sidecar from "../sidecar-types.generated";
 
 export interface ResultColumn {
   name: string;
@@ -9,19 +10,12 @@ export interface ResultColumn {
 
 export type CellValue = string | number | boolean | null | undefined;
 
-export interface QuerySummary {
-  queryId: string;
-  /** truncated: the set reached the row limit (Settings) and its remaining rows were not loaded. */
-  resultSets: { rowCount: number; truncated?: boolean }[];
-  elapsedMs: number;
-  /** Read-only environment: the guard transaction was still open at the end and was rolled back. */
-  rolledBack: boolean;
-  /** Read-only environment: a COMMIT or ROLLBACK in the script (or an error) ended the guard transaction early, so changes may be committed. */
-  committed: boolean;
-  cancelled: boolean;
-  error?: string | null;
-  requestCharge?: number | null;
-}
+/**
+ * rolledBack: a read-only environment's guard transaction was still open at the end and was rolled back. committed: a
+ * COMMIT or ROLLBACK in the script (or an error) ended it early, so changes may be committed. A result set's truncated:
+ * it reached the row limit (Settings) and its remaining rows were not loaded.
+ */
+export type QuerySummary = Sidecar.QuerySummary;
 
 export interface RowsNotification {
   queryId: string;
@@ -48,17 +42,11 @@ export interface MessageNotification {
 export type QueryLanguage = "sql" | "cosmos" | "pgsql";
 
 /**
- * Mirrors QueryScope in the sidecar's Model.cs: what a node's query tabs belong to, resolved by the sidecar so the UI
- * never parses node ids. `connection` is the connection's node id; database and container are the node's own.
+ * What a node's query tabs belong to, resolved by the sidecar so the UI never parses node ids. `connection` is the
+ * connection's node id; database and container are the node's own; label is the nearest container, database or
+ * connection name.
  */
-export interface QueryScope {
-  connection: string;
-  database?: string;
-  container?: string;
-  /** The nearest container, database or connection name. */
-  label?: string;
-  connectionLabel?: string;
-}
+export type QueryScope = Sidecar.QueryScope;
 
 /** What a query tab runs against, captured when the tab is opened. */
 export interface QueryTarget {
