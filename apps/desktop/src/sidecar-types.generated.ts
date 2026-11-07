@@ -213,6 +213,22 @@ export interface QueryRequest {
   database?: string | null;
 }
 
+export interface QuerySaveRequest {
+  queryId: string;
+  nodeId: string;
+  text: string;
+  path: string;
+  format: string;
+  database?: string | null;
+}
+
+export interface QuerySaveResult {
+  rows: number;
+  cancelled: boolean;
+  error?: string | null;
+  note?: string | null;
+}
+
 export interface QueryScope {
   connection: string;
   database?: string | null;

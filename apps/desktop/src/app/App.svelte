@@ -159,6 +159,7 @@
       syncCatalogs(info);
       return (await intellisense.suggest(request, info.keys)).suggestion;
     },
+    saveAll: (request) => api!.saveAll(request),
   });
 
   // Editor settings apply to open tabs without a restart (docs/query-editor.md, "Settings").

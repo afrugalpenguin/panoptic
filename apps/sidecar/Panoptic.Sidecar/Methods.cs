@@ -147,6 +147,9 @@ public static class Methods
             methods["query.execute"] = async (p, ct) =>
                 Rpc.Result(await query.ExecuteAsync(Rpc.Params(p, SidecarJson.Default.QueryRequest), ct), SidecarJson.Default.QuerySummary);
 
+            methods["query.saveAll"] = async (p, ct) =>
+                Rpc.Result(await query.SaveAsync(Rpc.Params(p, SidecarJson.Default.QuerySaveRequest), ct), SidecarJson.Default.QuerySaveResult);
+
             methods["query.cancel"] = (p, _) =>
             {
                 var cancelled = query.Cancel(Rpc.Params(p, SidecarJson.Default.QueryCancelParams).QueryId);

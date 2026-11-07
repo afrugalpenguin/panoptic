@@ -33,7 +33,7 @@ public static class ReadOnlyScript
     }
 
     /// <summary>Upper-cased words and single punctuation characters, with their 1-based lines.</summary>
-    private static List<(string Text, int Line)> Tokenize(string s)
+    internal static List<(string Text, int Line)> Tokenize(string s)
     {
         var tokens = new List<(string, int)>();
         var line = 1;

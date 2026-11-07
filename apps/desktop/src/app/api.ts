@@ -65,6 +65,9 @@ export function createApi(rpc: RpcClient) {
     executeQuery: (request: { queryId: string; nodeId: string; text: string; database?: string }) =>
       rpc.request<import("../query/types").QuerySummary>("query.execute", request, 2_147_483_647),
     cancelQuery: (queryId: string) => rpc.request<boolean>("query.cancel", { queryId }),
+    /** Save all rows past the row limit (#287): no timeout, as for a run; a large result takes as long as it takes. */
+    saveAll: (request: { queryId: string; nodeId: string; text: string; database?: string; path: string; format: "csv" | "json" }) =>
+      rpc.request<Sidecar.QuerySaveResult>("query.saveAll", request, 2_147_483_647),
     queryTemplate: (nodeId: string, action: "selectTop" | "newQuery") =>
       rpc.request<Narrow<Sidecar.QueryTemplateResult, { language: QueryLanguage }>>("query.template", { nodeId, action }),
     /** The connection, database and container a node's query tabs belong to, and their names. */

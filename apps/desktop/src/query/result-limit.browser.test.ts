@@ -57,4 +57,23 @@ describe("row limit", () => {
     ]);
     expect(await labels(host)).toEqual(["(1,000 rows, row limit reached)", "(1 row)"]);
   });
+
+  it("offers Save all rows on a result cut at the limit, and asks before running again", async () => {
+    const host = await run([
+      { rowCount: 1000, truncated: true },
+      { rowCount: 1, truncated: false },
+    ]);
+    const button = (text: string) => [...host.querySelectorAll("button")].find((b) => b.textContent?.trim() === text);
+    await vi.waitFor(() => expect(button("Save all rows...")).toBeDefined());
+
+    button("Save all rows...")!.click();
+    await vi.waitFor(() => expect(host.querySelector(".save-confirm")?.textContent).toContain("runs the query again"));
+    expect(button("Run again and save...")).toBeDefined();
+  });
+
+  it("does not offer it on a result that was not cut", async () => {
+    const host = await run([{ rowCount: 5, truncated: false }]);
+    await vi.waitFor(() => expect([...host.querySelectorAll("button")].some((b) => b.textContent?.includes("Export CSV"))).toBe(true));
+    expect([...host.querySelectorAll("button")].some((b) => b.textContent?.includes("Save all rows"))).toBe(false);
+  });
 });
