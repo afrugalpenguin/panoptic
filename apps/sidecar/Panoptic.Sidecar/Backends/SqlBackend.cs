@@ -111,9 +111,16 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
         // Pooled connections are keyed by connection string, so changed settings get a new pool.
     }
 
-    /// <summary>Windows auth reaches SQL Server only; Synapse is Entra or SQL logins.</summary>
-    public IReadOnlyList<string> AuthsFor(string kind) =>
-        kind == ConnectionKinds.Sql ? [AuthKinds.Entra, AuthKinds.Sql, AuthKinds.Windows] : [AuthKinds.Entra, AuthKinds.Sql];
+    /// <summary>SQL Server and Synapse. Windows auth reaches SQL Server only; Synapse is Entra or SQL logins.</summary>
+    public KindDescription Describe(string kind) => kind == ConnectionKinds.Synapse
+        ? new(kind, "Azure Synapse SQL", "Server", "myworkspace.sql.azuresynapse.net or ...-ondemand...",
+            [AuthKinds.Option(AuthKinds.Entra), AuthKinds.Option(AuthKinds.Sql)],
+            new KindBadge("Sy", "#7b4fb5", "Synapse"), Fields)
+        : new(kind, "SQL Server / Azure SQL", "Server", "myserver.database.windows.net",
+            [AuthKinds.Option(AuthKinds.Entra), AuthKinds.Option(AuthKinds.Sql), AuthKinds.Option(AuthKinds.Windows)],
+            new KindBadge("S", "#2d5aa0", "SQL"), Fields);
+
+    private static readonly ConnectionFields Fields = new(Database: true, CertificateOptions: true, EntraUser: false, TrustLocalOnly: false);
 
     // --- Templates and names -----------------------------------------------------------------------------
 
@@ -328,6 +335,12 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
 
         while (await reader.ReadAsync(ct))
         {
+            // Past the row limit: the caller's NextResult skips the rest of this set; later statements still run.
+            if (sink.RowCount(index) + batch.Count >= sink.MaxRows)
+            {
+                sink.Truncated(index);
+                break;
+            }
             var row = new object?[reader.FieldCount];
             for (var i = 0; i < row.Length; i++) row[i] = ReadValue(reader, i);
             batch.Add(row);

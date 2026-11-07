@@ -44,7 +44,49 @@ public static class AuthKinds
     public const string Windows = "windows";
     /// <summary>User name and password (Postgres). SQL Server's equivalent is <see cref="Sql"/>.</summary>
     public const string Password = "password";
+
+    /// <summary>An auth as the connection dialog lists it.</summary>
+    public static AuthOption Option(string id) => new(id, id switch
+    {
+        Entra => "Microsoft Entra ID",
+        Sql => "SQL login",
+        Key => "Account key",
+        Windows => "Windows",
+        Password => "Username and password",
+        _ => id,
+    });
 }
+
+/// <summary>
+/// Everything engine-specific the UI shows for a connection kind (backends.describe, #203), so the UI hard-codes no
+/// engine: the connection dialog, the tree's kind badge and the engine filter all read this.
+/// </summary>
+/// <param name="Label">The kind as the connection dialog's Type list shows it.</param>
+/// <param name="EndpointLabel">What the endpoint field is called: "Server", "Account URI".</param>
+/// <param name="Auths">The auths a connection of this kind may use, in the order the dialog lists them. Saving or
+/// testing a connection with any other is refused (<see cref="TreeService.Validate"/>).</param>
+public sealed record KindDescription(
+    string Kind,
+    string Label,
+    string EndpointLabel,
+    string EndpointPlaceholder,
+    IReadOnlyList<AuthOption> Auths,
+    KindBadge Badge,
+    ConnectionFields Fields);
+
+public sealed record AuthOption(string Id, string Label);
+
+/// <param name="Letters">One or two letters shown in the tree's 14px square.</param>
+/// <param name="Name">The kind's short name, on the engine filter and in messages.</param>
+public sealed record KindBadge(string Letters, string Color, string Name);
+
+/// <summary>Which optional connection settings apply to a kind.</summary>
+/// <param name="Database">The tree can be limited to one database.</param>
+/// <param name="CertificateOptions">Takes a certificate host name and file (#261).</param>
+/// <param name="EntraUser">With Entra, takes an optional user to sign in as (Postgres maps Entra users to roles).</param>
+/// <param name="TrustLocalOnly">Skipping the certificate check is allowed for a server on this machine only (an
+/// emulator), so it carries no risk warning.</param>
+public sealed record ConnectionFields(bool Database, bool CertificateOptions, bool EntraUser, bool TrustLocalOnly);
 
 /// <param name="Endpoint">SQL Server host[,port], Postgres host[:port] or Cosmos account URI.</param>
 /// <param name="Database">Optional: restrict the tree to one database (needed for contained users).</param>
@@ -83,7 +125,8 @@ public sealed record TestConnectionResult(bool Ok, double ElapsedMs, string? Err
 /// <param name="Database">Overrides the database the node resolves to (the tab's database picker).</param>
 public sealed record QueryRequest(string QueryId, string NodeId, string Text, string? Database = null);
 public sealed record QueryCancelParams(string QueryId);
-public sealed record ResultSetSummary(int RowCount);
+/// <param name="Truncated">The set reached the row limit (EditorSettings.MaxRows) and had more rows, which were not kept.</param>
+public sealed record ResultSetSummary(int RowCount, bool Truncated = false);
 /// <param name="RolledBack">Read-only environment, and the guard transaction was still open and rolled back.</param>
 /// <param name="Committed">Read-only environment, but the guard transaction ended before the rollback (a COMMIT or ROLLBACK in the script, or an error that aborted it): changes may have been committed.</param>
 public sealed record QuerySummary(string QueryId, ResultSetSummary[] ResultSets, double ElapsedMs, bool RolledBack, bool Committed, bool Cancelled, string? Error, double? RequestCharge);
@@ -155,8 +198,13 @@ public static class KeywordCases
 /// <param name="KeywordCase">Null: the language default (lower for T-SQL, upper for Cosmos).</param>
 /// <param name="CatalogSampleDocs">Documents sampled per Cosmos container for property path completion, 10 to 500.</param>
 /// <param name="WarnUnknownNames">Underline tables and columns the catalog does not know, before the query runs.</param>
+/// <param name="MaxRows">Rows kept per result set, 1,000 to 1,000,000 (#186): reading a set stops there and the rest of
+/// the script still runs. Every kept row lives in the UI, so this bounds its memory.</param>
 public sealed record EditorSettings(bool Intellisense = true, string? KeywordCase = null, int CatalogSampleDocs = 50, bool AutoRefreshOnDdl = true,
-    bool WarnUnknownNames = true);
+    bool WarnUnknownNames = true, int MaxRows = EditorSettings.DefaultMaxRows)
+{
+    public const int DefaultMaxRows = 100_000;
+}
 
 /// <param name="LastSeenVersion">The app version whose changes the user has been shown (ADR 0013). Null means never
 /// recorded: a fresh install, or a store written before this setting existed.</param>
@@ -177,6 +225,7 @@ public sealed record StoreFile(AppConfig Config, Dictionary<string, string> Secr
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(TreeNode[]))]
+[JsonSerializable(typeof(KindDescription[]))]
 [JsonSerializable(typeof(NodeError))]
 [JsonSerializable(typeof(AppConfig))]
 [JsonSerializable(typeof(AppSettings))]

@@ -2,6 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import type { TreeNode } from "./api";
 import { AbortError, RpcError } from "../rpc";
 import { dropTarget, ENV_GAP, moveEnvironment, ROW_HEIGHT, selectableRow, TreeModel, UNGROUPED, type Row } from "./tree-model";
+import { BUILTIN_KINDS } from "./builtin-kinds";
+import { registerKinds } from "./kinds";
+
+// The sidecar describes the kinds in the app; here the built-in ones stand in.
+registerKinds(BUILTIN_KINDS);
 
 const node = (id: string, hasChildren = true, meta?: Record<string, string>): TreeNode => ({
   id,

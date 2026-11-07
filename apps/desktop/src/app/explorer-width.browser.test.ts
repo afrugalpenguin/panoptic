@@ -5,6 +5,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import "./app.css";
 import type { TreeNode } from "./api";
 import Harness from "../test/ExplorerHarness.svelte";
+import { BUILTIN_KINDS } from "./builtin-kinds";
+import { registerKinds } from "./kinds";
+
+// The sidecar describes the kinds in the app; here the built-in ones stand in.
+registerKinds(BUILTIN_KINDS);
 
 // Synthetic names only. Endpoints are long on purpose: they must clip, not scroll.
 const env = (id: string, name: string, color: string, count: number): TreeNode => ({

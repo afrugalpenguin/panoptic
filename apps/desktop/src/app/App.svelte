@@ -8,7 +8,8 @@
   import { scheduleUpdateChecks } from "../update-schedule";
   import { createUpdateChecker, currentVersion, type UpdateState } from "../updates";
   import { parseChangelog, sectionsSince, type ChangelogSection } from "../whats-new";
-  import { createApi, type Api, type AppConfig, type AppSettings, type ConnectionConfig, type DeviceCodePrompt, type EnvironmentConfig, type TreeNode } from "./api";
+  import { createApi, type Api, type AppConfig, type AppSettings, type ConnectionConfig, type DeviceCodePrompt, type EnvironmentConfig, type KindDescription, type TreeNode } from "./api";
+  import { registerKinds } from "./kinds";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import { confirmText, readOnlyMoveText, type ConfirmText } from "./confirm";
   import ConnectionDialog from "./ConnectionDialog.svelte";
@@ -56,6 +57,8 @@
   let seeking = $state(false);
   /** Context menu labels for node action ids, from the sidecar (node.actionLabels). */
   let actionLabels = $state.raw<Record<string, string>>({});
+  /** Connection kinds as the sidecar describes them (backends.describe). */
+  let kinds = $state.raw<KindDescription[]>([]);
   let dialog = $state<
     | { kind: "environment"; initial?: EnvironmentConfig }
     | { kind: "connection"; environmentId: string | null; initial?: ConnectionConfig }
@@ -78,7 +81,7 @@
   let settings = $state<AppSettings>({
     updateCheck: "startup",
     explorer: { showKindBadge: true, rowFont: "mono", envOrder: [] },
-    editor: { intellisense: true, catalogSampleDocs: 50, autoRefreshOnDdl: true, warnUnknownNames: true },
+    editor: { intellisense: true, catalogSampleDocs: 50, autoRefreshOnDdl: true, warnUnknownNames: true, maxRows: 100_000 },
   });
   const checkForUpdates = createUpdateChecker((s) => (update = s));
   let stopUpdateSchedule = () => {};
@@ -205,6 +208,9 @@
     try {
       // Generous: the first run after install or update can be slow (antivirus scan, .NET unpacking).
       ping = await rpc!.request<PingResult>("ping", undefined, 120_000);
+      // Before the tree loads: its badges and the connection dialog come from these.
+      kinds = await api!.describeBackends();
+      registerKinds(kinds);
     } catch {
       return; // An exited/failed status follows and says what happened.
     }
@@ -796,6 +802,7 @@
 {:else if dialog?.kind === "connection" && api}
   <ConnectionDialog
     {api}
+    {kinds}
     environments={config.environments}
     environmentId={dialog.environmentId}
     initial={dialog.initial}

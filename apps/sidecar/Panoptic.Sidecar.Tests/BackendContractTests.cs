@@ -29,7 +29,7 @@ public sealed class FakeBackend : IQueryBackend
 
     public void Forget(string connectionId) { }
 
-    public IReadOnlyList<string> AuthsFor(string kind) => [AuthKinds.Key];
+    public KindDescription Describe(string kind) => TestKinds.Describe(kind, AuthKinds.Key);
 
     public IReadOnlyDictionary<string, string> ActionLabels { get; } = new Dictionary<string, string> { ["copyPath"] = "Copy path" };
 
@@ -89,7 +89,7 @@ public sealed class BrowseOnlyBackend : IBackend
 
     public void Forget(string connectionId) { }
 
-    public IReadOnlyList<string> AuthsFor(string kind) => [AuthKinds.Key];
+    public KindDescription Describe(string kind) => TestKinds.Describe(kind, AuthKinds.Key);
 }
 
 /// <summary>
@@ -108,9 +108,10 @@ public sealed class BackendContractTests : IDisposable
         if (Directory.Exists(_dir)) Directory.Delete(_dir, recursive: true);
     }
 
-    private JsonRpcDispatcher Sidecar(bool readOnly = false)
+    private JsonRpcDispatcher Sidecar(bool readOnly = false, int? maxRows = null)
     {
         var store = new ConfigStore(Path.Combine(_dir, "store.bin"));
+        if (maxRows is { } max) store.SaveSettings(store.Settings with { Editor = store.Settings.Editor with { MaxRows = max } });
         store.SaveEnvironment(new EnvironmentConfig("e", "Lab", "#000", readOnly, []));
         store.SaveConnection("e", new ConnectionConfig("f", "Fake one", FakeBackend.Kind, "fake://host", AuthKinds.Key), "secret");
         store.SaveConnection("e", new ConnectionConfig("b", "Browser", "browse", "browse://host", AuthKinds.Key), "secret");
@@ -206,6 +207,24 @@ public sealed class BackendContractTests : IDisposable
         Assert.Equal("n", batches[0].GetProperty("columns")[0].GetProperty("name").GetString());
         Assert.False(batches[1].TryGetProperty("columns", out _));
         Assert.Equal("ran in main", Assert.Single(Notes("query.message")).GetProperty("text").GetString());
+        Assert.False(Assert.Single(summary.GetProperty("resultSets").EnumerateArray()).GetProperty("truncated").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Rows_past_the_row_limit_are_never_sent_even_from_a_backend_that_ignores_it()
+    {
+        // FakeBackend always sends 1200 rows; the run keeps the first 1000 and says why (#186).
+        var sidecar = Sidecar(maxRows: 1000);
+
+        var summary = await Call(sidecar, "query.execute", new { queryId = "q5", nodeId = Widgets, text = "select" });
+
+        var set = Assert.Single(summary.GetProperty("resultSets").EnumerateArray());
+        Assert.Equal(1000, set.GetProperty("rowCount").GetInt32());
+        Assert.True(set.GetProperty("truncated").GetBoolean());
+        Assert.Equal([500, 500], Notes("query.rows").Select(b => b.GetProperty("rows").GetArrayLength()));
+        var limit = Assert.Single(Notes("query.message"), m => m.GetProperty("text").GetString()!.Contains("row limit"));
+        Assert.Equal("info", limit.GetProperty("kind").GetString());
+        Assert.Equal("Result 1 shows the first 1,000 rows: the row limit in Settings. The rest were not loaded.", limit.GetProperty("text").GetString());
     }
 
     [Fact]

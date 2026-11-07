@@ -25,8 +25,40 @@ export interface NodeError {
   retryable: boolean;
 }
 
-export type ConnectionKind = "sql" | "synapse" | "cosmos" | "postgres";
+/** A registered connection kind ("sql", "cosmos"...): open-ended, described by the sidecar (KindDescription). */
+export type ConnectionKind = string;
 export type AuthKind = "entra" | "sql" | "key" | "windows" | "password";
+
+/** Mirrors KindDescription in the sidecar's Model.cs: what the UI shows for a connection kind (backends.describe). */
+export interface KindDescription {
+  kind: ConnectionKind;
+  /** As the connection dialog's Type list shows it. */
+  label: string;
+  /** What the endpoint field is called: "Server", "Account URI". */
+  endpointLabel: string;
+  endpointPlaceholder: string;
+  /** The auths this kind accepts, in the order the dialog lists them. */
+  auths: { id: AuthKind; label: string }[];
+  badge: KindBadge;
+  fields: {
+    /** The tree can be limited to one database. */
+    database: boolean;
+    /** Takes a certificate host name and file. */
+    certificateOptions: boolean;
+    /** With Entra, takes an optional user to sign in as. */
+    entraUser: boolean;
+    /** Skipping the certificate check is allowed for a local emulator only, so it carries no risk warning. */
+    trustLocalOnly: boolean;
+  };
+}
+
+export interface KindBadge {
+  /** One or two letters shown in the 14px square. */
+  letters: string;
+  color: string;
+  /** The kind's short name, on the engine filter chip. */
+  name: string;
+}
 
 export interface ConnectionConfig {
   id: string;
@@ -78,6 +110,8 @@ export interface EditorSettings {
   autoRefreshOnDdl: boolean;
   /** Underline tables and columns the catalog does not know, before the query runs. */
   warnUnknownNames: boolean;
+  /** Rows kept per result set, 1,000 to 1,000,000; reading a set stops there. */
+  maxRows: number;
 }
 
 export interface AppSettings {
@@ -150,6 +184,7 @@ export function createApi(rpc: RpcClient) {
     queryScope: (nodeId: string) => rpc.request<QueryScope>("query.scope", { nodeId }),
     /** Context menu labels for every action id a node can carry. */
     actionLabels: () => rpc.request<Record<string, string>>("node.actionLabels"),
+    describeBackends: () => rpc.request<KindDescription[]>("backends.describe"),
     /** Runs a node action a backend adds in the sidecar; null text means nothing to copy. */
     invokeNode: (nodeId: string, actionId: string) => rpc.request<{ text?: string | null }>("node.invoke", { nodeId, actionId }),
     /** Aborting `signal` cancels the expand in the sidecar ($/cancelRequest) and rejects with an AbortError. */
