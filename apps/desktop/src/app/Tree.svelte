@@ -147,6 +147,8 @@
   }
 
   function onKeydown(e: KeyboardEvent) {
+    // The footer's buttons sit inside the tree's focus container; their keys (Enter, Space) are theirs.
+    if ((e.target as Element | null)?.closest?.(".tree-footer")) return;
     const row = rows[selectedIndex];
     switch (e.key) {
       case "ArrowDown":
