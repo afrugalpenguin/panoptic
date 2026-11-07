@@ -35,12 +35,6 @@ public sealed class QueryService
         _notify = notify;
     }
 
-    /// <summary>Kept for existing callers: the backends come from <paramref name="tree"/>, which already holds these.</summary>
-    public QueryService(ConfigStore store, TreeService tree, SqlBackend sql, CosmosBackend cosmos, Action<string, Action<Utf8JsonWriter>> notify)
-        : this(store, tree, notify)
-    {
-    }
-
     public bool Cancel(string queryId)
     {
         if (!_running.TryGetValue(queryId, out var cts)) return false;
@@ -81,10 +75,6 @@ public sealed class QueryService
         return new QuerySummary(request.QueryId, run.Sets.Select((n, i) => new ResultSetSummary(n, run.TruncatedSets.Contains(i))).ToArray(),
             Math.Round(run.Clock.Elapsed.TotalMilliseconds), run.IsRolledBack, run.IsCommitted, run.Cancelled, run.Error, run.Charge);
     }
-
-    /// <summary>Kept for existing callers; the SQL read-only guard's batch loop now lives in SqlBackend.</summary>
-    public static Task<bool> RunBatches(IEnumerable<string> batches, Func<string, Task> execute, Func<Task<int>>? tranCount) =>
-        SqlBackend.RunBatches(batches, execute, tranCount);
 
     /// <summary>One query.execute: what the backend has streamed so far, and the summary's flags.</summary>
     private sealed class Run(QueryService owner, string queryId, Stopwatch clock, int maxRows) : IQuerySink
