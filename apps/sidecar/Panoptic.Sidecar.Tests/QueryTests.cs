@@ -123,7 +123,7 @@ public class ReadOnlyGuardTests
         var ran = new List<string>();
         var counts = new Queue<int>([1, 0, 1]);
 
-        var held = await QueryService.RunBatches(["a", "b", "c"], b => { ran.Add(b); return Task.CompletedTask; }, () => Task.FromResult(counts.Dequeue()));
+        var held = await SqlBackend.RunBatches(["a", "b", "c"], b => { ran.Add(b); return Task.CompletedTask; }, () => Task.FromResult(counts.Dequeue()));
 
         Assert.False(held);
         Assert.Equal(["a", "b"], ran);
@@ -134,7 +134,7 @@ public class ReadOnlyGuardTests
     {
         var ran = new List<string>();
 
-        var held = await QueryService.RunBatches(["a", "b"], b => { ran.Add(b); return Task.CompletedTask; }, () => Task.FromResult(2));
+        var held = await SqlBackend.RunBatches(["a", "b"], b => { ran.Add(b); return Task.CompletedTask; }, () => Task.FromResult(2));
 
         Assert.True(held);
         Assert.Equal(["a", "b"], ran);
@@ -145,7 +145,7 @@ public class ReadOnlyGuardTests
     {
         var ran = new List<string>();
 
-        var held = await QueryService.RunBatches(["a", "b"], b => { ran.Add(b); return Task.CompletedTask; }, null);
+        var held = await SqlBackend.RunBatches(["a", "b"], b => { ran.Add(b); return Task.CompletedTask; }, null);
 
         Assert.True(held);
         Assert.Equal(["a", "b"], ran);
@@ -161,24 +161,28 @@ public class ReadOnlyGuardTests
 
 public class QueryTemplateTests
 {
+    private static string? SelectTop(IQueryBackend backend, NodePath path) => backend.TemplateFor(path, "selectTop");
+
+    private static readonly Credentials NoCredentials = new(_ => { });
+
     [Fact]
     public void Select_top_quotes_schema_and_name_from_the_node_path()
     {
         var path = NodePath.Root.Child("env", "e").Child("conn", "c").Child("db", "Orders").Child("f", "tables").Child("o", "sales", "Odd]Name");
-        Assert.Equal("SELECT TOP (1000) *\nFROM [sales].[Odd]]Name];", QueryTemplates.SelectTop(ConnectionKinds.Sql, path));
+        Assert.Equal("SELECT TOP (1000) *\nFROM [sales].[Odd]]Name];", SelectTop(new SqlBackend(NoCredentials), path));
     }
 
     [Fact]
     public void Select_top_for_a_cosmos_container()
     {
         var path = NodePath.Parse("conn:c/db:shop/c:orders");
-        Assert.Equal("SELECT TOP 1000 * FROM c", QueryTemplates.SelectTop(ConnectionKinds.Cosmos, path));
+        Assert.Equal("SELECT TOP 1000 * FROM c", SelectTop(new CosmosBackend(NoCredentials), path));
     }
 
     [Fact]
     public void Select_top_is_not_offered_above_an_object()
     {
-        Assert.Null(QueryTemplates.SelectTop(ConnectionKinds.Sql, NodePath.Parse("conn:c/db:Orders")));
+        Assert.Null(SelectTop(new SqlBackend(NoCredentials), NodePath.Parse("conn:c/db:Orders")));
     }
 }
 
@@ -208,7 +212,7 @@ public sealed class QueryIntegrationTests : IDisposable
         var sql = new SqlBackend(credentials);
         var cosmos = new CosmosBackend(credentials);
         var tree = new TreeService(store, new Dictionary<string, IBackend> { ["sql"] = sql, ["cosmos"] = cosmos });
-        return new QueryService(store, tree, sql, cosmos, (method, write) =>
+        return new QueryService(store, tree, (method, write) =>
         {
             using var buffer = new MemoryStream();
             using (var w = new Utf8JsonWriter(buffer)) write(w);

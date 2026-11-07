@@ -102,7 +102,7 @@ Run once per tree build, result stored on the node as `label: { prefix, core, su
 2. Common prefix = longest common prefix of that set, cut back to the last `.` or `-` boundary so a core never starts mid-token. When the common prefix contains no boundary at all (names glued together, such as `acmedwhuat`), the whole common prefix is kept.
 3. Common suffix = longest common suffix of that set, cut forward to the first `.` boundary.
 4. If the set has one member, or prefix and suffix would leave an empty core, fall back to the same computation over the connection's env siblings of that engine. If that also yields nothing, prefix and suffix are empty and the whole endpoint is bright.
-5. Local instances: `localhost\` is treated as a prefix, `localhost` alone is fully bright. Local instances are left out of the sets in steps 1 and 4, so one local server does not erase every other prefix.
+5. Local instances: any form of this machine (`localhost`, `127.x.x.x`, `::1`, `.`, `(local)`, `(localdb)\...`, and URLs such as `https://localhost:8081`, with or without a port) is local. On a local `host\instance` the `host\` part is treated as a prefix (`localhost\`, `.\`, `(local)\`); any other local endpoint is fully bright. Local instances are left out of the sets in steps 1 and 4, so one local server does not erase every other prefix.
 
 Worked results (invented names in the same shape as the real tree): `acmedwh` + `int-uk` + `.database.windows.net`; `acmesure` + `dev` + `.documents.azure.com`; `acmesuresupport-ondemand.sql.azuresynapse.net` (Synapse, single member of its engine, so nothing is dimmed and the whole endpoint is bright).
 

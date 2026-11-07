@@ -24,7 +24,8 @@
   import { livePlace, type SeekEnv, type SeekHost, type SeekIndex, type SeekRow } from "./seek";
   import { globalShortcut } from "./shortcuts";
   import { loadUsage, recordUse, saveUsage, type Place } from "./usage";
-  import { actionItems, actionLabel, queryItems, shortcutAction, type NodeActionHandlers } from "./node-menu";
+  import { shortcutAction } from "./node-menu";
+  import { rowMenu } from "./row-menu";
   import Workspace from "../query/Workspace.svelte";
   import { preloadMonaco } from "../query/preload";
   import { intellisense, syncCatalogs } from "../query/intellisense/shared";
@@ -32,7 +33,7 @@
   import SettingsDialog from "./SettingsDialog.svelte";
   import StatusBar from "./StatusBar.svelte";
   import { environmentOrder, moveEnvironment, TreeModel, UNGROUPED, type EngineSummary, type ExplorerSummary, type LoadReport, type Row } from "./tree-model";
-  import { errorText, type Problem } from "./problems";
+  import type { Problem } from "./problems";
   import { UndoDelete } from "./undo-delete";
 
   let { info }: { info: StartupInfo } = $props();
@@ -404,73 +405,39 @@
   }
 
   function openMenu(row: Row, x: number, y: number) {
-    const items: (MenuItem | "separator")[] = [];
-    if (row.type === "group" || row.type === "env-empty") {
-      // The Ungrouped header and the empty hint are not config of their own: nothing to edit or retry.
-    } else if (row.type === "error") {
-      items.push({ label: "Copy error", run: () => navigator.clipboard.writeText(errorText(row.error)).catch(() => {}) });
-      if (row.error.retryable) items.push({ label: "Retry", run: () => model.refresh(row.parentId) });
-      items.push({ label: "Open Problems", run: () => openProblems(row.parentId) });
-    } else if (row.type !== "node") {
-      items.push({ label: "Retry", run: () => model.refresh(row.parentId) });
-    } else {
-      const n = row.node;
-      const on: NodeActionHandlers = {
-        openQuery: (action) => openQuery(row, action),
-        refresh: () => (model.refresh(n.id), n.kind === "database" && refreshQueryTabs(n.id)),
-        invoke: (actionId) => invokeAction(n, actionId),
-        copy: (text) => navigator.clipboard.writeText(text).catch(() => {}),
-      };
-      items.push(...queryItems(n, actionLabels, on));
-      // Environments and connections are Panoptic's own config, so their menus also edit, move and delete them.
-      if (n.kind === "environment") {
-        const env = envOf(n.meta!.environmentId);
-        items.push({ label: "New connection...", run: () => addConnection(env?.id) });
-        items.push({ label: "Edit environment...", run: () => env && (dialog = { kind: "environment", initial: env }) });
-        const order = environmentOrder(settings.explorer.envOrder, config.environments.map((e) => e.id));
-        const position = env ? order.indexOf(env.id) : -1;
-        items.push({ label: "Move up", disabled: position <= 0, run: () => env && moveEnv(env.id, -1) });
-        items.push({ label: "Move down", disabled: position < 0 || position >= order.length - 1, run: () => env && moveEnv(env.id, 1) });
-        items.push({ label: actionLabel("refresh", actionLabels), run: () => model.refresh(n.id) });
-        items.push("separator");
-        items.push({
-          label: "Delete environment",
-          danger: true,
-          run: () =>
-            env &&
-            deleteConfig(
-              confirmText("environment", env.name, env.connections.length),
-              `Deleted environment ${env.name}`,
-              env.connections.map((c) => c.id),
-              () => api!.deleteEnvironment(env.id),
-            ),
-        });
-      } else if (n.kind === "connection") {
-        const found = connectionOf(n.meta!.connectionId);
-        items.push({
-          label: "Edit connection...",
-          run: () => found && (dialog = { kind: "connection", environmentId: found.env?.id ?? null, initial: found.connection }),
-        });
-        items.push(...actionItems(n, actionLabels, { ...on, refresh: () => (model.refresh(n.id), refreshQueryTabs(n.id)) }));
-        items.push({ label: "Move to environment...", run: () => found && (dialog = { kind: "move", connection: found.connection, from: found.env?.id }) });
-        if (found?.env) items.push({ label: "Remove from environment", run: () => moveConnection(found.connection.id, null) });
-        items.push("separator");
-        items.push({
-          label: "Remove connection",
-          danger: true,
-          run: () =>
-            found &&
-            deleteConfig(
-              confirmText("connection", found.connection.name, 1),
-              `Removed connection ${found.connection.name}`,
-              [found.connection.id],
-              () => api!.deleteConnection(found.connection.id),
-            ),
-        });
-      } else {
-        items.push(...actionItems(n, actionLabels, on));
-      }
-    }
+    const items = rowMenu(row, {
+      labels: actionLabels,
+      envOrder: environmentOrder(settings.explorer.envOrder, config.environments.map((e) => e.id)),
+      environment: envOf,
+      connection: connectionOf,
+      copy: (text) => navigator.clipboard.writeText(text).catch(() => {}),
+      retry: (parentId) => model.refresh(parentId),
+      openProblems,
+      openQuery,
+      refresh: (nodeId) => model.refresh(nodeId),
+      refreshQueryTabs,
+      invoke: invokeAction,
+      newConnection: addConnection,
+      editEnvironment: (env) => (dialog = { kind: "environment", initial: env }),
+      moveEnvironment: moveEnv,
+      deleteEnvironment: (env) =>
+        deleteConfig(
+          confirmText("environment", env.name, env.connections.length),
+          `Deleted environment ${env.name}`,
+          env.connections.map((c) => c.id),
+          () => api!.deleteEnvironment(env.id),
+        ),
+      editConnection: (found) => (dialog = { kind: "connection", environmentId: found.env?.id ?? null, initial: found.connection }),
+      moveConnection: (found) => (dialog = { kind: "move", connection: found.connection, from: found.env?.id }),
+      removeFromEnvironment: (connectionId) => moveConnection(connectionId, null),
+      removeConnection: (found) =>
+        deleteConfig(
+          confirmText("connection", found.connection.name, 1),
+          `Removed connection ${found.connection.name}`,
+          [found.connection.id],
+          () => api!.deleteConnection(found.connection.id),
+        ),
+    });
     if (items.length) menu = { x, y, items };
   }
 
