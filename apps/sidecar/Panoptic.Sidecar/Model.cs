@@ -130,6 +130,14 @@ public sealed record TestConnectionResult(bool Ok, double ElapsedMs, string? Err
 /// <param name="Database">Overrides the database the node resolves to (the tab's database picker).</param>
 public sealed record QueryRequest(string QueryId, string NodeId, string Text, string? Database = null);
 public sealed record QueryCancelParams(string QueryId);
+
+/// <summary>query.saveAll (#287): run the text again and write its first result set, every row, to Path as Format
+/// ("csv" or "json"). QueryId cancels it through query.cancel, like a run.</summary>
+public sealed record QuerySaveRequest(string QueryId, string NodeId, string Text, string Path, string Format, string? Database = null);
+
+/// <param name="Error">Why nothing was saved: refused, failed or the file could not be written. Null on success.</param>
+/// <param name="Note">Saved, with something to know (CSV columns that appeared late).</param>
+public sealed record QuerySaveResult(int Rows, bool Cancelled, string? Error = null, string? Note = null);
 /// <param name="Truncated">The set reached the row limit (EditorSettings.MaxRows) and had more rows, which were not kept.</param>
 public sealed record ResultSetSummary(int RowCount, bool Truncated = false);
 /// <param name="RolledBack">Read-only environment, and the guard transaction was still open and rolled back.</param>
@@ -275,6 +283,8 @@ public sealed record StoreFile(AppConfig Config, Dictionary<string, string> Secr
 [JsonSerializable(typeof(Import.ImportSource[]))]
 [JsonSerializable(typeof(QueryRequest))]
 [JsonSerializable(typeof(QueryCancelParams))]
+[JsonSerializable(typeof(QuerySaveRequest))]
+[JsonSerializable(typeof(QuerySaveResult))]
 [JsonSerializable(typeof(QuerySummary))]
 [JsonSerializable(typeof(QueryTemplateParams))]
 [JsonSerializable(typeof(QueryTemplateResult))]

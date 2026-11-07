@@ -616,3 +616,47 @@ describe("QueryWorkspace.restyle", () => {
     expect(tab.target).toMatchObject({ envColor: "#e03131", readOnly: true });
   });
 });
+
+describe("QueryWorkspace: save all rows (#287)", () => {
+  function setupSave(result: { rows: number; cancelled: boolean; error?: string | null; note?: string | null }) {
+    const api = {
+      executeQuery: vi.fn(async () => ({ queryId: "", resultSets: [{ rowCount: 100_000, truncated: true }], elapsedMs: 1, rolledBack: false, committed: false, cancelled: false })),
+      cancelQuery: vi.fn(async () => true),
+      saveAll: vi.fn(async (_r: { queryId: string; nodeId: string; text: string; database?: string; path: string; format: "csv" | "json" }) => result),
+    };
+    return { ws: new QueryWorkspace(api), api };
+  }
+
+  it("runs the last run's text again into the file and says how many rows were saved", async () => {
+    const { ws, api } = setupSave({ rows: 1_234_567, cancelled: false });
+    const tab = ws.open(target, "select * from dbo.Orders");
+    await ws.run(tab);
+    tab.text = "select 1 -- edited since";
+
+    await ws.saveAll(tab, "C:\\out\\orders.csv", "csv");
+
+    expect(api.saveAll).toHaveBeenCalledWith(expect.objectContaining({ nodeId: target.nodeId, text: "select * from dbo.Orders", path: "C:\\out\\orders.csv", format: "csv" }));
+    expect(tab.saving).toBe(false);
+    expect(tab.messages.at(-1)).toMatchObject({ kind: "info", text: "Saved 1,234,567 rows to orders.csv." });
+  });
+
+  it("reports why nothing was saved", async () => {
+    const { ws } = setupSave({ rows: 0, cancelled: false, error: "Save all runs the query again, so only a single SELECT can be saved this way." });
+    const tab = ws.open(target, "update t set a = 1");
+    await ws.run(tab);
+
+    await ws.saveAll(tab, "C:\\out\\t.json", "json");
+
+    expect(tab.messages.at(-1)).toMatchObject({ kind: "error", text: expect.stringContaining("only a single SELECT") });
+  });
+
+  it("says when a save was cancelled", async () => {
+    const { ws } = setupSave({ rows: 0, cancelled: true });
+    const tab = ws.open(target, "select 1");
+    await ws.run(tab);
+
+    await ws.saveAll(tab, "C:\\out\\t.csv", "csv");
+
+    expect(tab.messages.at(-1)).toMatchObject({ kind: "info", text: "Save cancelled; no file was written." });
+  });
+});

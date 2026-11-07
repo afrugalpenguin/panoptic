@@ -21,7 +21,7 @@ namespace Panoptic.Sidecar.Query;
 /// </summary>
 public sealed class QueryService
 {
-    private const int BatchSize = 500;
+    internal const int BatchSize = 500;
 
     private readonly ConfigStore _store;
     private readonly TreeService _tree;
@@ -74,6 +74,51 @@ public sealed class QueryService
 
         return new QuerySummary(request.QueryId, run.Sets.Select((n, i) => new ResultSetSummary(n, run.TruncatedSets.Contains(i))).ToArray(),
             Math.Round(run.Clock.Elapsed.TotalMilliseconds), run.IsRolledBack, run.IsCommitted, run.Cancelled, run.Error, run.Charge);
+    }
+
+    /// <summary>
+    /// Save all rows (#287): runs a lone SELECT again (<see cref="SingleReadQuery"/>) with every row of its first result
+    /// set going to a file instead of the grid. It writes to a .partial file and moves it into place only when the run
+    /// succeeded, so a refused, failed or cancelled save leaves nothing behind.
+    /// </summary>
+    public async Task<QuerySaveResult> SaveAsync(QuerySaveRequest request, CancellationToken cancellationToken)
+    {
+        if (request.Format is not ("csv" or "json")) throw new RpcException(RpcException.InvalidParams, $"Unknown format: {request.Format}");
+        if (!Path.IsPathFullyQualified(request.Path)) throw new RpcException(RpcException.InvalidParams, $"The file must be a full path, not {request.Path}.");
+        var target = _tree.ResolveTarget(request.NodeId, request.Database);
+        var backend = _tree.QueryBackendFor(target.Connection, "cannot run queries");
+        if (SingleReadQuery.Refusal(backend.EditorLanguage, request.Text) is { } refusal) return new QuerySaveResult(0, false, refusal);
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (!_running.TryAdd(request.QueryId, cts)) throw new RpcException(RpcException.InvalidParams, $"Query {request.QueryId} is already running");
+        var partial = request.Path + ".partial";
+        try
+        {
+            FileSink sink;
+            using (sink = new FileSink(partial, request.Format))
+                await backend.ExecuteAsync(target, _store.GetSecret(target.Connection.Id), request.Text, sink, cts.Token);
+            if (sink.Error is { } error)
+            {
+                File.Delete(partial);
+                return new QuerySaveResult(0, false, error);
+            }
+            File.Move(partial, request.Path, overwrite: true);
+            return new QuerySaveResult(sink.RowsWritten, false, null, sink.Note);
+        }
+        catch (Exception) when (cts.IsCancellationRequested)
+        {
+            File.Delete(partial);
+            return new QuerySaveResult(0, true);
+        }
+        catch (Exception ex)
+        {
+            File.Delete(partial);
+            return new QuerySaveResult(0, false, ex.Message);
+        }
+        finally
+        {
+            _running.TryRemove(request.QueryId, out _);
+        }
     }
 
     /// <summary>One query.execute: what the backend has streamed so far, and the summary's flags.</summary>
