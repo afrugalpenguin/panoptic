@@ -144,6 +144,12 @@
   <span></span>
   <p class="help muted">Documents read from each Cosmos container to learn its property paths.</p>
 
+  <label for="s-max-rows">Row limit</label>
+  <input id="s-max-rows" type="number" min="1000" max="1000000" step="1000" bind:value={editor.maxRows} />
+
+  <span></span>
+  <p class="help muted">Rows kept per result set. Past it, the rest of that result is not loaded; the script still runs to the end.</p>
+
   {#if error}<p class="full error">{error}</p>{/if}
 
   {#snippet footer()}

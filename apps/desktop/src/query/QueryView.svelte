@@ -174,7 +174,9 @@
     <div class="result-tabs">
       {#each tab.results as set, i}
         <button class:on={tab.view === i} onclick={() => (tab.view = i)}>
-          Result {tab.results.length > 1 ? i + 1 : ""} <span class="muted">({set.count.toLocaleString()} row{set.count === 1 ? "" : "s"})</span>
+          Result {tab.results.length > 1 ? i + 1 : ""} <span class="muted"
+            >({set.count.toLocaleString()} row{set.count === 1 ? "" : "s"}{tab.summary?.resultSets[i]?.truncated ? ", row limit reached" : ""})</span
+          >
         </button>
       {/each}
       <button class:on={tab.view === -1} class:has-error={!!tab.error} onclick={() => (tab.view = -1)}>

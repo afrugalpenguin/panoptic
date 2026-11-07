@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
@@ -51,7 +52,7 @@ public sealed class QueryService
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         if (!_running.TryAdd(request.QueryId, cts)) throw new RpcException(RpcException.InvalidParams, $"Query {request.QueryId} is already running");
-        var run = new Run(this, request.QueryId, Stopwatch.StartNew());
+        var run = new Run(this, request.QueryId, Stopwatch.StartNew(), _store.Settings.Editor.MaxRows);
         try
         {
             var target = _tree.ResolveTarget(request.NodeId, request.Database);
@@ -77,7 +78,7 @@ public sealed class QueryService
         }
         if (run.Cancelled) run.Message("info", "Query cancelled.");
 
-        return new QuerySummary(request.QueryId, run.Sets.Select(n => new ResultSetSummary(n)).ToArray(),
+        return new QuerySummary(request.QueryId, run.Sets.Select((n, i) => new ResultSetSummary(n, run.TruncatedSets.Contains(i))).ToArray(),
             Math.Round(run.Clock.Elapsed.TotalMilliseconds), run.IsRolledBack, run.IsCommitted, run.Cancelled, run.Error, run.Charge);
     }
 
@@ -86,11 +87,12 @@ public sealed class QueryService
         SqlBackend.RunBatches(batches, execute, tranCount);
 
     /// <summary>One query.execute: what the backend has streamed so far, and the summary's flags.</summary>
-    private sealed class Run(QueryService owner, string queryId, Stopwatch clock) : IQuerySink
+    private sealed class Run(QueryService owner, string queryId, Stopwatch clock, int maxRows) : IQuerySink
     {
         public string QueryId { get; } = queryId;
         public Stopwatch Clock { get; } = clock;
         public List<int> Sets { get; } = [];
+        public HashSet<int> TruncatedSets { get; } = [];
         public bool IsRolledBack { get; private set; }
         public bool IsCommitted { get; private set; }
         public bool Cancelled { get; set; }
@@ -98,7 +100,15 @@ public sealed class QueryService
         public double? Charge { get; private set; }
 
         public int BatchSize => QueryService.BatchSize;
+        public int MaxRows { get; } = maxRows;
         public int SetCount => Sets.Count;
+
+        public void Truncated(int set)
+        {
+            if (!TruncatedSets.Add(set)) return;
+            Message("info", string.Create(CultureInfo.InvariantCulture,
+                $"Result {set + 1} shows the first {MaxRows:N0} rows: the row limit in Settings. The rest were not loaded."));
+        }
 
         public int BeginSet()
         {
@@ -108,8 +118,17 @@ public sealed class QueryService
 
         public int RowCount(int set) => Sets[set];
 
+        /// <summary>Sends the rows that fit under the row limit; any past it are dropped and the set marked truncated.</summary>
         public void Rows(int set, ResultColumn[]? columns, IReadOnlyList<object?[]> rows)
         {
+            var room = MaxRows - Sets[set];
+            if (rows.Count > room)
+            {
+                rows = rows.Take(Math.Max(0, room)).ToList();
+                Truncated(set);
+                // Nothing left to send and the columns are already out: no empty batch.
+                if (rows.Count == 0 && (columns is null || Sets[set] > 0)) return;
+            }
             owner.Rows(this, set, columns, rows);
             Sets[set] += rows.Count;
         }

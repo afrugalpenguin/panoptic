@@ -227,7 +227,7 @@ function handle(req: Request): unknown {
       return {
         updateCheck: "never",
         explorer: { showKindBadge: true, rowFont: "mono", envOrder: [] },
-        editor: { intellisense: true, catalogSampleDocs: 50, autoRefreshOnDdl: true, warnUnknownNames: true },
+        editor: { intellisense: true, catalogSampleDocs: 50, autoRefreshOnDdl: true, warnUnknownNames: true, maxRows: 100_000 },
         lastSeenVersion: VERSION,
       };
     case "node.actionLabels":

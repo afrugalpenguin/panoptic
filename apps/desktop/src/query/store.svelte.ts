@@ -156,7 +156,7 @@ export class QueryWorkspace {
   constructor(private readonly api: QueryApi) {}
 
   readonly catalogs = new CatalogStore();
-  editor = $state<EditorSettings>({ intellisense: true, catalogSampleDocs: 50, autoRefreshOnDdl: true, warnUnknownNames: true });
+  editor = $state<EditorSettings>({ intellisense: true, catalogSampleDocs: 50, autoRefreshOnDdl: true, warnUnknownNames: true, maxRows: 100_000 });
   /** Catalog keys of the databases known on each connection: connection node id, then lower-cased database name. */
   private readonly databaseKeys = new Map<string, Record<string, string>>();
   private readonly fetching = new Set<string>();
