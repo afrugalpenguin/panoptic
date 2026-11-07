@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import type { QuerySummary } from "./types";
+import type { QuerySummary, UnknownName } from "./types";
 import type { Suggestion } from "./intellisense/suggest";
 import type { SuggestRequest } from "./intellisense/worker";
 import { nodeParts, QueryWorkspace } from "./store.svelte";
 
-const target = { nodeId: "env:dev/conn:c1/db:Orders", label: "Orders", connection: "sql-dev", envColor: "#2f9e44", readOnly: false, language: "sql" as const };
+const target = { nodeId: "env:dev/conn:c1/db:Orders", label: "Orders", connection: "sql-dev", envColor: "#2f9e44", readOnly: false, language: "sql" as const, capabilities: { databasePicker: true, unknownNameWarnings: true, ddlRefresh: true } };
 
 function setup(suggest?: (request: SuggestRequest) => Promise<Suggestion | undefined>) {
   let resolve!: (s: QuerySummary) => void;
@@ -51,7 +51,7 @@ describe("QueryWorkspace", () => {
 
   it("extends columns when Cosmos finds new properties mid-stream", () => {
     const { ws, api } = setup();
-    const tab = ws.open({ ...target, language: "cosmos" }, "SELECT * FROM c");
+    const tab = ws.open({ ...target, language: "cosmos", capabilities: { databasePicker: false, unknownNameWarnings: false, ddlRefresh: false } }, "SELECT * FROM c");
     ws.run(tab);
     const queryId = api.executeQuery.mock.calls[0][0].queryId;
     ws.handle("query.rows", { queryId, index: 0, columns: [{ name: "id", type: "" }], rows: [["a"]] });
@@ -91,7 +91,7 @@ describe("QueryWorkspace", () => {
     function failing(text: string, suggest?: (request: SuggestRequest) => Promise<Suggestion | undefined>) {
       const { ws, api } = setup(suggest);
       const tab = ws.open(target, text);
-      const error = (message: { number?: number; line?: number; text: string }) =>
+      const error = (message: { number?: number; unknown?: UnknownName; line?: number; text: string }) =>
         ws.handle("query.message", { queryId: api.executeQuery.mock.calls[0][0].queryId, kind: "error", elapsedMs: 1, ...message });
       return { ws, tab, error };
     }
@@ -99,7 +99,7 @@ describe("QueryWorkspace", () => {
     it("points a name error at the token and says where the statement starts", () => {
       const { ws, tab, error } = failing(script);
       ws.run(tab);
-      error({ number: 208, line: 3, text: "Line 3: Invalid object name 'contracts'." });
+      error({ number: 208, unknown: "object", line: 3, text: "Line 3: Invalid object name 'contracts'." });
       const [m] = tab.messages;
       expect(m.text).toBe("Line 5: Invalid object name 'contracts' (statement starts at line 3).");
       expect(script.slice(m.at!.start, m.at!.end)).toBe("contracts");
@@ -110,7 +110,7 @@ describe("QueryWorkspace", () => {
       const text = "-- header\n\n" + script;
       const { ws, tab, error } = failing(text);
       ws.run(tab, script, text.indexOf("select 1"));
-      error({ number: 208, line: 3, text: "Line 3: Invalid object name 'contracts'." });
+      error({ number: 208, unknown: "object", line: 3, text: "Line 3: Invalid object name 'contracts'." });
       expect(tab.messages[0].text).toBe("Line 7: Invalid object name 'contracts' (statement starts at line 5).");
       expect(text.slice(tab.messages[0].at!.start, tab.messages[0].at!.end)).toBe("contracts");
     });
@@ -118,7 +118,7 @@ describe("QueryWorkspace", () => {
     it("keeps the reported line when the name is not found once", () => {
       const { ws, tab, error } = failing("select 1\n\nselect * from t a join t b on 1 = 1");
       ws.run(tab);
-      error({ number: 208, line: 3, text: "Line 3: Invalid object name 't'." });
+      error({ number: 208, unknown: "object", line: 3, text: "Line 3: Invalid object name 't'." });
       error({ number: 102, line: 1, text: "Line 1: Incorrect syntax near 'x'." });
       expect(tab.messages.map((m) => [m.text, m.located, m.at])).toEqual([
         ["Line 3: Invalid object name 't'.", false, { start: 10, end: 10 }],
@@ -129,7 +129,7 @@ describe("QueryWorkspace", () => {
     it("places nothing for an error without a script line", () => {
       const { ws, tab, error } = failing("exec p");
       ws.run(tab);
-      error({ number: 208, text: "Procedure dbo.p, line 3: Invalid object name 'x'." });
+      error({ number: 208, unknown: "object", text: "Procedure dbo.p, line 3: Invalid object name 'x'." });
       expect(tab.messages[0].at).toBeUndefined();
     });
 
@@ -137,9 +137,9 @@ describe("QueryWorkspace", () => {
       const suggest = vi.fn(async (_: SuggestRequest) => ({ label: "dbo.Contracts", insertText: "dbo.Contracts" }));
       const { ws, tab, error } = failing(script, suggest);
       ws.run(tab);
-      error({ number: 208, line: 3, text: "Line 3: Invalid object name 'contracts'." });
+      error({ number: 208, unknown: "object", line: 3, text: "Line 3: Invalid object name 'contracts'." });
       await vi.waitFor(() => expect(tab.messages[0].fix).toBeDefined());
-      expect(suggest.mock.calls[0][0]).toEqual({ number: 208, parts: ["contracts"], tables: [] });
+      expect(suggest.mock.calls[0][0]).toEqual({ unknown: "object", parts: ["contracts"], tables: [] });
       expect(tab.messages[0].text).toBe("Line 5: Invalid object name 'contracts' (statement starts at line 3). Did you mean dbo.Contracts?");
       expect(tab.messages[0].fix).toEqual({ label: "dbo.Contracts", insertText: "dbo.Contracts" });
     });
@@ -148,10 +148,10 @@ describe("QueryWorkspace", () => {
       const suggest = vi.fn(async (_: SuggestRequest) => undefined);
       const { ws, tab, error } = failing("select Nmae\nfrom dbo.Customer", suggest);
       ws.run(tab);
-      error({ number: 207, line: 1, text: "Line 1: Invalid column name 'Nmae'." });
+      error({ number: 207, unknown: "column", line: 1, text: "Line 1: Invalid column name 'Nmae'." });
       await vi.waitFor(() => expect(suggest).toHaveBeenCalled());
       await Promise.resolve();
-      expect(suggest.mock.calls[0][0]).toMatchObject({ number: 207, parts: ["Nmae"], tables: [{ name: "Customer", schema: "dbo" }] });
+      expect(suggest.mock.calls[0][0]).toMatchObject({ unknown: "column", parts: ["Nmae"], tables: [{ name: "Customer", schema: "dbo" }] });
       expect(tab.messages[0].text).toBe("Line 1: Invalid column name 'Nmae'.");
       expect(tab.messages[0].fix).toBeUndefined();
     });
@@ -159,20 +159,20 @@ describe("QueryWorkspace", () => {
     it("asks the editor to reveal a message", () => {
       const { ws, tab, error } = failing(script);
       ws.run(tab);
-      error({ number: 208, line: 3, text: "Line 3: Invalid object name 'contracts'." });
+      error({ number: 208, unknown: "object", line: 3, text: "Line 3: Invalid object name 'contracts'." });
       ws.reveal(tab, tab.messages[0]);
       ws.reveal(tab, tab.messages[0]);
       expect(tab.reveal).toEqual({ id: tab.messages[0].id, seq: 2 });
     });
 
     describe("Postgres", () => {
-      const pg = { ...target, language: "pgsql" as const };
+      const pg = { ...target, language: "pgsql" as const, capabilities: { databasePicker: true, unknownNameWarnings: true, ddlRefresh: true } };
       const pgScript = 'select 1;\n\nselect o.idd, "Order Lines".qty\nfrom sales."order" o';
 
       function failingPg(text: string, suggest?: (request: SuggestRequest) => Promise<Suggestion | undefined>) {
         const { ws, api } = setup(suggest);
         const tab = ws.open(pg, text);
-        const error = (message: { state?: string; line?: number; column?: number; text: string }) =>
+        const error = (message: { state?: string; unknown?: UnknownName; line?: number; column?: number; text: string }) =>
           ws.handle("query.message", { queryId: api.executeQuery.mock.calls[0][0].queryId, kind: "error", elapsedMs: 1, ...message });
         return { ws, tab, error };
       }
@@ -180,7 +180,7 @@ describe("QueryWorkspace", () => {
       it("marks the name at the server's line and column, dotted and quoted parts included", () => {
         const { ws, tab, error } = failingPg(pgScript);
         ws.run(tab);
-        error({ state: "42703", line: 3, column: 8, text: "Line 3: column o.idd does not exist" });
+        error({ state: "42703", unknown: "column", line: 3, column: 8, text: "Line 3: column o.idd does not exist" });
         error({ state: "42P01", line: 3, column: 15, text: 'Line 3: missing FROM-clause entry for table "Order Lines"' });
         expect(tab.messages.map((m) => [pgScript.slice(m.at!.start, m.at!.end), m.located])).toEqual([
           ["o.idd", true],
@@ -192,7 +192,7 @@ describe("QueryWorkspace", () => {
         const text = "-- header\n\n" + pgScript;
         const { ws, tab, error } = failingPg(text);
         ws.run(tab, pgScript, text.indexOf("select 1"));
-        error({ state: "42703", line: 3, column: 8, text: "Line 3: column o.idd does not exist" });
+        error({ state: "42703", unknown: "column", line: 3, column: 8, text: "Line 3: column o.idd does not exist" });
         expect(tab.messages[0].text).toBe("Line 5: column o.idd does not exist");
         expect(text.slice(tab.messages[0].at!.start, tab.messages[0].at!.end)).toBe("o.idd");
       });
@@ -201,9 +201,9 @@ describe("QueryWorkspace", () => {
         const suggest = vi.fn(async (_: SuggestRequest) => ({ label: "sales.orders", insertText: "sales.orders" }));
         const { ws, tab, error } = failingPg('select 1;\nselect * from sales."ordr" o', suggest);
         ws.run(tab);
-        error({ state: "42P01", line: 2, column: 15, text: 'Line 2: relation "sales.ordr" does not exist' });
+        error({ state: "42P01", unknown: "object", line: 2, column: 15, text: 'Line 2: relation "sales.ordr" does not exist' });
         await vi.waitFor(() => expect(tab.messages[0].fix).toBeDefined());
-        expect(suggest.mock.calls[0][0]).toEqual({ number: 0, state: "42P01", language: "pgsql", parts: ["sales", "ordr"], tables: [] });
+        expect(suggest.mock.calls[0][0]).toEqual({ unknown: "object", language: "pgsql", parts: ["sales", "ordr"], tables: [] });
         expect(tab.messages[0].text).toBe('Line 2: relation "sales.ordr" does not exist. Did you mean sales.orders?');
       });
 
@@ -211,10 +211,10 @@ describe("QueryWorkspace", () => {
         const suggest = vi.fn(async (_: SuggestRequest) => undefined);
         const { ws, tab, error } = failingPg(pgScript, suggest);
         ws.run(tab);
-        error({ state: "42703", line: 3, column: 8, text: "Line 3: column o.idd does not exist" });
+        error({ state: "42703", unknown: "column", line: 3, column: 8, text: "Line 3: column o.idd does not exist" });
         await vi.waitFor(() => expect(suggest).toHaveBeenCalled());
         expect(suggest.mock.calls[0][0]).toEqual({
-          number: 0, state: "42703", language: "pgsql", parts: ["idd"], qualifier: "o", tables: [{ name: "order", schema: "sales", alias: "o" }],
+          unknown: "column", language: "pgsql", parts: ["idd"], qualifier: "o", tables: [{ name: "order", schema: "sales", alias: "o" }],
         });
       });
 

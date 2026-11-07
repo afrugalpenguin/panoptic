@@ -37,7 +37,18 @@ export interface MessageNotification {
   line?: number;
   /** 1-based column on that line (UTF-16 code units), when the server gives an exact position (Postgres). */
   column?: number;
+  /** For an error about a name the server could not resolve, what kind of name: classified by the backend (#203). */
+  unknown?: UnknownName;
 }
+
+/** Mirrors UnknownNames in the sidecar's Model.cs. */
+export type UnknownName = "object" | "column" | "procedure" | "function" | "qualifier";
+
+/**
+ * What a query tab on its backend offers: databasePicker (a Cosmos tab is bound to its container instead),
+ * unknownNameWarnings (underline names the catalog lacks), ddlRefresh (rebuild the catalog after a run that changes objects).
+ */
+export type QueryCapabilities = Sidecar.QueryCapabilities;
 
 export type QueryLanguage = "sql" | "cosmos" | "pgsql";
 
@@ -57,6 +68,8 @@ export interface QueryTarget {
   envColor?: string;
   readOnly: boolean;
   language: QueryLanguage;
+  /** From query.template. */
+  capabilities: QueryCapabilities;
   /** From query.template. Absent: read from the node id (nodeParts), as before the sidecar sent it. */
   scope?: QueryScope;
 }

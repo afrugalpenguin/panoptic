@@ -3,12 +3,12 @@ import type { Problem } from "../app/problems";
 import type { ChangelogSection, WhatsNewSource } from "../whats-new";
 import { CatalogStore, type CatalogNotice } from "./catalog.svelte";
 import type { Options } from "./intellisense/engine";
-import { findName, lineAt, locatable, quotedName, type Found } from "./intellisense/locate";
+import { findName, lineAt, quotedName, type Found } from "./intellisense/locate";
 import type { ModelInfo } from "./intellisense/providers";
 import { contextAt, isDdl, lineOffset, nameChains, statementsAtLine, tablesIn, tokenize, type Language } from "./intellisense/scanner";
 import type { Suggestion } from "./intellisense/suggest";
 import type { SuggestRequest } from "./intellisense/worker";
-import type { CellValue, MessageNotification, QueryLanguage, QueryScope, QuerySummary, QueryTarget, ResultColumn, RowsNotification } from "./types";
+import type { CellValue, MessageNotification, QueryLanguage, QueryScope, QuerySummary, QueryTarget, ResultColumn, RowsNotification, UnknownName } from "./types";
 
 export interface QueryApi {
   executeQuery: (request: { queryId: string; nodeId: string; text: string; database?: string }) => Promise<QuerySummary>;
@@ -39,11 +39,6 @@ export interface QueryMessage {
   fix?: Suggestion;
 }
 
-/** Errors whose quoted name can be looked up in the catalog: objects, columns, procedures. */
-const SUGGESTABLE = new Set([208, 207, 2812]);
-/** Postgres: undefined table, column, function. 42P01 also covers "missing FROM-clause entry", hence the wording check. */
-const PG_SUGGESTABLE = new Set(["42P01", "42703", "42883"]);
-const PG_UNDEFINED = /\bdoes not exist\b/;
 const ENGINE_LANGUAGE: Record<QueryLanguage, Language> = { sql: "tsql", cosmos: "cosmos-sql", pgsql: "pgsql" };
 /** A Postgres name, dotted and "quoted" parts included, or any other run of word characters: what an error marks. */
 const PG_TOKEN = /^(?:"(?:[^"]|"")*"|[\p{L}_][\p{L}\p{N}_$]*)(?:\.(?:"(?:[^"]|"")*"|[\p{L}_][\p{L}\p{N}_$]*))*|^\w+/u;
@@ -247,7 +242,7 @@ export class QueryWorkspace {
   }
 
   private async loadDatabases(tab: QueryTab): Promise<void> {
-    if (!this.api.databases || !tab.target || tab.target.language === "cosmos") return;
+    if (!this.api.databases || !tab.target?.capabilities.databasePicker) return;
     try {
       tab.databases = await this.api.databases(this.scopeOf(tab.target).connection);
     } catch {
@@ -292,7 +287,7 @@ export class QueryWorkspace {
           const entry = this.catalogs.get(key);
           return { key, catalog: entry?.catalog, version: entry?.version ?? 0 };
         }),
-        warnUnknownNames: this.editor.warnUnknownNames && tab.target.language !== "cosmos",
+        warnUnknownNames: this.editor.warnUnknownNames && tab.target.capabilities.unknownNameWarnings,
         onMissing: (database) => void this.fetchDatabase(tab, database),
       };
     };
@@ -401,7 +396,7 @@ export class QueryWorkspace {
     tab.running = true;
     try {
       tab.summary = await this.api.executeQuery({ queryId: tab.queryId, nodeId: tab.target.nodeId, text, database: tab.database });
-      if (this.editor.autoRefreshOnDdl && tab.target.language !== "cosmos" && isDdl(text, ENGINE_LANGUAGE[tab.target.language])) {
+      if (this.editor.autoRefreshOnDdl && tab.target.capabilities.ddlRefresh && isDdl(text, ENGINE_LANGUAGE[tab.target.language])) {
         this.forgetFailed(this.scopeOf(tab.target).connection);
         this.refreshCatalog(tab);
       }
@@ -450,12 +445,12 @@ export class QueryWorkspace {
   private addMessage(tab: QueryTab, p: MessageNotification): void {
     const message: QueryMessage = { id: ++nextMessageId, kind: p.kind, text: p.text, elapsedMs: p.elapsedMs };
     if (p.kind === "error" && p.line !== undefined && tab.target?.language === "pgsql") this.placeAt(tab, message, p.line, p.column);
-    const found = p.kind === "error" && p.line !== undefined && tab.target?.language === "sql" ? this.place(tab, message, p.line, p.number) : undefined;
+    const found = p.kind === "error" && p.line !== undefined && tab.target?.language === "sql" ? this.place(tab, message, p.line, p.unknown) : undefined;
     // The pushed row is a reactive proxy; a suggestion arriving later must update that, not the plain object.
     const row = tab.messages[tab.messages.push(message) - 1];
-    if (found && p.number !== undefined && p.line !== undefined) void this.suggestFor(tab, row, p.number, p.line, found);
-    if (message.located && p.state && p.line !== undefined && PG_SUGGESTABLE.has(p.state) && PG_UNDEFINED.test(p.text))
-      void this.suggestForPostgres(tab, row, p.state, p.line, message.at!.start - tab.runOffset);
+    if (found && p.unknown && p.line !== undefined) void this.suggestFor(tab, row, p.unknown, p.line, found);
+    if (message.located && p.unknown && p.line !== undefined && tab.target?.language === "pgsql")
+      void this.suggestForPostgres(tab, row, p.unknown, p.line, message.at!.start - tab.runOffset);
   }
 
   /**
@@ -463,15 +458,15 @@ export class QueryWorkspace {
    * the line when the name is not found exactly once, and rewrites the line in its text to the editor's. Returns the
    * name when found.
    */
-  private place(tab: QueryTab, message: QueryMessage, line: number, number?: number): Found | undefined {
+  private place(tab: QueryTab, message: QueryMessage, line: number, unknown?: UnknownName): Found | undefined {
     const run = tab.runText;
     // Typed over while it ran: the offsets would point at the wrong text, so leave the message as the server sent it.
     if (tab.text.slice(tab.runOffset, tab.runOffset + run.length) !== run) return undefined;
     const before = lineAt(tab.text, tab.runOffset) - 1;
     const prefix = `Line ${line}: `;
     const body = message.text.startsWith(prefix) ? message.text.slice(prefix.length) : message.text;
-    const name = number !== undefined && locatable(number) ? quotedName(body) : undefined;
-    const found = name ? findName(run, line, name, number!) : undefined;
+    const name = unknown ? quotedName(body) : undefined;
+    const found = name ? findName(run, line, name, unknown!) : undefined;
 
     if (!found) {
       const start = lineOffset(run, line);
@@ -513,17 +508,18 @@ export class QueryWorkspace {
   }
 
   /** Asks the worker for the closest catalog name and, if there is one, appends it to the row and offers it as a fix. */
-  private async suggestFor(tab: QueryTab, row: QueryMessage, number: number, line: number, found: Found): Promise<void> {
+  private async suggestFor(tab: QueryTab, row: QueryMessage, unknown: UnknownName, line: number, found: Found): Promise<void> {
     const info = this.intellisense(tab)();
-    if (!this.api.suggest || !info || !SUGGESTABLE.has(number)) return;
+    // A qualifier is found in the script but has nothing to suggest.
+    if (!this.api.suggest || !info || unknown === "qualifier") return;
     const run = tab.runText;
     const parts = found.chain.parts;
     let request: SuggestRequest;
-    if (number === 207) {
+    if (unknown === "column") {
       const statement = statementsAtLine(run, line)!;
-      request = { number, parts: parts.slice(-1), tables: tablesIn(run, statement.start, statement.end) };
+      request = { unknown, parts: parts.slice(-1), tables: tablesIn(run, statement.start, statement.end) };
       if (parts.length >= 2) request.qualifier = parts[parts.length - 2];
-    } else request = { number, parts, tables: [] };
+    } else request = { unknown, parts, tables: [] };
     const useDatabase = contextAt(run, found.start, "tsql").useDatabase;
     if (useDatabase) request.useDatabase = useDatabase;
     await this.applySuggestion(tab, row, request, info);
@@ -533,7 +529,7 @@ export class QueryWorkspace {
    * The same for a Postgres error, from the dotted name written at the server's position (at, in the run text): the
    * table, the column with its qualifier and the statement's tables, or the function.
    */
-  private async suggestForPostgres(tab: QueryTab, row: QueryMessage, state: string, line: number, at: number): Promise<void> {
+  private async suggestForPostgres(tab: QueryTab, row: QueryMessage, unknown: UnknownName, line: number, at: number): Promise<void> {
     const info = this.intellisense(tab)();
     if (!this.api.suggest || !info) return;
     const run = tab.runText;
@@ -542,8 +538,8 @@ export class QueryWorkspace {
     const tokens = tokenize(run, "pgsql", statement.start, statement.end).filter((t) => t.type !== "comment");
     const parts = nameChains(tokens).find((c) => c.tokens[0].start === at)?.parts;
     if (!parts) return;
-    const request: SuggestRequest = { number: 0, state, language: "pgsql", parts, tables: [] };
-    if (state === "42703") {
+    const request: SuggestRequest = { unknown, language: "pgsql", parts, tables: [] };
+    if (unknown === "column") {
       request.parts = parts.slice(-1);
       if (parts.length >= 2) request.qualifier = parts[parts.length - 2];
       request.tables = tablesIn(run, statement.start, statement.end, "pgsql");

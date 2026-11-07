@@ -504,6 +504,7 @@
           envColor,
           readOnly,
           language: template.language,
+          capabilities: template.capabilities,
           scope,
         },
         template.text ?? "",
@@ -586,6 +587,7 @@
         connection: scope?.connectionLabel ?? "",
         ...envLook(host.envId),
         language: template.language,
+        capabilities: template.capabilities,
         scope,
       });
       remember(host.id, host.name);

@@ -54,6 +54,9 @@ public interface IQueryBackend : IBackend
     /// <summary>The editor language the UI opens this backend's query tabs in: "sql" (T-SQL), "cosmos" or "pgsql".</summary>
     string EditorLanguage { get; }
 
+    /// <summary>What this backend's query tabs offer (database picker, unknown-name warnings, refresh after DDL).</summary>
+    QueryCapabilities Capabilities { get; }
+
     /// <summary>Text for a query tab opened by a node action: selectTop on a table, view or container (null on any
     /// other node), or empty for newQuery and anything else.</summary>
     string? TemplateFor(NodePath path, string action);

@@ -200,6 +200,12 @@ export interface QueryCancelParams {
   queryId: string;
 }
 
+export interface QueryCapabilities {
+  databasePicker: boolean;
+  unknownNameWarnings: boolean;
+  ddlRefresh: boolean;
+}
+
 export interface QueryRequest {
   queryId: string;
   nodeId: string;
@@ -235,6 +241,7 @@ export interface QueryTemplateResult {
   text?: string | null;
   language: string;
   scope?: QueryScope | null;
+  capabilities?: QueryCapabilities | null;
 }
 
 export interface ResultSetSummary {

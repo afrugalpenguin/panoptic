@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { findName, locatable, quotedName } from "./locate";
+import type { UnknownName } from "../types";
+import { findName, quotedName } from "./locate";
 
 /** The text the found range covers. */
-function found(text: string, line: number, name: string, number = 208) {
-  const at = findName(text, line, name, number);
+function found(text: string, line: number, name: string, unknown: UnknownName = "object") {
+  const at = findName(text, line, name, unknown);
   return at && { text: text.slice(at.start, at.end), line: at.line };
 }
 
@@ -24,8 +25,8 @@ describe("findName", () => {
   });
 
   it("finds it when the server reports the name's own line inside the statement", () => {
-    expect(found(script, 4, "Nmae", 207)).toBeUndefined();
-    expect(found(script.replace("c.Name", "c.Nmae"), 4, "Nmae", 207)).toEqual({ text: "Nmae", line: 4 });
+    expect(found(script, 4, "Nmae", "column")).toBeUndefined();
+    expect(found(script.replace("c.Name", "c.Nmae"), 4, "Nmae", "column")).toEqual({ text: "Nmae", line: 4 });
   });
 
   it("finds nothing when the name is not in the statement", () => {
@@ -49,8 +50,8 @@ describe("findName", () => {
 
   it("matches a multi-part name, and the last part of a 4104 identifier", () => {
     expect(found("select *\nfrom sales.[Contracts]", 1, "sales.Contracts")).toEqual({ text: "sales.[Contracts]", line: 2 });
-    expect(found("select k.Nmae\nfrom dbo.Customer c", 1, "c.Nmae", 4104)).toEqual({ text: "k.Nmae", line: 1 });
-    expect(found("select c.Nmae\nfrom dbo.Customer c", 1, "c.Nmae", 4104)).toEqual({ text: "c.Nmae", line: 1 });
+    expect(found("select k.Nmae\nfrom dbo.Customer c", 1, "c.Nmae", "qualifier")).toEqual({ text: "k.Nmae", line: 1 });
+    expect(found("select c.Nmae\nfrom dbo.Customer c", 1, "c.Nmae", "qualifier")).toEqual({ text: "c.Nmae", line: 1 });
   });
 
   it("gives up when the identifier appears twice", () => {
@@ -75,8 +76,3 @@ describe("quotedName", () => {
   });
 });
 
-describe("locatable", () => {
-  it("is decided by error number", () => {
-    expect([208, 207, 4104, 2812, 102].map(locatable)).toEqual([true, true, true, true, false]);
-  });
-});
