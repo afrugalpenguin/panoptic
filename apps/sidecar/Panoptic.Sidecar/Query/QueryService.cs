@@ -11,7 +11,7 @@ namespace Panoptic.Sidecar.Query;
 /// before the query finishes:
 ///   query.rows    { queryId, index, columns?, rows }  500 rows at a time; columns on a set's first
 ///                                                     batch, and again whenever Cosmos finds new ones
-///   query.message { queryId, kind, text, number?, state?, line?, column? }  PRINT output and notices, rows affected,
+///   query.message { queryId, kind, text, number?, state?, line?, column?, unknown? }  PRINT output and notices, rows affected,
 ///                                                    errors (one per server error, with its number or SQLSTATE and
 ///                                                    1-based line, and column where the server gives one)
 /// ExecuteAsync returns a summary when everything has finished, been cancelled or failed; results
@@ -189,6 +189,7 @@ public sealed class QueryService
             if (error.State is { } state) w.WriteString("state", state);
             if (error.Line is { } line) w.WriteNumber("line", line);
             if (error.Column is { } column) w.WriteNumber("column", column);
+            if (error.Unknown is { } unknown) w.WriteString("unknown", unknown);
         }
         w.WriteNumber("elapsedMs", Math.Round(run.Clock.Elapsed.TotalMilliseconds));
         w.WriteEndObject();

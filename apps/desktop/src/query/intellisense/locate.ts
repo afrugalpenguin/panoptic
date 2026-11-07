@@ -2,14 +2,8 @@
 // at the statement's first line (208, 4104, 2812) or the name's own line (207), so the name is found by searching the
 // statement for it. Pure: it runs on the main thread when an error arrives, from the scanner's tokens.
 
+import type { UnknownName } from "../types";
 import { nameChains, statementsAtLine, tokenize, type NameChain } from "./scanner";
-
-/** Name-resolution errors: 208 invalid object name, 207 invalid column name, 4104 multi-part identifier, 2812 procedure. */
-const LOCATABLE = new Set([208, 207, 4104, 2812]);
-
-export function locatable(number: number): boolean {
-  return LOCATABLE.has(number);
-}
 
 /** The identifier an error message quotes ('x' or "x"), or undefined. */
 export function quotedName(message: string): string | undefined {
@@ -37,10 +31,10 @@ function ending(chains: NameChain[], target: string[]): NameChain[] {
 
 /**
  * The one place in the statement at 1-based line where the error's name is written: a whole dotted name ending in
- * the quoted parts, outside strings and comments. A 4104 identifier may name an alias that is not the one written,
- * so its last part alone is enough. Undefined when there is no match or more than one.
+ * the quoted parts, outside strings and comments. An unknown qualifier (SQL Server 4104) may name an alias that is not
+ * the one written, so its last part alone is enough. Undefined when there is no match or more than one.
  */
-export function findName(text: string, line: number, name: string, number: number): Found | undefined {
+export function findName(text: string, line: number, name: string, unknown: UnknownName): Found | undefined {
   const statement = statementsAtLine(text, line);
   if (!statement) return undefined;
   const target = nameChains(tokenize(name, "tsql"))[0]?.parts;
@@ -48,7 +42,7 @@ export function findName(text: string, line: number, name: string, number: numbe
   const chains = nameChains(tokenize(text, "tsql", statement.start, statement.end).filter((t) => t.type !== "comment"));
 
   let matches = ending(chains, target);
-  if (matches.length === 0 && number === 4104 && target.length > 1) matches = ending(chains, target.slice(-1));
+  if (matches.length === 0 && unknown === "qualifier" && target.length > 1) matches = ending(chains, target.slice(-1));
   if (matches.length !== 1) return undefined;
 
   const chain = matches[0];

@@ -71,7 +71,7 @@ Completion, hover and the unknown-name warnings work as they do for SQL Server, 
 - `"names"`, `$$` and `$tag$` bodies, `E'...'` strings and comments are read as such, so nothing inside a function body is completed or checked. Statements end at semicolons only. There is no `USE`, and a qualifier that is not a schema is never taken for another database.
 - Types complete after `::` and `CAST(x AS`; procedures and their parameters after `CALL`.
 - The warnings skip `pg_catalog`, `information_schema` and unqualified `pg_*` names, the type after `::`, the field in `extract(year from ...)`, and tables made earlier in the script (`CREATE TEMP TABLE`, `CREATE OR REPLACE VIEW`, `CREATE MATERIALIZED VIEW IF NOT EXISTS`, ...).
-- Did you mean: when a run fails with an undefined table (42P01), column (42703) or function (42883), the closest catalog name is added to the message and offered as a quick fix on the mark. A "missing FROM-clause entry" error shares 42P01 and gets no suggestion: the alias is what is wrong, not the table.
+- Did you mean: when a run fails with an undefined table (42P01), column (42703) or function (42883), the closest catalog name is added to the message and offered as a quick fix on the mark. A "missing FROM-clause entry" error shares 42P01 and gets no suggestion: the alias is what is wrong, not the table. The sidecar classifies these codes (the message's `unknown`: object, column, function); the UI never sees SQLSTATEs as rules.
 
 ## Read-only environments
 

@@ -157,7 +157,7 @@ public static class Methods
                 var target = tree.ResolveTarget(args.NodeId);
                 var backend = tree.QueryBackendFor(target.Connection, "cannot run queries");
                 var text = backend.TemplateFor(NodePath.Parse(args.NodeId), args.Action);
-                return Task.FromResult(Rpc.Result(new QueryTemplateResult(text, backend.EditorLanguage, tree.ScopeOf(args.NodeId)),
+                return Task.FromResult(Rpc.Result(new QueryTemplateResult(text, backend.EditorLanguage, tree.ScopeOf(args.NodeId), backend.Capabilities),
                     SidecarJson.Default.QueryTemplateResult));
             };
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { DatabaseCatalog } from "../catalog.svelte";
 import { IntelliSenseClient, type WorkerLike } from "./client";
 import { handle, type CompleteResponse, type Request, type Response } from "./worker";
+import type { UnknownName } from "../types";
 
 const main: DatabaseCatalog = { stamp: "m", schemas: ["dbo"], types: [], objects: [{ name: "Main", schema: "dbo", kind: "table", columns: [] }] };
 const sales: DatabaseCatalog = { stamp: "s", schemas: ["dbo"], types: [], objects: [{ name: "Invoice", schema: "dbo", kind: "table", columns: [] }] };
@@ -82,14 +83,14 @@ describe("worker suggest and lint", () => {
     { name: "Archive", schema: "dbo", kind: "proc", params: [] },
   ] } });
   const keys = { current: "kS", databases: { s: "kS" } };
-  const suggest = (number: number, parts: string[], tables = [] as { name: string }[]) =>
-    (handle({ type: "suggest", id: 3, number, parts, tables, keys }) as { suggestion?: { label: string } }).suggestion?.label;
+  const suggest = (unknown: UnknownName, parts: string[], tables = [] as { name: string }[]) =>
+    (handle({ type: "suggest", id: 3, unknown, parts, tables, keys }) as { suggestion?: { label: string } }).suggestion?.label;
 
-  it("suggests an object for 208, a procedure for 2812 and a column for 207", () => {
-    expect(suggest(208, ["contract"])).toBe("dbo.Contracts");
-    expect(suggest(2812, ["Archiv"])).toBe("dbo.Archive");
-    expect(suggest(207, ["Signd"], [{ name: "Contracts" }])).toBe("Signed");
-    expect(suggest(4104, ["c", "Signd"], [{ name: "Contracts" }])).toBeUndefined();
+  it("suggests an object, a procedure or a column, and nothing for a qualifier", () => {
+    expect(suggest("object", ["contract"])).toBe("dbo.Contracts");
+    expect(suggest("procedure", ["Archiv"])).toBe("dbo.Archive");
+    expect(suggest("column", ["Signd"], [{ name: "Contracts" }])).toBe("Signed");
+    expect(suggest("qualifier", ["c", "Signd"], [{ name: "Contracts" }])).toBeUndefined();
   });
 
   it("lints the statement at the offset", () => {
@@ -118,25 +119,25 @@ describe("worker suggest and lint", () => {
     expect(covered(handle({ type: "lint", id: 9, text: "select top 1 * from Contracts", offset: 0, keys }))).toEqual([]);
   });
 
-  it("suggests for Postgres SQLSTATEs: 42P01 an object, 42703 a column, 42883 a routine", () => {
+  it("suggests in Postgres: an object, a column, a function", () => {
     handle({ type: "catalog", key: "kPg", catalog: { stamp: "p", schemas: ["public"], types: [], objects: [
       { name: "customer", schema: "public", kind: "table", columns: [{ name: "full_name", type: "text", nullable: true }] },
       { name: "order_total", schema: "public", kind: "fn", params: [] },
     ] } });
     const pgKeys = { current: "kPg", databases: {} };
-    const pg = (state: string, parts: string[], tables = [] as { name: string }[]) =>
-      (handle({ type: "suggest", id: 4, number: 0, state, language: "pgsql", parts, tables, keys: pgKeys }) as { suggestion?: { label: string } }).suggestion?.label;
-    expect(pg("42P01", ["custmer"])).toBe("public.customer");
-    expect(pg("42703", ["fullname"], [{ name: "customer" }])).toBe("full_name");
-    expect(pg("42883", ["order_totl"])).toBe("public.order_total");
-    expect(pg("42601", ["custmer"])).toBeUndefined();
+    const pg = (unknown: UnknownName, parts: string[], tables = [] as { name: string }[]) =>
+      (handle({ type: "suggest", id: 4, unknown, language: "pgsql", parts, tables, keys: pgKeys }) as { suggestion?: { label: string } }).suggestion?.label;
+    expect(pg("object", ["custmer"])).toBe("public.customer");
+    expect(pg("column", ["fullname"], [{ name: "customer" }])).toBe("full_name");
+    expect(pg("function", ["order_totl"])).toBe("public.order_total");
+    expect(pg("qualifier", ["custmer"])).toBeUndefined();
   });
 
   it("does not let one suggestion supersede another", async () => {
     const client = new IntelliSenseClient(() => fakeWorker([]));
     const [a, b] = await Promise.all([
-      client.suggest({ number: 208, parts: ["contract"], tables: [] }, keys),
-      client.suggest({ number: 2812, parts: ["Archiv"], tables: [] }, keys),
+      client.suggest({ unknown: "object", parts: ["contract"], tables: [] }, keys),
+      client.suggest({ unknown: "procedure", parts: ["Archiv"], tables: [] }, keys),
     ]);
     expect([a.suggestion?.label, b.suggestion?.label]).toEqual(["dbo.Contracts", "dbo.Archive"]);
   });

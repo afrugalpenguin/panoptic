@@ -42,6 +42,8 @@ public sealed class FakeBackend : IQueryBackend
 
     public string EditorLanguage => "fakesql";
 
+    public QueryCapabilities Capabilities { get; } = new(DatabasePicker: false, UnknownNameWarnings: true, DdlRefresh: false);
+
     public string? TemplateFor(NodePath path, string action) => action switch
     {
         "selectTop" when path[path.Count - 1].Type == "t" => $"SELECT * FROM {Quote(path[path.Count - 1].Value)} LIMIT 1000",
@@ -183,6 +185,10 @@ public sealed class BackendContractTests : IDisposable
         var select = await Call(sidecar, "query.template", new { nodeId = Widgets, action = "selectTop" });
         Assert.Equal("SELECT * FROM \"widgets\" LIMIT 1000", select.GetProperty("text").GetString());
         Assert.Equal("fakesql", select.GetProperty("language").GetString());
+        var capabilities = select.GetProperty("capabilities");
+        Assert.False(capabilities.GetProperty("databasePicker").GetBoolean());
+        Assert.True(capabilities.GetProperty("unknownNameWarnings").GetBoolean());
+        Assert.False(capabilities.GetProperty("ddlRefresh").GetBoolean());
         var scope = select.GetProperty("scope");
         Assert.Equal("conn:f", scope.GetProperty("connection").GetString());
         Assert.Equal("main", scope.GetProperty("database").GetString());

@@ -8,6 +8,7 @@ import { tsqlHabits } from "./habits";
 import { unknownNames, type Warning } from "./lint";
 import { contextAt, type Language, type TableRef } from "./scanner";
 import { suggestColumn, suggestObject, type Suggestion } from "./suggest";
+import type { UnknownName } from "../types";
 
 /** Which catalogs a request reads: the tab's own, and any other databases on its connection known so far. */
 export interface Keys {
@@ -18,10 +19,8 @@ export interface Keys {
 
 /** A name error to suggest a fix for: the error number and what the statement says around the name. */
 export interface SuggestRequest {
-  /** SQL Server's error number; 0 for Postgres, which sends state instead. */
-  number: number;
-  /** Postgres SQLSTATE: 42P01 undefined table, 42703 undefined column, 42883 undefined function. */
-  state?: string;
+  /** What the error says was not found, as the backend classified it. */
+  unknown: UnknownName;
   /** Default tsql. */
   language?: Language;
   /** The name's parts as written ([schema, name] or [name]; a column's name alone). */
@@ -63,14 +62,14 @@ function lookup(keys: Keys, useDatabase?: string): Lookup {
 }
 
 function suggest(message: SuggestRequest & { keys: Keys }): Suggestion | undefined {
-  const { number, state, language = "tsql" } = message;
+  const { unknown, language = "tsql" } = message;
   const find = lookup(message.keys, message.useDatabase);
-  if (number === 207 || state === "42703") return suggestColumn(find, message.tables, message.parts[message.parts.length - 1], message.qualifier, language);
+  if (unknown === "column") return suggestColumn(find, message.tables, message.parts[message.parts.length - 1], message.qualifier, language);
   const index = find();
   if (!index) return undefined;
-  if (number === 208 || state === "42P01") return suggestObject(index, message.parts, "objects", language);
-  if (number === 2812) return suggestObject(index, message.parts, "procs", language);
-  if (state === "42883") return suggestObject(index, message.parts, "routines", language);
+  if (unknown === "object") return suggestObject(index, message.parts, "objects", language);
+  if (unknown === "procedure") return suggestObject(index, message.parts, "procs", language);
+  if (unknown === "function") return suggestObject(index, message.parts, "routines", language);
   return undefined;
 }
 

@@ -9,7 +9,7 @@ import { QueryWorkspace } from "./store.svelte";
 import type { QuerySummary } from "./types";
 
 // Synthetic names only.
-const target = { nodeId: "env:dev/conn:c1/db:Orders", label: "Orders", connection: "sql-dev", envColor: "#2f9e44", readOnly: false, language: "sql" as const };
+const target = { nodeId: "env:dev/conn:c1/db:Orders", label: "Orders", connection: "sql-dev", envColor: "#2f9e44", readOnly: false, language: "sql" as const, capabilities: { databasePicker: true, unknownNameWarnings: true, ddlRefresh: true } };
 
 let mounted: Record<string, unknown> | undefined;
 afterEach(() => {

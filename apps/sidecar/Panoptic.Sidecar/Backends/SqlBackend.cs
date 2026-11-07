@@ -126,6 +126,8 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
 
     public string EditorLanguage => "sql";
 
+    public QueryCapabilities Capabilities { get; } = new(DatabasePicker: true, UnknownNameWarnings: true, DdlRefresh: true);
+
     /// <summary>selectTop on an object node (the tree offers it on tables and views); any other action opens empty.</summary>
     public string? TemplateFor(NodePath path, string action)
     {
@@ -251,7 +253,20 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
     /// line is added. An error inside a procedure or trigger carries that module's line, not the script's: it is
     /// named instead and gets no script line.
     /// </summary>
-    public static QueryError ToQueryError(int number, int lineNumber, string? procedure, string message, int batchLine)
+    public static QueryError ToQueryError(int number, int lineNumber, string? procedure, string message, int batchLine) =>
+        Located(number, lineNumber, procedure, message, batchLine) with { Unknown = UnknownName(number) };
+
+    /// <summary>Name-resolution errors, by what was not found: the UI locates the quoted name and suggests a close one.</summary>
+    private static string? UnknownName(int number) => number switch
+    {
+        208 => UnknownNames.Object,
+        207 => UnknownNames.Column,
+        2812 => UnknownNames.Procedure,
+        4104 => UnknownNames.Qualifier,
+        _ => null,
+    };
+
+    private static QueryError Located(int number, int lineNumber, string? procedure, string message, int batchLine)
     {
         if (!string.IsNullOrEmpty(procedure))
             return new QueryError(number, null, lineNumber > 0 ? $"Procedure {procedure}, line {lineNumber}: {message}" : $"Procedure {procedure}: {message}");

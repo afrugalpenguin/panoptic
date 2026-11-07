@@ -1,4 +1,4 @@
-import type { QueryLanguage, QueryScope } from "../query/types";
+import type { QueryCapabilities, QueryLanguage, QueryScope } from "../query/types";
 import type { RpcClient } from "../rpc";
 
 // Mirrors the sidecar's records in apps/sidecar/Panoptic.Sidecar/Model.cs.
@@ -179,7 +179,7 @@ export function createApi(rpc: RpcClient) {
       rpc.request<import("../query/types").QuerySummary>("query.execute", request, 2_147_483_647),
     cancelQuery: (queryId: string) => rpc.request<boolean>("query.cancel", { queryId }),
     queryTemplate: (nodeId: string, action: "selectTop" | "newQuery") =>
-      rpc.request<{ text?: string | null; language: QueryLanguage; scope?: QueryScope }>("query.template", { nodeId, action }),
+      rpc.request<{ text?: string | null; language: QueryLanguage; scope?: QueryScope; capabilities: QueryCapabilities }>("query.template", { nodeId, action }),
     /** The connection, database and container a node's query tabs belong to, and their names. */
     queryScope: (nodeId: string) => rpc.request<QueryScope>("query.scope", { nodeId }),
     /** Context menu labels for every action id a node can carry. */
