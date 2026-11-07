@@ -20,8 +20,8 @@ vi.mock("@tauri-apps/plugin-updater", () => ({
   check: vi.fn(async () => ({
     version: "1.1.0",
     download: async () => {},
-    install: async () => {
-      m.calls.push("install");
+    install: async (options?: { restartAfterInstall?: boolean }) => {
+      m.calls.push(options?.restartAfterInstall === false ? "install-no-restart" : "install");
       await m.install();
     },
   })),
@@ -71,5 +71,42 @@ describe("update install", () => {
     expect(states.at(-1)).toMatchObject({ kind: "installFailed", message: "Error: boom" });
     await checkNow();
     expect(states.at(-1)?.kind).toBe("ready");
+  });
+});
+
+describe("update on close (#42)", () => {
+  beforeEach(() => {
+    m.calls.length = 0;
+    m.install = async () => {};
+    m.startFails = false;
+  });
+
+  it("says a downloaded update installs on close", async () => {
+    const { states } = await readyUpdate();
+    expect(states.at(-1)).toMatchObject({ kind: "ready", next: "1.1.0", onClose: true });
+  });
+
+  it("installs a downloaded update when the app closes, without relaunching", async () => {
+    const { installPendingUpdate } = await import("./updates");
+    await readyUpdate();
+    expect(await installPendingUpdate()).toBe(true);
+    expect(m.calls).toEqual(["sidecar_stop", "install-no-restart"]);
+  });
+
+  it("does nothing on close when no update is waiting", async () => {
+    vi.resetModules();
+    const { installPendingUpdate } = await import("./updates");
+    expect(await installPendingUpdate()).toBe(false);
+    expect(m.calls).toEqual([]);
+  });
+
+  it("lets the app close if installing on close fails", async () => {
+    m.install = async () => {
+      throw new Error("installer missing");
+    };
+    const { installPendingUpdate } = await import("./updates");
+    await readyUpdate();
+    expect(await installPendingUpdate()).toBe(false);
+    expect(m.calls).toEqual(["sidecar_stop", "install-no-restart"]);
   });
 });

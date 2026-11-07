@@ -6,7 +6,8 @@
   import { afterPaint, finishBenchmark, firstPaintEpochMs, nowEpochMs, startupText, startupTimings, type StartupInfo } from "../startup";
   import { sidecarView } from "../sidecar-status";
   import { scheduleUpdateChecks } from "../update-schedule";
-  import { createUpdateChecker, currentVersion, type UpdateState } from "../updates";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { createUpdateChecker, currentVersion, installPendingUpdate, type UpdateState } from "../updates";
   import { parseChangelog, sectionsSince, type ChangelogSection } from "../whats-new";
   import { createApi, type Api, type AppConfig, type AppSettings, type ConnectionConfig, type DeviceCodePrompt, type EnvironmentConfig, type KindDescription, type TreeNode } from "./api";
   import { registerKinds } from "./kinds";
@@ -17,6 +18,9 @@
   import DetailPane from "./DetailPane.svelte";
   import EnvironmentDialog from "./EnvironmentDialog.svelte";
   import ImportDialog from "./ImportDialog.svelte";
+  import BackupImportDialog from "./BackupImportDialog.svelte";
+  import { open as openFileDialog, save as saveFileDialog } from "@tauri-apps/plugin-dialog";
+  import type { BackupPreview } from "../sidecar-types.generated";
   import MoveDialog from "./MoveDialog.svelte";
   import Explorer from "./Explorer.svelte";
   import Landing from "./Landing.svelte";
@@ -67,6 +71,7 @@
     | { kind: "connection"; environmentId: string | null; initial?: ConnectionConfig }
     | { kind: "move"; connection: ConnectionConfig; from?: string }
     | { kind: "import" }
+    | { kind: "backup"; path: string; preview: BackupPreview }
     | { kind: "settings" }
   >();
   /** A destructive action waiting on ConfirmDialog. */
@@ -159,6 +164,7 @@
       syncCatalogs(info);
       return (await intellisense.suggest(request, info.keys)).suggestion;
     },
+    saveAll: (request) => api!.saveAll(request),
   });
 
   // Editor settings apply to open tabs without a restart (docs/query-editor.md, "Settings").
@@ -178,9 +184,30 @@
       if (!isAbortError(e.reason)) reportProblem("Unexpected error", e.reason);
     };
     window.addEventListener("unhandledrejection", onUnhandled);
+    // A downloaded update installs as the window closes, so it is not downloaded again next launch (#42). The window
+    // closes once this resolves; installing exits the process first.
+    let unlistenClose: (() => void) | undefined;
+    try {
+      getCurrentWindow()
+        .onCloseRequested(async () => void (await installPendingUpdate()))
+        .then((u) => (unlistenClose = u), () => {});
+    } catch {
+      // Not in the desktop shell (the preview): nothing to install.
+    }
     start();
-    return () => window.removeEventListener("unhandledrejection", onUnhandled);
+    return () => {
+      window.removeEventListener("unhandledrejection", onUnhandled);
+      unlistenClose?.();
+    };
   });
+
+  /** Restart now into a downloaded update; a running query would be stopped, so that asks first (#42). */
+  async function restartToUpdate() {
+    if (update?.kind !== "ready") return;
+    const running = workspace.tabs.some((t) => t.kind === "query" && t.running);
+    if (running && !(await ask({ title: "Restart to update?", body: "A query is still running. Restarting stops it.", action: "Restart" }))) return;
+    await update.install();
+  }
 
   let rpc: RpcClient | undefined;
   let runningBeforeConnected = false;
@@ -400,6 +427,22 @@
     } catch (e) {
       lastLoad = { id: "", label: found.connection.name, count: 0, ms: 0, error: e instanceof Error ? e.message : String(e) };
     }
+  }
+
+  /** Settings' Export to a file (#28): the sidecar writes it. Returns what was written, for the dialog to show. */
+  async function exportConnections(): Promise<string | undefined> {
+    const path = await saveFileDialog({ defaultPath: "panoptic-connections.json", filters: [{ name: "Panoptic connections", extensions: ["json"] }] });
+    if (!path) return undefined;
+    const r = await api!.exportBackup(path);
+    const name = path.split(/[\\/]/).pop();
+    return `Exported ${r.connections} connection${r.connections === 1 ? "" : "s"} in ${r.environments} environment${r.environments === 1 ? "" : "s"} to ${name}, without passwords or keys.`;
+  }
+
+  /** Settings' Import from a backup (#28): pick the file, then preview it in its own dialog. Throws if it cannot be read. */
+  async function importConnections() {
+    const picked = await openFileDialog({ multiple: false, directory: false, filters: [{ name: "Panoptic connections", extensions: ["json"] }] });
+    if (typeof picked !== "string") return;
+    dialog = { kind: "backup", path: picked, preview: await api!.readBackup(picked) };
   }
 
   /** Resolves true only when the user picks the destructive action. */
@@ -735,7 +778,7 @@
   </main>
 
   <div class="status-host">
-    <StatusBar {sidecar} {sidecarText} {inFlight} {lastLoad} {startup} {update} problems={problems.length} onOpenProblems={() => openProblems()} onCancelLoad={(id) => model.cancel(id)}
+    <StatusBar {sidecar} {sidecarText} {inFlight} {lastLoad} {startup} {update} onRestartToUpdate={restartToUpdate} problems={problems.length} onOpenProblems={() => openProblems()} onCancelLoad={(id) => model.cancel(id)}
       undo={undoText ? { text: undoText, run: () => undoDelete.undo() } : undefined} />
   </div>
 </div>
@@ -771,7 +814,20 @@
       workspace.openWhatsNew(changelog, "settings");
       dialog = undefined;
     }}
+    onExportConnections={exportConnections}
+    onImportConnections={importConnections}
     onClose={() => (dialog = undefined)} />
+{:else if dialog?.kind === "backup" && api}
+  <BackupImportDialog
+    {api}
+    path={dialog.path}
+    preview={dialog.preview}
+    onImported={(r) => {
+      if (r.connectionsAdded > 0 || r.environmentsCreated > 0) configChanged();
+      lastLoad = { id: "", label: "Import from backup", count: r.connectionsAdded, ms: 0 };
+    }}
+    onClose={() => (dialog = undefined)}
+  />
 {:else if dialog?.kind === "import" && api}
   <ImportDialog
     {api}

@@ -203,12 +203,19 @@ jobs:
           if [ -z "$ready" ]; then docker logs pg; echo "::error::PostgreSQL did not become ready"; exit 1; fi
           docker cp docker/seed-postgres.sql pg:/tmp/seed-postgres.sql
           docker exec pg psql -q -U postgres -d postgres -f /tmp/seed-postgres.sql
+      # A second server that accepts only client certificate sign-in (#120), with throwaway certificates.
+      - name: Start PostgreSQL with client certificate sign-in
+        run: |
+          dir="$RUNNER_TEMP/pg-cert"
+          bash scripts/pg-client-cert.sh "$dir" 15433
+          echo "PANOPTIC_TEST_PG_CERT_DIR=$dir" >> "$GITHUB_ENV"
       - name: Postgres integration tests
         run: |
           set -o pipefail
           dotnet test apps/sidecar -p:EnableWindowsTargeting=true --filter "Category=PgIntegration" --logger "console;verbosity=detailed" | tee test.log
-          # Fail closed: a missing password would skip everything and still pass.
+          # Fail closed: a missing password or certificate folder would skip tests and still pass.
           if grep -q 'Set PANOPTIC_TEST_PG_PASSWORD' test.log; then echo "::error::Postgres tests were skipped for lack of a password"; exit 1; fi
+          if grep -q 'Set PANOPTIC_TEST_PG_CERT_DIR' test.log; then echo "::error::Client certificate tests were skipped"; exit 1; fi
 
   shell:
     needs: changes

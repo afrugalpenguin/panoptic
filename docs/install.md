@@ -7,7 +7,7 @@ unzip `Panoptic_<version>_x64-portable.zip` anywhere and run `panoptic.exe`.
 
 ## Updates
 
-Installed copies check for updates on launch and offer "Restart to update". Settings can switch
+Installed copies check for updates on launch and download one in the background. A downloaded update installs when you close Panoptic, so the next start is already on it; the status bar also offers "Restart now", which asks first if a query is running. Settings can switch
 that to hourly or turn automatic checks off; Check now stays available. The portable build tells
 you when a new version exists. The update check is the only outbound call Panoptic makes.
 

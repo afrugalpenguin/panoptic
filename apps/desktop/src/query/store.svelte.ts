@@ -9,6 +9,7 @@ import { contextAt, isDdl, lineOffset, nameChains, statementsAtLine, tablesIn, t
 import type { Suggestion } from "./intellisense/suggest";
 import type { SuggestRequest } from "./intellisense/worker";
 import type { CellValue, MessageNotification, QueryLanguage, QueryScope, QuerySummary, QueryTarget, ResultColumn, RowsNotification, UnknownName } from "./types";
+import type { QuerySaveResult } from "../sidecar-types.generated";
 
 export interface QueryApi {
   executeQuery: (request: { queryId: string; nodeId: string; text: string; database?: string }) => Promise<QuerySummary>;
@@ -19,6 +20,8 @@ export interface QueryApi {
   databases?: (connectionNodeId: string) => Promise<string[]>;
   /** A "did you mean" for a name error, from the IntelliSense worker's catalogs (docs/query-editor.md, "Error location"). */
   suggest?: (request: SuggestRequest, info: ModelInfo) => Promise<Suggestion | undefined>;
+  /** Save all rows (#287): runs the text again in the sidecar, every row of its first result going to the file. */
+  saveAll?: (request: { queryId: string; nodeId: string; text: string; database?: string; path: string; format: "csv" | "json" }) => Promise<QuerySaveResult>;
 }
 
 /** A row in a query tab's Messages. */
@@ -67,6 +70,9 @@ export class QueryTab {
   title = $state("");
   text = $state("");
   running = $state(false);
+  /** Save all rows is running again for this tab (#287); saveId cancels it. */
+  saving = $state(false);
+  saveId = "";
   startedAt = $state(0);
   queryId = "";
   results = $state.raw<ResultSet[]>([]);
@@ -400,6 +406,32 @@ export class QueryWorkspace {
 
   async cancel(tab: QueryTab): Promise<void> {
     if (tab.running && tab.queryId) await this.api.cancelQuery(tab.queryId);
+    else if (tab.saving && tab.saveId) await this.api.cancelQuery(tab.saveId);
+  }
+
+  /**
+   * Save all rows past the row limit (#287): the sidecar runs the last run's text again (a lone SELECT only) and writes
+   * every row of its first result to the file. The outcome goes to the tab's Messages.
+   */
+  async saveAll(tab: QueryTab, path: string, format: "csv" | "json"): Promise<void> {
+    if (!this.api.saveAll || !tab.target || tab.running || tab.saving || !tab.runText.trim()) return;
+    tab.saving = true;
+    tab.saveId = crypto.randomUUID();
+    const started = Date.now();
+    const say = (kind: "info" | "error", text: string) =>
+      (tab.messages = [...tab.messages, { id: ++nextMessageId, kind, text, elapsedMs: Date.now() - started }]);
+    try {
+      const r = await this.api.saveAll({ queryId: tab.saveId, nodeId: tab.target.nodeId, text: tab.runText, database: tab.database, path, format });
+      const file = path.split(/[\\/]/).pop();
+      if (r.cancelled) say("info", "Save cancelled; no file was written.");
+      else if (r.error) say("error", r.error);
+      else say("info", `Saved ${r.rows.toLocaleString("en-GB")} row${r.rows === 1 ? "" : "s"} to ${file}.${r.note ? ` ${r.note}` : ""}`);
+    } catch (e) {
+      say("error", `Save failed: ${e instanceof Error ? e.message : e}`);
+    } finally {
+      tab.saving = false;
+      tab.saveId = "";
+    }
   }
 
   /** Feed for query.rows, query.message and catalog.* notifications from the sidecar. */

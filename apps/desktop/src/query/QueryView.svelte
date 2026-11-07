@@ -31,6 +31,8 @@
   let editorHeight = $state(readSplit());
   let now = $state(Date.now());
   let exportError = $state<string>();
+  /** Save all rows (#287) asks first: it runs the query again. */
+  let confirmingSave = $state(false);
 
   onMount(() => {
     const t = setInterval(() => (now = Date.now()), 100);
@@ -65,6 +67,22 @@
     } catch (e) {
       exportError = `Export failed: ${e instanceof Error ? e.message : e}`;
     }
+  }
+
+  /** The shown result stopped at the row limit: its other rows can only be had by running the query again. */
+  const truncated = $derived(tab.view >= 0 && !!tab.summary?.resultSets[tab.view]?.truncated);
+
+  async function saveAll() {
+    confirmingSave = false;
+    const path = await save({
+      defaultPath: "results.csv",
+      filters: [
+        { name: "CSV", extensions: ["csv"] },
+        { name: "JSON", extensions: ["json"] },
+      ],
+    });
+    if (!path) return;
+    await workspace.saveAll(tab, path, path.toLowerCase().endsWith(".json") ? "json" : "csv");
   }
 
   function readSplit(): number {
@@ -192,11 +210,27 @@
       </button>
       <span style:flex="1"></span>
       {#if current && current.count > 0}
+        {#if truncated}
+          <button class="small" onclick={() => (confirmingSave = true)} disabled={tab.running || tab.saving}>Save all rows...</button>
+        {/if}
         <button class="small" onclick={() => exportAs("csv")} disabled={tab.running}>Export CSV</button>
         <button class="small" onclick={() => exportAs("json")} disabled={tab.running}>Export JSON</button>
       {/if}
     </div>
     {#if exportError}<p class="error banner">{exportError}</p>{/if}
+    {#if confirmingSave}
+      <p class="banner save-confirm" role="alert">
+        Saving all rows runs the query again and writes every row straight to a file. Only a single SELECT can be saved
+        this way, and the data may have changed since.
+        <button class="small" onclick={saveAll}>Run again and save...</button>
+        <button class="small" onclick={() => (confirmingSave = false)}>Cancel</button>
+      </p>
+    {:else if tab.saving}
+      <p class="banner save-confirm" role="status">
+        Saving all rows...
+        <button class="small" onclick={() => workspace.cancel(tab)}>Cancel</button>
+      </p>
+    {/if}
 
     <div class="result-body">
       {#if current}
@@ -434,5 +468,15 @@
       animation: none;
       opacity: 0.6;
     }
+  }
+  .save-confirm {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-4);
+    margin: 0;
+    padding: var(--space-3) var(--space-5);
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--warn) 10%, transparent);
   }
 </style>
