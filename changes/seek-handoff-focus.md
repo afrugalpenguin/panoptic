@@ -1,0 +1,1 @@
+Fixed: after **Enter** in Seek, focus moves to the explorer tree on the environment or connection you found, so the arrow keys carry on from there. **Ctrl+P** with query tabs open now opens Seek over the workspace instead of doing nothing.
