@@ -1,5 +1,6 @@
 // Endpoint label segments for the explorer (docs/explorer-ux.md, "Prefix and suffix detection").
 // Pure functions, run once when the tree model changes; rows only read the result.
+import { isLoopback } from "./loopback";
 
 export interface LabelSegments {
   /** Dim: shared with the other endpoints of the same kind. */
@@ -17,8 +18,10 @@ export interface LabelInput {
   envId: string;
 }
 
-const LOCAL_PREFIX = /^localhost\\/i;
-const isLocal = (endpoint: string) => /^localhost([\\,:]|$)/i.test(endpoint);
+/** A SQL Server named instance's host part ("localhost\", ".\", "(local)\"), dimmed on a local endpoint. */
+const INSTANCE_HOST = /^[^\\]+\\/;
+/** This machine in any form (localhost, 127.x, ::1, ".", "(local)", LocalDB, loopback URLs), not just "localhost" (#213). */
+const isLocal = isLoopback;
 const bright = (endpoint: string): LabelSegments => ({ prefix: "", core: endpoint, suffix: "" });
 
 /** Longest common prefix length, case-insensitive. */
@@ -88,7 +91,7 @@ export function computeLabels(connections: LabelInput[]): Map<string, LabelSegme
   const result = new Map<string, LabelSegments>();
   for (const c of connections) {
     if (isLocal(c.endpoint)) {
-      const m = LOCAL_PREFIX.exec(c.endpoint);
+      const m = INSTANCE_HOST.exec(c.endpoint);
       result.set(c.id, m && c.endpoint.length > m[0].length ? { prefix: m[0], core: c.endpoint.slice(m[0].length), suffix: "" } : bright(c.endpoint));
       continue;
     }

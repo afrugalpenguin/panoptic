@@ -79,6 +79,24 @@ describe("computeLabels: fallbacks", () => {
     expect(parts(labels, "l3")).toEqual(["", "localhost,14333", ""]);
     expect(parts(labels, "s1")).toEqual(["acmedwh", "uat", ".database.windows.net"]);
   });
+
+  it("treats every loopback form as local, so none of them erases an engine's prefix (#213)", () => {
+    const local = ["127.0.0.1,14333", ".", String.raw`(local)\DEV`, "::1", "https://localhost:8081", "https://127.0.0.1:8081/", String.raw`.\SQLEXPRESS`, String.raw`(localdb)\MSSQLLocalDB`];
+    const labels = computeLabels([
+      ...local.map((e, i) => conn(`l${i}`, i === 4 || i === 5 ? "cosmos" : "sql", e)),
+      conn("s1", "sql", "acmedwhuat.database.windows.net"),
+      conn("s2", "sql", "acmedwhdev.database.windows.net"),
+      conn("c1", "cosmos", "https://orders-uat.documents.azure.com:443/"),
+      conn("c2", "cosmos", "https://orders-dev.documents.azure.com:443/"),
+    ]);
+    expect(parts(labels, "s1")).toEqual(["acmedwh", "uat", ".database.windows.net"]);
+    expect(parts(labels, "c1")).toEqual(["https://orders-", "uat", ".documents.azure.com:443/"]);
+    expect(parts(labels, "l0")).toEqual(["", "127.0.0.1,14333", ""]);
+    expect(parts(labels, "l4")).toEqual(["", "https://localhost:8081", ""]);
+    // host\instance on any loopback host dims the host, as localhost\ does.
+    expect(parts(labels, "l2")).toEqual([String.raw`(local)\ `.trim(), "DEV", ""]);
+    expect(parts(labels, "l6")).toEqual([String.raw`.\ `.trim(), "SQLEXPRESS", ""]);
+  });
 });
 
 describe("leafLabel", () => {
