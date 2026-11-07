@@ -30,9 +30,14 @@ public sealed class RpcException(int code, string message, NodeError? nodeError 
 /// Hand-rolled with Utf8JsonWriter so it stays reflection-free.
 /// A $/cancelRequest notification { id } cancels the token of the in-flight request with that id
 /// (docs/adr/0005-sidecar-protocol.md); unknown and finished ids are ignored.
+/// An unexpected exception (not an <see cref="RpcException"/>) is answered with its message only, and logged with
+/// its stack trace to <paramref name="log"/> (stderr by default, which the shell keeps in its log file). Params are
+/// never logged: they can carry secrets.
 /// </summary>
-public sealed class JsonRpcDispatcher(IReadOnlyDictionary<string, RpcHandler> handlers)
+public sealed class JsonRpcDispatcher(IReadOnlyDictionary<string, RpcHandler> handlers, Action<string>? log = null)
 {
+    private readonly Action<string> _log = log ?? Console.Error.WriteLine;
+
     public const string CancelRequest = "$/cancelRequest";
 
     private const int ParseError = -32700;
@@ -119,6 +124,7 @@ public sealed class JsonRpcDispatcher(IReadOnlyDictionary<string, RpcHandler> ha
         }
         catch (Exception ex)
         {
+            _log($"{method} failed: {ex}");
             return id is null ? null : Error(id, InternalError, ex.Message);
         }
         finally

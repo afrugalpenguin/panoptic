@@ -5,7 +5,7 @@ namespace Panoptic.Sidecar.Tests;
 
 public class JsonRpcDispatcherTests
 {
-    private static JsonRpcDispatcher CreateDispatcher() =>
+    private static JsonRpcDispatcher CreateDispatcher(Action<string>? log = null) =>
         new(new Dictionary<string, RpcHandler>
         {
             ["echo"] = (p, _) => Task.FromResult<Action<Utf8JsonWriter>>(w => p!.Value.WriteTo(w)),
@@ -16,7 +16,23 @@ public class JsonRpcDispatcherTests
                 return w => p!.Value.WriteTo(w);
             },
             ["bad"] = (_, _) => throw new RpcException(RpcException.InvalidParams, "nope"),
-        });
+        }, log ?? (_ => { }));
+
+    [Fact]
+    public async Task An_unexpected_error_is_logged_with_its_stack_trace_but_not_its_params()
+    {
+        // #191: the response carries only the message; the log keeps where it came from.
+        var log = new List<string>();
+        var dispatcher = CreateDispatcher(log.Add);
+
+        await dispatcher.HandleAsync("""{"jsonrpc":"2.0","id":2,"method":"boom","params":{"secret":"PanopticLeakProbe7Xq"}}""");
+        await dispatcher.HandleAsync("""{"jsonrpc":"2.0","id":3,"method":"bad"}""");
+
+        var entry = Assert.Single(log); // an RpcException is an expected refusal, not logged
+        Assert.StartsWith("boom failed: System.InvalidOperationException: kaboom", entry);
+        Assert.Contains("   at ", entry);
+        Assert.DoesNotContain("PanopticLeakProbe7Xq", entry);
+    }
 
     private static JsonElement Parse(string? response)
     {

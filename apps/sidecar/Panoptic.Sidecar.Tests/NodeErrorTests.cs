@@ -95,6 +95,57 @@ public class NodeErrorTests
         Assert.True(plain.Retryable);
     }
 
+    public static TheoryData<Exception, string, string, bool> KnownCauses => new()
+    {
+        { new TypeInitializationException("X", new DllNotFoundException("Unable to load DLL 'a.dll'")), "Part of the database engine failed to load. Reinstalling Panoptic usually fixes this.", "load", false },
+        { new BadImageFormatException("bad image"), "Part of the database engine failed to load. Reinstalling Panoptic usually fixes this.", "load", false },
+        { new IOException("handshake", new System.Security.Authentication.AuthenticationException("The remote certificate is invalid")), "A secure connection could not be set up. Check the server's certificate; for a local or dev server, tick Trust server certificate.", "tls", false },
+        { new InvalidOperationException("wrapped", new Azure.Identity.AuthenticationFailedException("AADSTS50076: MFA required")), "Entra ID sign-in failed. Try again, or check the account and tenant.", "sign-in", false },
+        { new Exception("outer", new TimeoutException("The operation has timed out.")), "The server took too long to respond. Retry, or check the network.", "timeout", true },
+        { new HttpRequestException("No such host is known.", new System.Net.Sockets.SocketException(11001)), "Server not found or not reachable. Check the server name and network.", "network", true },
+    };
+
+    [Theory, MemberData(nameof(KnownCauses))]
+    public void Common_unmapped_causes_get_plain_summaries(Exception ex, string summary, string code, bool retryable)
+    {
+        var e = NodeErrors.FromException(ex);
+
+        Assert.Equal(summary, e.Summary);
+        Assert.Equal(code, e.Code);
+        Assert.Equal(retryable, e.Retryable);
+        Assert.StartsWith(ex.Message, e.Detail);
+    }
+
+    [Fact]
+    public void An_unknown_exception_keeps_its_first_sentence_and_lists_its_causes_once()
+    {
+        var ex = new InvalidOperationException("Something odd happened. More text.",
+            new InvalidOperationException("Something odd happened. More text.", new FormatException("Input string was not in a correct format.")));
+
+        var e = NodeErrors.FromException(ex, extra: "Endpoint: srv");
+
+        Assert.Equal("Something odd happened.", e.Summary);
+        Assert.Null(e.Code);
+        Assert.True(e.Retryable);
+        // The repeated message is not listed twice.
+        Assert.Equal("Something odd happened. More text.\n\nCaused by:\nFormatException: Input string was not in a correct format.\n\nEndpoint: srv", e.Detail);
+    }
+
+    [Fact]
+    public void Without_inner_exceptions_the_detail_is_unchanged()
+    {
+        Assert.Equal("Plain failure.\n\nEndpoint: srv", NodeErrors.FromException(new Exception("Plain failure."), extra: "Endpoint: srv").Detail);
+    }
+
+    [Fact]
+    public void One_line_text_puts_the_root_cause_after_a_known_summary_or_the_outer_message()
+    {
+        Assert.Equal("Part of the database engine failed to load. Reinstalling Panoptic usually fixes this. (DllNotFoundException: Unable to load DLL 'a.dll')",
+            NodeErrors.OneLine(new TypeInitializationException("X", new DllNotFoundException("Unable to load DLL 'a.dll'"))));
+        Assert.Equal("Outer went wrong. (FormatException: bad digits)", NodeErrors.OneLine(new Exception("Outer went wrong.", new FormatException("bad digits\nsecond line"))));
+        Assert.Equal("Only this.", NodeErrors.OneLine(new Exception("Only this.")));
+    }
+
     [Fact]
     public async Task Dispatcher_sends_the_node_error_as_error_data()
     {

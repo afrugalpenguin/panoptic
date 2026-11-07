@@ -252,13 +252,22 @@ public sealed class ConfigStore
     /// <summary>
     /// A file that cannot be decrypted (another Windows profile, a truncated write) or does not deserialise to a
     /// usable store is renamed aside, never deleted or overwritten, and the store starts empty. Read errors such as
-    /// a locked file are not corruption and still throw: moving a good store aside would lose it.
+    /// a locked file are not corruption: moving a good store aside would lose it, so they throw
+    /// <see cref="StoreUnavailableException"/>, which says what happened in plain words.
     /// </summary>
     private static (StoreFile File, string? RecoveredFrom) Load(string path)
     {
         var empty = new StoreFile(AppConfig.Empty, []);
         if (!File.Exists(path)) return (empty, null);
-        var bytes = File.ReadAllBytes(path);
+        byte[] bytes;
+        try
+        {
+            bytes = File.ReadAllBytes(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new StoreUnavailableException(path, ex);
+        }
         try
         {
             var json = ProtectedData.Unprotect(bytes, Entropy, DataProtectionScope.CurrentUser);
@@ -289,3 +298,11 @@ public sealed class ConfigStore
     private static RpcException MissingField() =>
         new(RpcException.InvalidParams, "An environment or connection is missing a required field (id, name, colour, type, server or sign-in).");
 }
+
+/// <summary>
+/// The store file exists but cannot be read (locked by another program, or no access). Its data is kept; the engine
+/// cannot start without it, so the message tells the user what to do (#191).
+/// </summary>
+public sealed class StoreUnavailableException(string path, Exception inner) : IOException(
+    $"Panoptic could not open its saved connections file ({path}): {inner.Message} Close any program that may be using it, such as a backup or sync tool, then restart Panoptic. The file has not been changed.",
+    inner);
