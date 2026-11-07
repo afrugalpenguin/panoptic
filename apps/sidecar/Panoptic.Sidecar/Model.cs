@@ -44,6 +44,8 @@ public static class AuthKinds
     public const string Windows = "windows";
     /// <summary>User name and password (Postgres). SQL Server's equivalent is <see cref="Sql"/>.</summary>
     public const string Password = "password";
+    /// <summary>A client certificate and key (mutual TLS, Postgres). The secret is the key's passphrase, if it has one.</summary>
+    public const string Certificate = "certificate";
 
     /// <summary>An auth as the connection dialog lists it.</summary>
     public static AuthOption Option(string id) => new(id, id switch
@@ -53,6 +55,7 @@ public static class AuthKinds
         Key => "Account key",
         Windows => "Windows",
         Password => "Username and password",
+        Certificate => "Client certificate",
         _ => id,
     });
 }
@@ -103,7 +106,9 @@ public sealed record ConnectionConfig(
     bool TrustServerCertificate = false,
     string? ClientId = null,
     string? CertificateHostName = null,
-    string? CertificateFile = null);
+    string? CertificateFile = null,
+    string? ClientCertificateFile = null,
+    string? ClientKeyFile = null);
 
 public sealed record EnvironmentConfig(string Id, string Name, string Color, bool ReadOnly, List<ConnectionConfig> Connections);
 

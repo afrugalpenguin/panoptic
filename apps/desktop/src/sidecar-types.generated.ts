@@ -64,6 +64,8 @@ export interface ConnectionConfig {
   clientId?: string | null;
   certificateHostName?: string | null;
   certificateFile?: string | null;
+  clientCertificateFile?: string | null;
+  clientKeyFile?: string | null;
 }
 
 export interface ConnectionFields {
