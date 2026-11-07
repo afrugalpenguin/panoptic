@@ -1,5 +1,5 @@
 // WCAG AA contrast for the role tokens that carry the logo's hues (app.css). The logo colours themselves
-// (--brand-cyan, --brand-amber) are too light for text or indicators on the light theme's white panes.
+// (--brand-primary, --brand-secondary) are too light for text or indicators on the light theme's white panes.
 // A browser test only because the unit project's CSS handling empties a ?raw import of a .css file.
 import { describe, expect, it } from "vitest";
 import css from "./app.css?raw";
@@ -30,7 +30,7 @@ describe.each([
   ["light", light],
   ["dark", dark],
 ])("%s theme", (_, t) => {
-  for (const name of ["--text-amber", "--text-cyan"]) {
+  for (const name of ["--text-brand-secondary", "--text-brand-primary"]) {
     it(`${name} is AA text on panes and on its own tag tint`, () => {
       expect(t[name], name).toBeDefined();
       expect(contrast(t[name], t["--bg-pane"])).toBeGreaterThanOrEqual(4.5);

@@ -152,7 +152,7 @@
     height: 100%;
     overflow: auto;
     outline: none;
-    font: 12px/22px var(--font-mono);
+    font: var(--fs-sm)/22px var(--font-mono);
     contain: strict;
   }
   .inner {
@@ -166,7 +166,7 @@
     height: 26px;
     background: var(--bg-pane);
     border-bottom: 1px solid var(--border);
-    font: 600 12px/26px var(--font-ui);
+    font: 600 var(--fs-sm)/26px var(--font-ui);
   }
   .window {
     position: absolute;

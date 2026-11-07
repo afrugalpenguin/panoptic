@@ -79,7 +79,7 @@
     border-right: 1px solid var(--border);
     box-shadow: inset 0 3px 0 var(--band);
     color: var(--text-muted);
-    font-size: 12px;
+    font-size: var(--fs-sm);
     cursor: default;
     white-space: nowrap;
   }
@@ -108,7 +108,7 @@
     background: none;
     padding: 0 5px;
     color: var(--text-muted);
-    font-size: 11px;
+    font-size: var(--fs-xs);
   }
   .close:hover {
     color: var(--text);

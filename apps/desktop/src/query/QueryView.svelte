@@ -247,7 +247,7 @@
     gap: 10px;
     padding: 6px 10px;
     border-bottom: 1px solid var(--border);
-    font-size: 12px;
+    font-size: var(--fs-sm);
   }
   .toolbar button {
     padding: 2px 14px;
@@ -262,18 +262,18 @@
   .database {
     max-width: 220px;
     padding: 1px 4px;
-    font-size: 12px;
+    font-size: var(--fs-sm);
   }
   .databases-error {
     color: var(--warn);
-    font-size: 12px;
+    font-size: var(--fs-sm);
     cursor: help;
   }
   .toolbar .link {
     padding: 0;
     border: none;
     background: none;
-    font-size: 11px;
+    font-size: var(--fs-xs);
     cursor: pointer;
   }
   .toolbar .link:hover {
@@ -286,7 +286,7 @@
   .ro {
     margin-left: 6px;
     padding: 0 6px;
-    font-size: 10px;
+    font-size: var(--fs-2xs);
     color: var(--warn);
     border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
     border-radius: 8px;
@@ -297,7 +297,7 @@
     gap: 6px;
     max-width: 460px;
     padding: 10px 12px;
-    font-size: 12px;
+    font-size: var(--fs-sm);
   }
   .picker p {
     margin: 0;
@@ -333,7 +333,7 @@
     border-radius: 0;
     background: none;
     padding: 3px 10px;
-    font-size: 12px;
+    font-size: var(--fs-sm);
   }
   .result-tabs button.on {
     border-bottom-color: var(--accent);
@@ -354,7 +354,7 @@
     height: 100%;
     overflow: auto;
     padding: 8px 12px;
-    font: 12px/1.6 var(--font-mono);
+    font: var(--fs-sm)/1.6 var(--font-mono);
     user-select: text;
   }
   .time {
@@ -431,7 +431,7 @@
     height: 100%;
     min-height: 60px;
     color: var(--text);
-    font-size: 13px;
+    font-size: var(--fs-md);
     font-variant-numeric: tabular-nums;
   }
   .spinner {

@@ -12,11 +12,11 @@
 <style>
   .name {
     color: var(--text-muted);
-    font: 600 13px/1 var(--font-ui);
+    font: 600 var(--fs-md)/1 var(--font-ui);
   }
   .count {
     margin-left: auto;
     color: var(--text-muted);
-    font: 11px/1 var(--font-ui);
+    font: var(--fs-xs)/1 var(--font-ui);
   }
 </style>

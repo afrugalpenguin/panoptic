@@ -54,7 +54,7 @@
     display: inline-grid;
     place-items: center;
     border-radius: 3px;
-    font: 600 10px/1 var(--font-ui);
+    font: 600 var(--fs-2xs)/1 var(--font-ui);
     color: var(--c);
     background: color-mix(in srgb, var(--c) 16%, transparent);
   }

@@ -30,6 +30,6 @@
   }
   .count {
     color: var(--text-muted);
-    font: 11px/1 var(--font-ui);
+    font: var(--fs-xs)/1 var(--font-ui);
   }
 </style>

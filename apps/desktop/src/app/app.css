@@ -3,6 +3,26 @@
   --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   --font-mono: "Cascadia Mono", Consolas, monospace;
 
+  /* Type scale (docs/design-tokens.md). Sizes off the scale are being migrated onto it, not added to. */
+  --fs-2xs: 10px;
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 13px;
+  --fs-lg: 14px;
+  --fs-xl: 16px;
+  --fs-2xl: 20px;
+  --fs-3xl: 26px;
+  /* Spacing scale, for padding, margins and gaps. New and moved code uses it; existing px values migrate over time. */
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 10px;
+  --space-6: 12px;
+  --space-7: 16px;
+  --space-8: 20px;
+  --space-9: 24px;
+
   --bg: #f7f7f8;
   --bg-pane: #ffffff;
   --bg-hover: #eef0f3;
@@ -20,11 +40,11 @@
   --warn: #9a6700;
   /* The two colours of the logo (src-tauri/icons/icon.svg), the same in both themes. For the logo and decoration
      only: on the light theme they are too pale for text or indicators, which use the role tokens below. */
-  --brand-cyan: #24c8db;
-  --brand-amber: #ffc131;
+  --brand-primary: #24c8db;
+  --brand-secondary: #ffc131;
   /* The logo's hues as text and as a focus/active outline, AA in each theme (theme-contrast.test.ts). */
-  --text-amber: #8a5a00;
-  --text-cyan: #0a6f7c;
+  --text-brand-secondary: #8a5a00;
+  --text-brand-primary: #0a6f7c;
   --focus-ring: #0a6f7c;
   /* Landing (docs/landing.md). Dark values are the design's; light ones are derived so the page stays readable. */
   --landing-bg: var(--bg);
@@ -81,8 +101,8 @@
     --bad: #f85149;
     --warn: #d29922;
     /* The logo's own colours read well on the dark panes. */
-    --text-amber: #ffc131;
-    --text-cyan: #24c8db;
+    --text-brand-secondary: #ffc131;
+    --text-brand-primary: #24c8db;
     --focus-ring: #24c8db;
 
     --tree-bright: #ffffff;
@@ -116,7 +136,7 @@ body {
 body {
   background: var(--bg);
   color: var(--text);
-  font: 13px/1.4 var(--font-ui);
+  font: var(--fs-md)/1.4 var(--font-ui);
   overflow: hidden;
   user-select: none;
 }
@@ -170,7 +190,7 @@ button:focus-visible {
 pre,
 code {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   user-select: text;
 }
 

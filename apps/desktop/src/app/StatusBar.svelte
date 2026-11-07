@@ -83,7 +83,7 @@
     align-items: center;
     height: 24px;
     padding: 0 8px;
-    font-size: 12px;
+    font-size: var(--fs-sm);
     border-top: 1px solid var(--border);
     background: var(--bg-pane);
     white-space: nowrap;
@@ -120,14 +120,14 @@
     align-items: center;
     gap: 5px;
     padding: 0 8px;
-    font-size: 12px;
+    font-size: var(--fs-sm);
     border: none;
     background: none;
     color: var(--bad);
   }
   .cancel {
     padding: 0 6px;
-    font-size: 12px;
+    font-size: var(--fs-sm);
     border: none;
     background: none;
     color: var(--accent);
@@ -138,7 +138,7 @@
   }
   .update {
     padding: 0 8px;
-    font-size: 12px;
+    font-size: var(--fs-sm);
     color: var(--on-accent);
     background: var(--accent-fill);
     border-color: var(--accent-fill);

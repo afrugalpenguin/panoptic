@@ -16,13 +16,13 @@
 <style>
   .name {
     color: var(--tree-bright);
-    font: 700 13px/1 var(--font-ui);
+    font: 700 var(--fs-md)/1 var(--font-ui);
     overflow: hidden;
     white-space: nowrap;
   }
   .count {
     margin-left: auto;
     color: var(--text-muted);
-    font: 11px/1 var(--font-ui);
+    font: var(--fs-xs)/1 var(--font-ui);
   }
 </style>

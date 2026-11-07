@@ -32,7 +32,7 @@
   .name {
     display: flex;
     min-width: 0;
-    font: 12px/1 var(--row-font);
+    font: var(--fs-sm)/1 var(--row-font);
   }
   .name :global(.core) {
     font-weight: 400;
@@ -40,7 +40,7 @@
   .secondary,
   .note {
     color: var(--text-muted);
-    font: 11px/1 var(--font-ui);
+    font: var(--fs-xs)/1 var(--font-ui);
     white-space: nowrap;
   }
   .note {

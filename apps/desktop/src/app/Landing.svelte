@@ -170,7 +170,7 @@
   }
   .name {
     color: var(--text-muted);
-    font-size: 16px;
+    font-size: var(--fs-xl);
     font-weight: 600;
     letter-spacing: 2.4px;
   }
@@ -179,12 +179,12 @@
   }
   .version {
     color: var(--text-muted);
-    font: 11px var(--font-mono);
+    font: var(--fs-xs) var(--font-mono);
   }
   .muted-line {
     margin: 0;
     color: var(--text-muted);
-    font-size: 12px;
+    font-size: var(--fs-sm);
   }
   .actions {
     margin: 8px 0 0;
@@ -205,7 +205,7 @@
     border-radius: 6px;
     background: none;
     color: var(--text);
-    font: 13px var(--font-ui);
+    font: var(--fs-md) var(--font-ui);
     text-align: left;
     cursor: pointer;
   }
@@ -225,7 +225,7 @@
     min-width: 0;
     overflow: hidden;
     color: var(--text-muted);
-    font: 12px var(--font-ui);
+    font: var(--fs-sm) var(--font-ui);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -236,7 +236,7 @@
     border-radius: 4px;
     background: var(--kbd-bg);
     color: var(--text-muted);
-    font: 11px var(--font-mono);
+    font: var(--fs-xs) var(--font-mono);
   }
   .dim {
     opacity: 0.6;
@@ -251,7 +251,7 @@
     gap: 6px;
     margin: 0;
     color: var(--text-muted);
-    font: 11px var(--font-mono);
+    font: var(--fs-xs) var(--font-mono);
   }
   .dot {
     width: 7px;

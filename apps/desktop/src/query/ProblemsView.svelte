@@ -47,7 +47,7 @@
     height: 100%;
     overflow: auto;
     padding: 12px 16px 40px;
-    font: 12px/1.5 var(--font-ui);
+    font: var(--fs-sm)/1.5 var(--font-ui);
     user-select: text;
   }
   .entry {
@@ -74,7 +74,7 @@
     padding: 0 4px;
     border-radius: 3px;
     background: var(--bg-hover);
-    font-size: 11px;
+    font-size: var(--fs-xs);
   }
   .time {
     margin-left: auto;
@@ -104,7 +104,7 @@
     top: 6px;
     right: 6px;
     padding: 1px 8px;
-    font-size: 11px;
+    font-size: var(--fs-xs);
   }
   p {
     margin: 0;

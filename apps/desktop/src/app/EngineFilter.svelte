@@ -234,7 +234,7 @@
   }
   .chevron::before {
     content: "\25BE";
-    font-size: 10px;
+    font-size: var(--fs-2xs);
     color: var(--text-muted);
   }
   .popover {
@@ -291,7 +291,7 @@
     height: 24px;
     padding: 0 4px;
     border-radius: 4px;
-    font-size: 12px;
+    font-size: var(--fs-sm);
     white-space: nowrap;
   }
   .list label:hover {
@@ -308,6 +308,6 @@
   }
   .count {
     color: var(--text-muted);
-    font-size: 11px;
+    font-size: var(--fs-xs);
   }
 </style>
