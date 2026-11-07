@@ -209,12 +209,18 @@ export class QueryWorkspace {
 
   /** The database the tab runs against: the picker's choice, else the node's own (undefined: the connection default). */
   databaseOf(tab: QueryTab): string | undefined {
-    return tab.database ?? (tab.target && this.scopeOf(tab.target).database);
+    return tab.database ?? this.nodeDatabaseOf(tab);
   }
 
+  /** The database of the node the tab was opened on; undefined for a connection, which runs in its default. */
+  nodeDatabaseOf(tab: QueryTab): string | undefined {
+    return tab.target && this.scopeOf(tab.target).database;
+  }
+
+  /** The picker's choice; "" is "(connection default)", which drops the choice. */
   setDatabase(tab: QueryTab, database: string): void {
     if (!tab.target) return;
-    tab.database = database === this.scopeOf(tab.target).database ? undefined : database;
+    tab.database = database === "" || database === this.scopeOf(tab.target).database ? undefined : database;
     tab.catalogKey = undefined;
     void this.loadCatalog(tab);
   }
