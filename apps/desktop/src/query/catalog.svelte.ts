@@ -1,58 +1,23 @@
-// Mirrors apps/sidecar/Panoptic.Sidecar/Catalog/CatalogModel.cs and the catalog.* notifications documented in
-// Catalog/CatalogService.cs (docs/query-editor.md, "Catalog").
+// The catalog records come generated from the sidecar's Catalog/CatalogModel.cs (sidecar-types.generated.ts), narrowed
+// here; the catalog.* notifications are documented in Catalog/CatalogService.cs (docs/query-editor.md, "Catalog").
+import type { Narrow } from "../narrow";
+import type * as Sidecar from "../sidecar-types.generated";
 
 export type ObjectKind = "table" | "view" | "proc" | "fn" | "synonym";
 
-export interface ColumnRef {
-  name: string;
-  type: string;
-  nullable: boolean;
-}
-
-export interface ParamRef {
-  name: string;
-  type: string;
-  output: boolean;
-}
-
-export interface CatalogObject {
-  name: string;
-  schema: string;
-  kind: ObjectKind;
-  columns?: ColumnRef[] | null;
-  params?: ParamRef[] | null;
-}
-
-export interface PathRef {
-  /** Dotted, array elements as [] (lines[].sku). */
-  path: string;
-  types: string[];
-}
-
-export interface ContainerRef {
-  name: string;
-  partitionKey: string;
-  paths: PathRef[];
-}
-
+export type ColumnRef = Sidecar.ColumnRef;
+export type ParamRef = Sidecar.ParamRef;
+export type CatalogObject = Narrow<Sidecar.CatalogObject, { kind: ObjectKind }>;
+/** A Cosmos property path: dotted, array elements as [] (lines[].sku). */
+export type PathRef = Sidecar.PathRef;
+export type ContainerRef = Sidecar.ContainerRef;
 /** One database's metadata, flat and sorted by schema then name. Cosmos sets containers only. */
-export interface DatabaseCatalog {
-  stamp: string;
-  schemas: string[];
-  objects: CatalogObject[];
-  types: string[];
-  containers?: ContainerRef[] | null;
-}
+export type DatabaseCatalog = Narrow<Sidecar.DatabaseCatalog, { objects: CatalogObject[] }>;
 
 export type CatalogState = "cached" | "current" | "building" | "error";
 
 /** catalog.get and catalog.refresh results, and catalog.state / catalog.updated notifications. */
-export interface CatalogNotice {
-  key: string;
-  state: CatalogState;
-  catalog?: DatabaseCatalog | null;
-  message?: string | null;
-}
+export type CatalogNotice = Narrow<Sidecar.CatalogNotice, { state: CatalogState; catalog?: DatabaseCatalog | null }>;
 
 export class CatalogEntry {
   state = $state<CatalogState>("building");

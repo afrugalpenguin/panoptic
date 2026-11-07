@@ -97,6 +97,7 @@ pnpm install
 pnpm dev     # framework-dependent sidecar, Vite dev server
 pnpm dev:seeded  # the same, on a separate store with Prod, UAT and Test (20 connections)
 pnpm test    # vitest + sidecar xunit
+pnpm types   # regenerate the UI's sidecar types after changing a C# record
 pnpm build   # self-contained sidecar + release build + installer
 ```
 
@@ -107,6 +108,10 @@ local Docker databases from `scripts\dev-db.ps1`; the rest are synthetic and fai
 Locally, `pnpm build` writes the installer to `apps/desktop/src-tauri/target/release/bundle/nsis/`
 and then fails at signing the update, because the updater's private key is only in GitHub Secrets.
 The installer it wrote is complete.
+
+The UI's types for the sidecar's JSON (`apps/desktop/src/sidecar-types.generated.ts`) are generated
+from the C# records; a sidecar test fails while they are out of date, so run `pnpm types` and commit
+the result after changing a record.
 
 How releases, versions and change fragments work is in [docs/release.md](docs/release.md).
 

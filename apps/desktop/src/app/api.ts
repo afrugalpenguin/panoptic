@@ -1,159 +1,46 @@
+import type { Narrow } from "../narrow";
 import type { QueryCapabilities, QueryLanguage, QueryScope } from "../query/types";
 import type { RpcClient } from "../rpc";
+import type * as Sidecar from "../sidecar-types.generated";
+import type { UpdateCheckMode } from "../update-schedule";
 
-// Mirrors the sidecar's records in apps/sidecar/Panoptic.Sidecar/Model.cs.
-// TODO(M1 follow-up): generate these from the C# records so the two sides cannot drift.
+// The sidecar's JSON types are generated from its C# records (sidecar-types.generated.ts, ADR 0005). These are those
+// types as the UI uses them, narrowed where it knows a field's closed set of values.
 
-export interface TreeNode {
-  id: string;
-  kind: string;
-  label: string;
-  icon: string;
-  hasChildren: boolean;
-  actions: string[];
-  meta?: Record<string, string>;
-}
+export type TreeNode = Sidecar.TreeNode;
 
-/** Mirrors NodeError: why a node's children failed to load (docs/explorer-errors.md). */
-export interface NodeError {
-  /** One short sentence with no identifiers, for the tree row. */
-  summary: string;
-  /** The full original message plus status, ids, endpoint and identity. */
-  detail: string;
-  /** Provider status, e.g. "403/5300" or a SQL error number. */
-  code?: string | null;
-  retryable: boolean;
-}
+/** Why a node's children failed to load (docs/explorer-errors.md). */
+export type NodeError = Sidecar.NodeError;
 
 /** A registered connection kind ("sql", "cosmos"...): open-ended, described by the sidecar (KindDescription). */
 export type ConnectionKind = string;
 export type AuthKind = "entra" | "sql" | "key" | "windows" | "password";
 
-/** Mirrors KindDescription in the sidecar's Model.cs: what the UI shows for a connection kind (backends.describe). */
-export interface KindDescription {
-  kind: ConnectionKind;
-  /** As the connection dialog's Type list shows it. */
-  label: string;
-  /** What the endpoint field is called: "Server", "Account URI". */
-  endpointLabel: string;
-  endpointPlaceholder: string;
-  /** The auths this kind accepts, in the order the dialog lists them. */
-  auths: { id: AuthKind; label: string }[];
-  badge: KindBadge;
-  fields: {
-    /** The tree can be limited to one database. */
-    database: boolean;
-    /** Takes a certificate host name and file. */
-    certificateOptions: boolean;
-    /** With Entra, takes an optional user to sign in as. */
-    entraUser: boolean;
-    /** Skipping the certificate check is allowed for a local emulator only, so it carries no risk warning. */
-    trustLocalOnly: boolean;
-  };
-}
+/** What the UI shows for a connection kind (backends.describe). */
+export type KindDescription = Narrow<Sidecar.KindDescription, { auths: { id: AuthKind; label: string }[] }>;
+export type KindBadge = Sidecar.KindBadge;
 
-export interface KindBadge {
-  /** One or two letters shown in the 14px square. */
-  letters: string;
-  color: string;
-  /** The kind's short name, on the engine filter chip. */
-  name: string;
-}
+export type ConnectionConfig = Narrow<Sidecar.ConnectionConfig, { auth: AuthKind }>;
+export type EnvironmentConfig = Narrow<Sidecar.EnvironmentConfig, { connections: ConnectionConfig[] }>;
+/** connections: those in no environment. */
+export type AppConfig = Narrow<Sidecar.AppConfig, { environments: EnvironmentConfig[]; connections: ConnectionConfig[] }>;
 
-export interface ConnectionConfig {
-  id: string;
-  name: string;
-  kind: ConnectionKind;
-  endpoint: string;
-  auth: AuthKind;
-  user?: string | null;
-  database?: string | null;
-  tenantId?: string | null;
-  trustServerCertificate: boolean;
-  /** Entra only: sign in as this app registration instead of the default public client. */
-  clientId?: string | null;
-  /** SQL Server and Postgres: the name the certificate must match, when it isn't the server's (a private endpoint, an alias). */
-  certificateHostName?: string | null;
-  /** SQL Server and Postgres: a CA (or the server's own) certificate to trust for this connection only. */
-  certificateFile?: string | null;
-}
+/** docs/explorer-ux.md, "Settings". envOrder: environment ids in manual order; empty means order added. */
+export type ExplorerSettings = Narrow<Sidecar.ExplorerSettings, { rowFont: "mono" | "ui" }>;
+/** docs/query-editor.md, "Settings". keywordCase absent: the language default (lower for T-SQL, upper for Cosmos). */
+export type EditorSettings = Narrow<Sidecar.EditorSettings, { keywordCase?: "lower" | "upper" | "preserve" | null }>;
+/** lastSeenVersion: the version whose changes the user has been shown (ADR 0013); absent means never recorded. */
+export type AppSettings = Narrow<Sidecar.AppSettings, { updateCheck: UpdateCheckMode; explorer: ExplorerSettings; editor: EditorSettings }>;
 
-export interface EnvironmentConfig {
-  id: string;
-  name: string;
-  color: string;
-  readOnly: boolean;
-  connections: ConnectionConfig[];
-}
-
-export interface AppConfig {
-  environments: EnvironmentConfig[];
-  /** Connections in no environment. */
-  connections: ConnectionConfig[];
-}
-
-/** Mirrors ExplorerSettings in the sidecar's Model.cs (docs/explorer-ux.md, "Settings"). */
-export interface ExplorerSettings {
-  showKindBadge: boolean;
-  rowFont: "mono" | "ui";
-  /** Environment ids in manual order; empty means order added. */
-  envOrder: string[];
-}
-
-/** Mirrors EditorSettings in the sidecar's Model.cs (docs/query-editor.md, "Settings"). */
-export interface EditorSettings {
-  intellisense: boolean;
-  /** Absent: the language default (lower for T-SQL, upper for Cosmos). */
-  keywordCase?: "lower" | "upper" | "preserve" | null;
-  /** Documents sampled per Cosmos container for property paths, 10 to 500. */
-  catalogSampleDocs: number;
-  autoRefreshOnDdl: boolean;
-  /** Underline tables and columns the catalog does not know, before the query runs. */
-  warnUnknownNames: boolean;
-  /** Rows kept per result set, 1,000 to 1,000,000; reading a set stops there. */
-  maxRows: number;
-}
-
-export interface AppSettings {
-  updateCheck: import("../update-schedule").UpdateCheckMode;
-  explorer: ExplorerSettings;
-  editor: EditorSettings;
-  /** The version whose changes the user has been shown (ADR 0013); absent means never recorded. */
-  lastSeenVersion?: string | null;
-}
-
-export interface TestConnectionResult {
-  ok: boolean;
-  elapsedMs: number;
-  error?: string;
-}
-
-export interface DeviceCodePrompt {
-  message: string;
-  userCode: string;
-  verificationUri: string;
-}
+export type TestConnectionResult = Sidecar.TestConnectionResult;
+export type DeviceCodePrompt = Sidecar.DeviceCodePrompt;
 
 /** A connection found in SSMS, Azure Data Studio or VS Code. Never includes a password. */
-export interface ImportCandidate {
-  name: string;
-  kind: ConnectionKind;
-  endpoint: string;
-  auth: AuthKind;
-  user?: string | null;
-  database?: string | null;
-  trustServerCertificate: boolean;
-  note?: string | null;
-  alreadyAdded: boolean;
-}
-
-export interface ImportSource {
-  source: "ssms-recent" | "ssms-registered" | "ads" | "vscode";
-  label: string;
-  path: string;
-  groups: { name: string; connections: ImportCandidate[] }[];
-  error?: string | null;
-}
+export type ImportCandidate = Narrow<Sidecar.ImportCandidate, { auth: AuthKind }>;
+export type ImportSource = Narrow<
+  Sidecar.ImportSource,
+  { source: "ssms-recent" | "ssms-registered" | "ads" | "vscode"; groups: { name: string; connections: ImportCandidate[] }[] }
+>;
 
 export function createApi(rpc: RpcClient) {
   return {
