@@ -7,6 +7,7 @@
     "dev": "pnpm --filter @panoptic/desktop tauri dev",
     "dev:seeded": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-seeded.ps1",
     "build": "pnpm --filter @panoptic/desktop tauri build",
-    "test": "pnpm --filter @panoptic/desktop check && pnpm --filter @panoptic/desktop test && dotnet test apps/sidecar"
+    "test": "pnpm --filter @panoptic/desktop check && pnpm --filter @panoptic/desktop test && dotnet test apps/sidecar",
+    "types": "powershell -NoProfile -Command \"$env:PANOPTIC_UPDATE_TYPES = '1'; dotnet test apps/sidecar --filter GeneratedTypes\""
   }
 }
