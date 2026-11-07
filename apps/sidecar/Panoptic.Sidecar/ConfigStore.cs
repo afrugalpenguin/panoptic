@@ -149,6 +149,8 @@ public sealed class ConfigStore
     /// </summary>
     public void SaveConnection(string? environmentId, ConnectionConfig connection, string? secret)
     {
+        // Before anything reads its fields (Commit would refuse it too, but the duplicate check gets there first).
+        if (!IsUsable(connection)) throw MissingField();
         lock (_lock)
         {
             var previous = FindConnection(connection.Id)?.Connection;
@@ -234,6 +236,8 @@ public sealed class ConfigStore
 
     private void Commit(StoreFile file)
     {
+        // Never write what Load would move aside: one bad save (or undo) would empty the store on the next start.
+        if (!IsUsable(file)) throw MissingField();
         var json = JsonSerializer.SerializeToUtf8Bytes(file, SidecarJson.Default.StoreFile);
         var encrypted = ProtectedData.Protect(json, Entropy, DataProtectionScope.CurrentUser);
         Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
@@ -257,8 +261,7 @@ public sealed class ConfigStore
         {
             var json = ProtectedData.Unprotect(bytes, Entropy, DataProtectionScope.CurrentUser);
             var file = JsonSerializer.Deserialize(json, SidecarJson.Default.StoreFile);
-            // Missing required members deserialise as null rather than failing.
-            if (file is { Config.Environments: not null, Secrets: not null }) return (file, null);
+            if (IsUsable(file)) return (file!, null);
         }
         catch (Exception ex) when (ex is CryptographicException or JsonException or NotSupportedException) { }
 
@@ -268,4 +271,19 @@ public sealed class ConfigStore
         Console.Error.WriteLine($"Store could not be read; moved aside to {aside} and started empty.");
         return (empty, aside);
     }
+
+    /// <summary>
+    /// Missing or null required members deserialise as null rather than failing, and would crash the sidecar later
+    /// (#183), so the whole shape is checked here: every environment and connection, and their required fields. The
+    /// top-level loose connections may be null (stores written before they existed).
+    /// </summary>
+    private static bool IsUsable(StoreFile? file) =>
+        file is { Config.Environments: not null, Secrets: not null }
+        && file.Config.Environments.All(e => e is { Id: not null, Name: not null, Color: not null, Connections: not null } && e.Connections.All(IsUsable))
+        && file.Config.Connections.All(IsUsable);
+
+    private static bool IsUsable(ConnectionConfig? c) => c is { Id: not null, Name: not null, Kind: not null, Endpoint: not null, Auth: not null };
+
+    private static RpcException MissingField() =>
+        new(RpcException.InvalidParams, "An environment or connection is missing a required field (id, name, colour, type, server or sign-in).");
 }
