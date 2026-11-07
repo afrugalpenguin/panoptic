@@ -1,5 +1,7 @@
 // App-wide shortcuts shown on the landing (docs/landing.md, "Keys"). Ctrl+N with a tree node selected is the node's
 // New query (node-menu.ts) and is checked first; this is what the keys do otherwise.
+import type { TreeNode } from "./api";
+import { shortcutAction, type TabAction } from "./node-menu";
 
 export type GlobalAction = "newQuery" | "newConnection" | "import" | "seek";
 
@@ -15,4 +17,31 @@ export function globalShortcut(e: { key: string; ctrlKey: boolean; metaKey: bool
       return "seek";
   }
   return undefined;
+}
+
+/** What a key press does in the app: the selected node's query action, or an app-wide action. */
+export type KeyCommand = { kind: "nodeQuery"; action: TabAction } | { kind: "global"; action: GlobalAction };
+
+export interface KeyState {
+  /** The Seek overlay is modal: its box keeps every key. */
+  seeking: boolean;
+  /** A dialog's fields keep their keys, but a node's New query still works under it. */
+  dialogOpen: boolean;
+  /** Focus is in a Monaco editor, which has its own Ctrl+I. */
+  inEditor: boolean;
+  /** The tree's selected node, when the selection is a node. */
+  selectedNode: TreeNode | undefined;
+}
+
+/** The command for a window keydown, or undefined to leave the key alone. */
+export function keyCommand(
+  e: { key: string; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; altKey: boolean },
+  state: KeyState,
+): KeyCommand | undefined {
+  if (state.seeking) return undefined;
+  const action = shortcutAction(e, state.selectedNode);
+  if (action) return { kind: "nodeQuery", action };
+  if (state.dialogOpen) return undefined;
+  const global = globalShortcut(e, state.inEditor);
+  return global ? { kind: "global", action: global } : undefined;
 }
