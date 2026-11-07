@@ -240,8 +240,8 @@ export interface QueryTemplateParams {
 export interface QueryTemplateResult {
   text?: string | null;
   language: string;
-  scope?: QueryScope | null;
-  capabilities?: QueryCapabilities | null;
+  scope: QueryScope;
+  capabilities: QueryCapabilities;
 }
 
 export interface ResultSetSummary {

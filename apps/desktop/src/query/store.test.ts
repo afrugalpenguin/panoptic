@@ -2,9 +2,22 @@ import { describe, expect, it, vi } from "vitest";
 import type { QuerySummary, UnknownName } from "./types";
 import type { Suggestion } from "./intellisense/suggest";
 import type { SuggestRequest } from "./intellisense/worker";
-import { nodeParts, QueryWorkspace } from "./store.svelte";
+import { QueryWorkspace } from "./store.svelte";
 
-const target = { nodeId: "env:dev/conn:c1/db:Orders", label: "Orders", connection: "sql-dev", envColor: "#2f9e44", readOnly: false, language: "sql" as const, capabilities: { databasePicker: true, unknownNameWarnings: true, ddlRefresh: true } };
+const target = {
+  nodeId: "conn:c1/db:Orders", label: "Orders", connection: "sql-dev", envColor: "#2f9e44", readOnly: false, language: "sql" as const,
+  capabilities: { databasePicker: true, unknownNameWarnings: true, ddlRefresh: true },
+  scope: { connection: "conn:c1", database: "Orders", label: "Orders", connectionLabel: "sql-dev" },
+};
+/** A tab on a connection, or one of its databases, with the scope the sidecar resolves for it. */
+const on = (connection: string, database?: string) => ({
+  ...target,
+  nodeId: database ? `${connection}/db:${database}` : connection,
+  label: database ?? "sql-dev",
+  scope: { connection, database, label: database ?? "sql-dev", connectionLabel: "sql-dev" },
+});
+/** What App passes after an explorer refresh: the node's query.scope. */
+const refreshed = (connection: string, database?: string) => on(connection, database).scope;
 
 function setup(suggest?: (request: SuggestRequest) => Promise<Suggestion | undefined>) {
   let resolve!: (s: QuerySummary) => void;
@@ -345,18 +358,12 @@ describe("QueryWorkspace: IntelliSense", () => {
   }
   const settle = () => new Promise((r) => setTimeout(r, 0));
 
-  it("parses the connection, database and container out of a node id", () => {
-    expect(nodeParts("env:dev/conn:c1/db:My%20Db/f:tables/o:x")).toEqual({ connection: "env:dev/conn:c1", database: "My Db" });
-    expect(nodeParts("env:dev/conn:cos/db:app/c:orders")).toEqual({ connection: "env:dev/conn:cos", database: "app", container: "orders" });
-    expect(nodeParts("env:dev/conn:c1")).toEqual({ connection: "env:dev/conn:c1" });
-  });
-
   it("loads the tab's catalog and database list on open, and follows notifications", async () => {
     const { ws, api } = setupCatalog();
     const tab = ws.open(target, "");
     await settle();
     expect(api.catalogGet).toHaveBeenCalledWith(target.nodeId, undefined);
-    expect(api.databases).toHaveBeenCalledWith("env:dev/conn:c1");
+    expect(api.databases).toHaveBeenCalledWith("conn:c1");
     expect(tab.databases).toEqual(["Orders", "Sales"]);
     expect(tab.catalogKey).toBe("key:node");
     expect(ws.intellisenseStatus(tab).text).toBe("IntelliSense: building");
@@ -399,7 +406,7 @@ describe("QueryWorkspace: IntelliSense", () => {
 
   it("a tab opened on a connection runs in the connection's default until a database is picked, and can go back to it", async () => {
     const { ws, api } = setupCatalog();
-    const tab = ws.open({ ...target, nodeId: "env:dev/conn:c1", label: "sql-dev" }, "select 1");
+    const tab = ws.open(on("conn:c1"), "select 1");
     await settle();
     expect(ws.nodeDatabaseOf(tab)).toBeUndefined();
     expect(ws.databaseOf(tab)).toBeUndefined();
@@ -411,7 +418,7 @@ describe("QueryWorkspace: IntelliSense", () => {
     ws.setDatabase(tab, "");
     expect(tab.database).toBeUndefined();
     await settle();
-    expect(api.catalogGet).toHaveBeenLastCalledWith("env:dev/conn:c1", undefined);
+    expect(api.catalogGet).toHaveBeenLastCalledWith("conn:c1", undefined);
     await ws.run(tab);
     expect(api.executeQuery.mock.calls[1][0].database).toBeUndefined();
   });
@@ -459,11 +466,11 @@ describe("QueryWorkspace: IntelliSense", () => {
     await settle();
     expect(typo()).toBe(1);
 
-    ws.refreshForNode("env:dev/conn:c1/db:Sales");
+    ws.refreshForScope(refreshed("conn:c1", "Sales"));
     info.onMissing("Typo");
     await settle();
     expect(typo()).toBe(1);
-    ws.refreshForNode("env:dev/conn:c1");
+    ws.refreshForScope(refreshed("conn:c1"));
     info.onMissing("Typo");
     await settle();
     expect(typo()).toBe(2);
@@ -539,13 +546,13 @@ describe("QueryWorkspace: explorer refresh", () => {
     };
     const ws = new QueryWorkspace(api);
     ws.open(target, "");
-    ws.open({ ...target, nodeId: "env:dev/conn:c1/db:Sales" }, "");
-    ws.open({ ...target, nodeId: "env:dev/conn:c2/db:Orders" }, "");
+    ws.open(on("conn:c1", "Sales"), "");
+    ws.open(on("conn:c2", "Orders"), "");
 
-    ws.refreshForNode("env:dev/conn:c1/db:Orders");
-    expect(api.catalogRefresh.mock.calls.map((c) => c[0])).toEqual(["env:dev/conn:c1/db:Orders"]);
+    ws.refreshForScope(refreshed("conn:c1", "Orders"));
+    expect(api.catalogRefresh.mock.calls.map((c) => c[0])).toEqual(["conn:c1/db:Orders"]);
 
-    ws.refreshForNode("env:dev/conn:c1");
+    ws.refreshForScope(refreshed("conn:c1"));
     expect(api.catalogRefresh).toHaveBeenCalledTimes(3);
   });
 });

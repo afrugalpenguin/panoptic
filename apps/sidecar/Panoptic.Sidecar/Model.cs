@@ -133,7 +133,7 @@ public sealed record QuerySummary(string QueryId, ResultSetSummary[] ResultSets,
 public sealed record QueryTemplateParams(string NodeId, string Action);
 /// <param name="Language">The backend's editor language: "sql", "cosmos" or "pgsql".</param>
 /// <param name="Scope">What the tab runs against, so the UI never parses the node id.</param>
-public sealed record QueryTemplateResult(string? Text, string Language, QueryScope? Scope = null, QueryCapabilities? Capabilities = null);
+public sealed record QueryTemplateResult(string? Text, string Language, QueryScope Scope, QueryCapabilities Capabilities);
 
 /// <summary>What a query tab on this backend offers beyond running text, so the UI tests no engine or language (#203).</summary>
 /// <param name="DatabasePicker">The tab can switch database (SQL Server, Postgres); a Cosmos tab is bound to its container.</param>

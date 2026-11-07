@@ -42,26 +42,12 @@ export interface QueryMessage {
 const ENGINE_LANGUAGE: Record<QueryLanguage, Language> = { sql: "tsql", cosmos: "cosmos-sql", pgsql: "pgsql" };
 /** A Postgres name, dotted and "quoted" parts included, or any other run of word characters: what an error marks. */
 const PG_TOKEN = /^(?:"(?:[^"]|"")*"|[\p{L}_][\p{L}\p{N}_$]*)(?:\.(?:"(?:[^"]|"")*"|[\p{L}_][\p{L}\p{N}_$]*))*|^\w+/u;
-/** Where a tab runs: the sidecar's scope, or the same parts read from a node id. Null or absent: the default. */
-type ScopeParts = Pick<QueryScope, "connection" | "database" | "container">;
 let nextMessageId = 0;
 
 /**
  * The connection part of a node id (env:x/conn:y) and its database and Cosmos container segments, decoded. Only for
  * targets without a sidecar-resolved scope (QueryTarget.scope); the app passes the sidecar's.
  */
-export function nodeParts(nodeId: string): { connection: string; database?: string; container?: string } {
-  const segments = nodeId.split("/");
-  const result: { connection: string; database?: string; container?: string } = { connection: segments.slice(0, 2).join("/") };
-  for (const segment of segments.slice(2)) {
-    const colon = segment.indexOf(":");
-    const type = segment.slice(0, colon);
-    const value = decodeURIComponent(segment.slice(colon + 1));
-    if (type === "db") result.database = value;
-    else if (type === "c") result.container = value;
-  }
-  return result;
-}
 
 /**
  * One result set. Rows live in a plain array (100k rows must not be made reactive); `count`
@@ -199,9 +185,9 @@ export class QueryWorkspace {
     }
   }
 
-  /** The tab's connection, database and container: the sidecar's scope, else read from the node id. */
-  private scopeOf(target: QueryTarget): ScopeParts {
-    return target.scope ?? nodeParts(target.nodeId);
+  /** The tab's connection, database and container, as the sidecar resolved them. */
+  private scopeOf(target: QueryTarget): QueryScope {
+    return target.scope;
   }
 
   /** The database the tab runs against: the picker's choice, else the node's own (undefined: the connection default). */
@@ -315,13 +301,8 @@ export class QueryWorkspace {
     this.databaseKeys.set(connection, Object.fromEntries(Object.entries(keys).filter((e) => !failed(e))));
   }
 
-  /** Explorer refresh on a connection or database, by node id: see refreshForScope. */
-  refreshForNode(nodeId: string): void {
-    this.refreshForScope(nodeParts(nodeId));
-  }
-
   /** Explorer refresh on a connection or database (its query.scope): rebuild the catalogs of query tabs open against it. */
-  refreshForScope(node: ScopeParts): void {
+  refreshForScope(node: QueryScope): void {
     this.forgetFailed(node.connection, node.database ?? undefined);
     for (const t of this.tabs) {
       if (t.kind !== "query" || !t.target || this.scopeOf(t.target).connection !== node.connection) continue;
