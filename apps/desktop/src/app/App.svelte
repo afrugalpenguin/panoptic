@@ -19,6 +19,7 @@
   import MoveDialog from "./MoveDialog.svelte";
   import Explorer from "./Explorer.svelte";
   import Landing from "./Landing.svelte";
+  import SeekOverlay from "./SeekOverlay.svelte";
   import { livePlace, type SeekEnv, type SeekHost, type SeekIndex, type SeekRow } from "./seek";
   import { globalShortcut } from "./shortcuts";
   import { loadUsage, recordUse, saveUsage, type Place } from "./usage";
@@ -51,6 +52,8 @@
   let update = $state<UpdateState>();
   let deviceCode = $state<DeviceCodePrompt>();
   let menu = $state<{ x: number; y: number; items: (MenuItem | "separator")[] }>();
+  /** Ctrl+P with tabs open: Seek over the workspace. */
+  let seeking = $state(false);
   /** Context menu labels for node action ids, from the sidecar (node.actionLabels). */
   let actionLabels = $state.raw<Record<string, string>>({});
   let dialog = $state<
@@ -512,15 +515,23 @@
     await openQueryOn(model.node(place.nodeId) ?? { id: place.nodeId, label: place.label }, envColor, readOnly, "newQuery");
   }
 
-  /** Seek's Enter: scope the tree to the row, or reopen a place. */
-  function seekOpen(row: SeekRow) {
+  /**
+   * Seek's Enter: scope the tree to the row and hand focus to the tree on it, so the arrows carry on from there (the
+   * landing unmounts once a row is selected, which used to drop focus to the page). A place reopens.
+   */
+  async function seekOpen(row: SeekRow) {
     if (row.kind === "env") {
       selectedKey = row.env.id;
       void model.focus(row.env.id);
     } else if (row.kind === "host") {
       selectedKey = row.host.id;
       void model.focus(row.host.envId, row.host.id);
-    } else if (row.kind === "resume" || row.kind === "recent") void reopen(row.place);
+    } else {
+      if (row.kind === "resume" || row.kind === "recent") void reopen(row.place);
+      return;
+    }
+    await tick();
+    explorer?.focus();
   }
 
   /** Seek's Ctrl+Enter: a new query tab on the connection (an environment's first one); a place reopens. */
@@ -558,6 +569,8 @@
   }
 
   function onGlobalKeydown(e: KeyboardEvent) {
+    // The Seek overlay is modal: its box keeps every key.
+    if (seeking) return;
     const action = selectedRow?.type === "node" ? shortcutAction(e, selectedRow.node) : undefined;
     if (action && selectedRow) {
       e.preventDefault();
@@ -578,10 +591,13 @@
     } else void focusSeek();
   }
 
-  /** Ctrl+P: the landing's Seek. With tabs open there is nothing to focus yet (a palette comes later). */
+  /** Ctrl+P: the landing's Seek; with tabs open (no landing to show), Seek opens over the workspace. */
   async function focusSeek() {
+    if (workspace.tabs.length > 0) {
+      seeking = true;
+      return;
+    }
     selectedKey = undefined;
-    if (workspace.tabs.length > 0) return;
     await tick();
     landing?.focus();
   }
@@ -709,6 +725,10 @@
       undo={undoText ? { text: undoText, run: () => undoDelete.undo() } : undefined} />
   </div>
 </div>
+
+{#if seeking}
+  <SeekOverlay index={seekIndex} onOpen={seekOpen} onQuery={seekQuery} onClose={() => (seeking = false)} />
+{/if}
 
 {#if menu}
   <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => (menu = undefined)} />

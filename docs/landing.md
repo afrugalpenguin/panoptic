@@ -45,7 +45,7 @@ So "uk prod" ranks Prod first with only its `uk-` hosts under it: "uk" is in nei
 | Key | Does |
 | --- | --- |
 | Up / Down | Move the highlight |
-| Enter | Environment: select it and collapse the others. Connection: the same, with the connection expanded. Place: reopen it. |
+| Enter | Environment: select it and collapse the others. Connection: the same, with the connection expanded. Either way focus moves to the tree, on that row. Place: reopen it. |
 | Ctrl+Enter | A new query tab on the connection (an environment's first one); a place reopens |
 | Tab | The next group's first row; past the last group, focus moves on |
 | Esc | Clear the query; with nothing typed, focus the tree |
@@ -54,7 +54,7 @@ Click is Enter, Ctrl+click is Ctrl+Enter.
 
 ## App shortcuts
 
-Ctrl+N is New query: with a node selected that offers it, on that node, as before; otherwise an unconnected tab. Ctrl+Shift+N is New connection (once the engine is ready), Ctrl+I is Import (left to the editor, where it opens suggestions), Ctrl+P clears the selection and focuses Seek on the landing. None of them fire while a dialog is open.
+Ctrl+N is New query: with a node selected that offers it, on that node, as before; otherwise an unconnected tab. Ctrl+Shift+N is New connection (once the engine is ready), Ctrl+I is Import (left to the editor, where it opens suggestions), Ctrl+P clears the selection and focuses Seek on the landing; with query tabs open (so no landing), it opens the same Seek box in a modal over the workspace, with the same rows and keys. Enter or Ctrl+Enter acts and closes it; Esc with nothing typed, or a click outside, closes it and focus goes back where it was. None of them fire while a dialog or the Seek overlay is open.
 
 ## Usage
 
@@ -84,4 +84,4 @@ In `src/app/app.css`, no hex in components. `--brand-cyan` (`#24c8db`) and `--br
 
 ## Out of scope for this change
 
-The Ctrl+P palette over open tabs, restoring tabs or their text, and indexing objects that have never been opened.
+A command palette (Ctrl+P over open tabs is Seek only, see "App shortcuts"), restoring tabs or their text, and indexing objects that have never been opened.
