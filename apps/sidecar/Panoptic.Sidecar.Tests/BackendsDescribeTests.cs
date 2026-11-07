@@ -30,7 +30,7 @@ public sealed class BackendsDescribeTests : IDisposable
     [Theory]
     [InlineData(ConnectionKinds.Sql, "entra,sql,windows", "Microsoft Entra ID,SQL login,Windows")]
     [InlineData(ConnectionKinds.Synapse, "entra,sql", "Microsoft Entra ID,SQL login")]
-    [InlineData(ConnectionKinds.Cosmos, "entra,key", "Microsoft Entra ID,Account key")]
+    [InlineData(ConnectionKinds.Cosmos, "entra,entraKeys,key", "Microsoft Entra ID,Entra ID (fetch account keys),Account key")]
     [InlineData(ConnectionKinds.Postgres, "entra,password", "Microsoft Entra ID,Username and password")]
     public void Auths_are_the_ones_the_kind_accepts(string kind, string ids, string labels)
     {
@@ -74,6 +74,6 @@ public sealed class BackendsDescribeTests : IDisposable
 
         Assert.Equal("Account URI", cosmos.GetProperty("endpointLabel").GetString());
         Assert.True(cosmos.GetProperty("fields").GetProperty("trustLocalOnly").GetBoolean());
-        Assert.Equal("key", cosmos.GetProperty("auths")[1].GetProperty("id").GetString());
+        Assert.Equal("key", cosmos.GetProperty("auths")[2].GetProperty("id").GetString());
     }
 }

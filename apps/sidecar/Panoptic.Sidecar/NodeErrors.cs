@@ -114,6 +114,7 @@ public static class NodeErrors
         AuthKinds.Sql => $"SQL login {c.User}",
         AuthKinds.Password => $"User {c.User}",
         AuthKinds.Key => "Account key",
+        AuthKinds.EntraKeys => string.IsNullOrWhiteSpace(c.TenantId) ? "Account key fetched with Entra ID (default tenant)" : $"Account key fetched with Entra ID (tenant {c.TenantId})",
         AuthKinds.Windows => $"Windows ({Environment.UserDomainName}\\{Environment.UserName})",
         _ => c.Auth,
     };

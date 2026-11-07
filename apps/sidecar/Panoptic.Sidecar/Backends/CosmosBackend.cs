@@ -13,8 +13,10 @@ namespace Panoptic.Sidecar.Backends;
 /// Cosmos DB for NoSQL. Clients are expensive, so one is cached per connection and dropped when the
 /// connection's settings change. Metadata comes from the SDK's feed iterators.
 /// </summary>
-public sealed class CosmosBackend(Credentials credentials) : IQueryBackend
+public sealed class CosmosBackend(Credentials credentials, CosmosAccountKeys? accountKeys = null) : IQueryBackend
 {
+    private readonly CosmosAccountKeys _accountKeys = accountKeys ?? new();
+
     private const int ItemSample = 100;
     private static readonly HashSet<string> SystemProperties = ["_rid", "_self", "_etag", "_attachments"];
     private static readonly Regex Insertable = new(@"^[A-Za-z_][A-Za-z0-9_.]*\z");
@@ -40,7 +42,7 @@ public sealed class CosmosBackend(Credentials credentials) : IQueryBackend
 
     public async Task<TreeNode[]> ChildrenAsync(ConnectionConfig c, string? secret, NodePath path, int start, CancellationToken ct)
     {
-        var client = ClientFor(c, secret);
+        var client = await ClientForAsync(c, secret, ct);
         var rel = path.From(start);
         try
         {
@@ -58,7 +60,7 @@ public sealed class CosmosBackend(Credentials credentials) : IQueryBackend
         }
         catch (CosmosException ex)
         {
-            throw CosmosErrors.ToRpc(ex, c);
+            throw Failed(ex, c);
         }
     }
 
@@ -66,20 +68,34 @@ public sealed class CosmosBackend(Credentials credentials) : IQueryBackend
     {
         try
         {
-            using var iterator = ClientFor(c, secret).GetDatabaseQueryStreamIterator(new QueryDefinition("SELECT TOP 1 * FROM c"));
+            using var iterator = (await ClientForAsync(c, secret, ct)).GetDatabaseQueryStreamIterator(new QueryDefinition("SELECT TOP 1 * FROM c"));
             using var response = await iterator.ReadNextAsync(ct);
             response.EnsureSuccessStatusCode();
         }
         catch (CosmosException ex)
         {
-            throw CosmosErrors.ToRpc(ex, c);
+            throw Failed(ex, c);
         }
+    }
+
+    /// <summary>
+    /// A fetched key that is rejected has likely been rotated: the client goes, so the next attempt fetches it again (#65).
+    /// </summary>
+    private RpcException Failed(CosmosException ex, ConnectionConfig c)
+    {
+        DropRejectedKey(ex, c);
+        return CosmosErrors.ToRpc(ex, c);
+    }
+
+    private void DropRejectedKey(CosmosException ex, ConnectionConfig c)
+    {
+        if (ex.StatusCode == HttpStatusCode.Unauthorized && c.Auth == AuthKinds.EntraKeys) Forget(c.Id);
     }
 
     /// <summary>Skipping the certificate check is for the localhost emulator only (see TrustsCertificate).</summary>
     public KindDescription Describe(string kind) => new(
         kind, "Cosmos DB (NoSQL)", "Account URI", "https://myaccount.documents.azure.com:443/",
-        [AuthKinds.Option(AuthKinds.Entra), AuthKinds.Option(AuthKinds.Key)],
+        [AuthKinds.Option(AuthKinds.Entra), AuthKinds.Option(AuthKinds.EntraKeys), AuthKinds.Option(AuthKinds.Key)],
         new KindBadge("C", "#1f7a74", "Cosmos"),
         new ConnectionFields(Database: false, CertificateOptions: false, EntraUser: false, TrustLocalOnly: true));
 
@@ -113,7 +129,7 @@ public sealed class CosmosBackend(Credentials credentials) : IQueryBackend
         if (target.Database is null || target.Container is null)
             throw new RpcException(RpcException.InvalidParams, "Select a container to query: Cosmos queries run against one container.");
 
-        var client = ClientFor(target.Connection, secret);
+        var client = await ClientForAsync(target.Connection, secret, ct);
         var container = client.GetContainer(target.Database, target.Container);
         using var iterator = container.GetItemQueryStreamIterator(new QueryDefinition(text), requestOptions: new QueryRequestOptions { MaxItemCount = sink.BatchSize });
 
@@ -170,6 +186,7 @@ public sealed class CosmosBackend(Credentials credentials) : IQueryBackend
         }
         catch (CosmosException ex) when (!ct.IsCancellationRequested)
         {
+            DropRejectedKey(ex, target.Connection);
             sink.Fail($"{(int)ex.StatusCode} {ex.StatusCode}: {ex.Message.Split('\n')[0]}");
         }
 
@@ -186,10 +203,10 @@ public sealed class CosmosBackend(Credentials credentials) : IQueryBackend
     /// <summary>Cosmos has no cheap change stamp, so the catalog is rebuilt (re-sampled) once per session.</summary>
     public Task<string?> CatalogStampAsync(QueryTarget target, string? secret, CancellationToken ct) => Task.FromResult<string?>(null);
 
-    public Task<DatabaseCatalog> CatalogAsync(QueryTarget target, string? secret, EditorSettings editor, CancellationToken ct)
+    public async Task<DatabaseCatalog> CatalogAsync(QueryTarget target, string? secret, EditorSettings editor, CancellationToken ct)
     {
         if (target.Database is null) throw new RpcException(RpcException.InvalidParams, "Select a Cosmos database or container for IntelliSense.");
-        return CosmosCatalog.BuildAsync(ClientFor(target.Connection, secret), target.Database, editor.CatalogSampleDocs, ct);
+        return await CosmosCatalog.BuildAsync(await ClientForAsync(target.Connection, secret, ct), target.Database, editor.CatalogSampleDocs, ct);
     }
 
     // --- Tree -------------------------------------------------------------------------------------------
@@ -356,6 +373,23 @@ public sealed class CosmosBackend(Credentials credentials) : IQueryBackend
             ? paths.EnumerateArray().Select(p => p.GetString()!)
             : [];
 
+    /// <summary>
+    /// The connection's client. Under <see cref="AuthKinds.EntraKeys"/> the account's read-only key is fetched through
+    /// Azure Resource Manager first (#65) and kept only in the client, in memory; there is no stored secret.
+    /// </summary>
+    public async Task<CosmosClient> ClientForAsync(ConnectionConfig c, string? secret, CancellationToken ct)
+    {
+        if (c.Auth != AuthKinds.EntraKeys) return ClientFor(c, secret);
+        var fingerprint = $"{c.Endpoint}|{c.Auth}|{c.TenantId}|{c.ClientId}|{c.TrustServerCertificate}";
+        if (_clients.TryGetValue(c.Id, out var cached) && cached.Fingerprint == fingerprint) return cached.Client;
+
+        var key = await _accountKeys.FetchAsync(credentials.For(c.TenantId, c.ClientId), c.Endpoint, ct);
+        var client = Create(c, key);
+        _clients[c.Id] = (fingerprint, client);
+        if (cached.Client is not null) cached.Client.Dispose();
+        return client;
+    }
+
     public CosmosClient ClientFor(ConnectionConfig c, string? secret)
     {
         var fingerprint = $"{c.Endpoint}|{c.Auth}|{c.TenantId}|{c.TrustServerCertificate}|{Convert.ToBase64String(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(secret ?? "")))}";
@@ -390,7 +424,7 @@ public sealed class CosmosBackend(Credentials credentials) : IQueryBackend
 
         return c.Auth switch
         {
-            AuthKinds.Key => new CosmosClient(c.Endpoint, secret ?? throw new RpcException(RpcException.InvalidParams, "Account key is required"), options),
+            AuthKinds.Key or AuthKinds.EntraKeys => new CosmosClient(c.Endpoint, secret ?? throw new RpcException(RpcException.InvalidParams, "Account key is required"), options),
             AuthKinds.Entra => new CosmosClient(c.Endpoint, credentials.For(c.TenantId, c.ClientId), options),
             _ => throw new RpcException(RpcException.InvalidParams, $"Cosmos does not support auth '{c.Auth}'"),
         };

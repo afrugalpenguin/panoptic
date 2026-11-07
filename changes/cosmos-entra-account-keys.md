@@ -1,0 +1,1 @@
+Added: Cosmos DB connections can sign in with **Entra ID (fetch account keys)**. Panoptic finds the account through Azure Resource Manager and connects with its read-only key, as Cosmos Data Explorer does, so an Azure role such as Contributor or Cosmos DB Account Reader is enough without a data-plane role. Nothing is pasted or stored.
