@@ -33,10 +33,11 @@ public sealed class TreeService(ConfigStore store, IReadOnlyDictionary<string, I
         }
         catch (Exception ex) when (ex is not OperationCanceledException and not RpcException { NodeError: not null })
         {
-            // Unmapped failures (sign-in, network, bad settings) still reach the tree as a structured error.
+            // Unmapped failures (sign-in, network, bad settings) still reach the tree as a structured error, with their
+            // inner exceptions: the outer message alone can hide the cause (#192).
             var detail = NodeErrors.Lines(("Endpoint", connection.Endpoint), ("Identity", NodeErrors.Identity(connection)));
             throw new RpcException(ex is RpcException rpc ? rpc.Code : RpcException.OperationFailed, ex.Message,
-                NodeErrors.Fallback(ex.Message, extra: detail));
+                NodeErrors.FromException(ex, extra: detail));
         }
     }
 
