@@ -25,15 +25,15 @@ Panoptic is open core.
 - Engine warm-up, changelog pipeline, all hardening work
 - The node contract, backend contract and a reference plugin, so third parties can build engines
 
-**Pro is closed source, per seat**, built as separate signed plugin packages behind the same node and backend contracts, in a private repository. Pro is for working in a team against production:
+**Pro is closed source, per seat**, built as separate signed plugin packages behind the same node and backend contracts, in a private repository. The first and main Pro product is one **Teams bundle**: the things that only matter once a second person has the same tree open and one of the environments is production.
 
-- Shared environment definitions: a team-owned config (git repository or blob) that everyone imports, with secrets staying local
-- Production safety policies: enforced read-only per environment, confirm-before-write with the affected rows shown, blocked statement classes
-- Cross-environment diff and compare (the plugin that 0012 allowed "later at most" is a Pro plugin, if it is built at all; it is still not core)
-- Entra tenant features: multi-tenant switching, service principal connections
+- Shared environment definitions: a team-owned config (git repository or blob) that everyone imports, with secrets staying local. Core's export and import file (issue #28) is the format; the sync and governance on top is Pro.
+- Production write policies. The promise is not that nobody can write to prod; it is that nobody writes to prod by accident and every deliberate write is on the record. Three levels per environment: *read-only* (core's guard, writes refused before they leave the editor), *guarded* (writes allowed after the parsed statement and affected rows are shown, confirmed, and a reason or ticket reference is recorded), and *break-glass* (a read-only environment elevated to guarded for a set window, with a reason, logged, auto-reverting). The database login stays the real protection; policies guard against mistakes and are not a security boundary.
+- Audit log of who ran what, where, with the recorded reasons, exportable
 - Query history sync and shared snippets across machines
-- Export and scheduled result snapshots (CSV, Parquet, Excel)
-- Audit log of who ran what, where, exportable
+- Cross-environment diff and compare (the plugin that 0012 allowed "later at most" is a Pro plugin, if it is built at all; it is still not core)
+
+Engine-specific Pro packs (for example Cosmos DB request-unit cost before a query runs, cross-partition analysis, index policy diff, bulk operations with rollback) are a possible second product, only where the vendor's free tooling is poor and the feature only matters at work against a bill. The engines themselves never move to Pro: a solo developer must be able to browse and query every engine for free, and the Cosmos DB backend in particular has already shipped under MIT and cannot be withdrawn.
 
 **Gate.** The free app has a licence-key field. A valid key downloads and enables the Pro packages. Without a key the Pro features are absent, not greyed out with an upsell. Keys are signed and validated offline with a grace period, because Pro users will run Panoptic on locked-down work machines with no outbound access.
 
@@ -43,7 +43,7 @@ Panoptic is open core.
 
 ## Consequences
 
-Nothing changes in the repository until the stabilise-and-harden phase is done. After that, the order is: one Pro feature end to end (shared environment definitions, the smallest and the one wanted most), then the licence-key plumbing, then the rest of the Pro list only as demand appears. The plumbing is not built first; it is worthless with nothing behind it.
+Nothing changes in the repository until the stabilise-and-harden phase is done. After that, the order is: one Pro feature end to end (shared environment definitions, the smallest and the one wanted most), then the licence-key plumbing, then the rest of the Teams bundle only as demand appears. Pro ideas are not public issues: an open issue reads as a promise to free users, so they live in the Pro repository. The plumbing is not built first; it is worthless with nothing behind it.
 
 The node and backend contracts become a product boundary as well as a plugin boundary, so breaking changes to them affect paid packages and need a deprecation path.
 
