@@ -40,6 +40,8 @@ public static class AuthKinds
     public const string Entra = "entra";
     public const string Sql = "sql";
     public const string Key = "key";
+    /// <summary>Cosmos: an Entra sign-in that fetches the account's read-only key through Azure Resource Manager (#65).</summary>
+    public const string EntraKeys = "entraKeys";
     /// <summary>Windows integrated authentication (SQL Server only).</summary>
     public const string Windows = "windows";
     /// <summary>User name and password (Postgres). SQL Server's equivalent is <see cref="Sql"/>.</summary>
@@ -53,6 +55,7 @@ public static class AuthKinds
         Entra => "Microsoft Entra ID",
         Sql => "SQL login",
         Key => "Account key",
+        EntraKeys => "Entra ID (fetch account keys)",
         Windows => "Windows",
         Password => "Username and password",
         Certificate => "Client certificate",

@@ -81,6 +81,8 @@
   const showSecret = $derived(needsSecret || certAuth);
   /** A .pfx or .p12 holds the key as well, so needs no key file. */
   const bundle = $derived(/\.(pfx|p12)$/i.test(clientCert.trim()));
+  /** Signs in with Entra: directly, or to fetch a Cosmos account's keys (#65). Either way the tenant and client id apply. */
+  const entra = $derived(auth === "entra" || auth === "entraKeys");
   /** Postgres signs Entra users in under their Entra name; blank means the name from the sign-in. */
   const entraUser = $derived(fields.entraUser && auth === "entra");
   const placeholder = $derived(described.endpointPlaceholder);
@@ -89,7 +91,7 @@
   const trustWarning = $derived.by(() => {
     if (!trust || fields.trustLocalOnly || !endpoint.trim() || isLoopback(endpoint)) return "";
     const what =
-      auth === "entra"
+      entra
         ? "your Microsoft Entra sign-in token, which could then be used against other Azure databases for up to an hour"
         : auth === "windows"
           ? "your queries and their results"
@@ -116,8 +118,8 @@
       auth,
       user: login || (entraUser && user.trim()) ? user.trim() : null,
       database: fields.database && database.trim() ? database.trim() : null,
-      tenantId: auth === "entra" && tenantId.trim() ? tenantId.trim() : null,
-      clientId: auth === "entra" && clientId.trim() ? clientId.trim() : null,
+      tenantId: entra && tenantId.trim() ? tenantId.trim() : null,
+      clientId: entra && clientId.trim() ? clientId.trim() : null,
       trustServerCertificate: trust,
       certificateHostName: fields.certificateOptions && certHost.trim() ? certHost.trim() : null,
       certificateFile: fields.certificateOptions && certFile.trim() ? certFile.trim() : null,
@@ -155,7 +157,7 @@
   function validate(): string {
     if (!endpoint.trim()) return `${described.endpointLabel} is required`;
     if (login && !user.trim()) return "User is required";
-    if (auth === "entra" && clientId.trim() && !GUID.test(clientId.trim()))
+    if (entra && clientId.trim() && !GUID.test(clientId.trim()))
       return "Client id must be an app's Application (client) ID, a GUID such as 11111111-2222-3333-4444-555555555555";
     if (certAuth && !clientCert.trim()) return "Choose the client certificate file.";
     if (certAuth && !clientKey.trim() && !bundle) return "Choose the certificate's private key file, or use a .pfx file, which holds both.";
@@ -259,7 +261,7 @@
     />
   {/if}
 
-  {#if auth === "entra"}
+  {#if entra}
     <label for="c-tenant">Tenant <span class="muted">(optional)</span></label>
     <input id="c-tenant" bind:value={tenantId} placeholder="Defaults to your work account's tenant" spellcheck="false" />
     <label for="c-client">Client id <span class="muted">(optional)</span></label>
@@ -300,7 +302,7 @@
 
   {#snippet footer()}
     <button type="button" disabled={busy !== ""} onclick={runTest}>{busy === "testing" ? "Testing..." : "Test"}</button>
-    {#if auth === "entra" && busy === "testing"}<span class="muted">A Microsoft sign-in window may open.</span>{/if}
+    {#if entra && busy === "testing"}<span class="muted">A Microsoft sign-in window may open.</span>{/if}
     <span style:flex="1"></span>
     <button type="button" onclick={onClose}>Cancel</button>
     <button type="button" class="primary" disabled={busy !== ""} onclick={save}>Save</button>

@@ -9,9 +9,9 @@ Covers Azure Cosmos DB for NoSQL, and the local emulator. The backend is
 | Setting | Notes |
 | --- | --- |
 | Account URI | The account endpoint, e.g. `https://myaccount.documents.azure.com:443/`. |
-| Authentication | Microsoft Entra ID or Account key. |
+| Authentication | Microsoft Entra ID, Entra ID (fetch account keys), or Account key. |
 | Account key | Account key only. Stored DPAPI-encrypted in the local store, never sent to the UI. |
-| Tenant | Optional, Entra only. Defaults to the signed-in work account's tenant. |
+| Tenant | Optional, both Entra options. Defaults to the signed-in work account's tenant. |
 | Skip certificate validation | Only for the emulator's self-signed certificate. Refused unless the account URI is a loopback address, and the client is then limited to that endpoint. |
 
 There is no Database setting: the tree always lists every database the identity can see.
@@ -33,6 +33,33 @@ Built-in Data Reader." (status 403, substatus 5300).
 Data-plane roles do not allow reading offers (throughput), so under Entra the container's
 throughput leaf reads `Throughput: not visible with this identity` while the rest of the container
 expands normally.
+
+### Entra ID (fetch account keys)
+
+Cosmos Data Explorer's default (#65): sign in with Entra, find the account through Azure Resource
+Manager, and connect with its key. Azure roles such as Contributor or Cosmos DB Account Reader can
+list an account's keys, so this works for people who have no data-plane role
+(`Backends/CosmosAccountKeys.cs`):
+
+1. The account name is the first label of the account URI. Only `*.documents.azure.com` (the Azure
+   public cloud) is looked up; use Account key for the emulator or another cloud.
+2. With an ARM token (`https://management.azure.com/.default`, the same credential and tenant as
+   Entra connections), one Azure Resource Graph query finds the account's resource id across every
+   subscription the sign-in can see, and whether key access is disabled (`disableLocalAuth`).
+3. `POST {id}/readonlykeys` returns the read-only keys. Panoptic's Cosmos queries cannot write, so
+   it never asks for the full keys, in any environment.
+
+The key lives only in the cached `CosmosClient`, in memory: it is not stored, not sent to the UI,
+and no error message includes it. A 401 drops the client, so a rotated key is fetched again on the
+next attempt.
+
+| Failure | Message |
+| --- | --- |
+| Account URI not `*.documents.azure.com` | Fetching account keys through Entra needs an account URI in the Azure public cloud. |
+| No row from Resource Graph | No Cosmos DB account named *name* in any subscription your sign-in can see. |
+| `disableLocalAuth` | The account has key access disabled; use Microsoft Entra ID with a data-plane role. |
+| 403 on `readonlykeys` | The sign-in can see the account but cannot list its keys (needs `Microsoft.DocumentDB/databaseAccounts/readonlykeys/action`). |
+| Any other ARM failure | The HTTP status with ARM's error code and message. |
 
 ## Tree
 

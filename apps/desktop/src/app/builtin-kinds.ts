@@ -37,6 +37,7 @@ export const BUILTIN_KINDS: KindDescription[] = [
     endpointPlaceholder: "https://myaccount.documents.azure.com:443/",
     auths: [
       { id: "entra", label: "Microsoft Entra ID" },
+      { id: "entraKeys", label: "Entra ID (fetch account keys)" },
       { id: "key", label: "Account key" },
     ],
     badge: { letters: "C", color: "#1f7a74", name: "Cosmos" },

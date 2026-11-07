@@ -14,7 +14,8 @@ export type NodeError = Sidecar.NodeError;
 
 /** A registered connection kind ("sql", "cosmos"...): open-ended, described by the sidecar (KindDescription). */
 export type ConnectionKind = string;
-export type AuthKind = "entra" | "sql" | "key" | "windows" | "password" | "certificate";
+/** entraKeys: Cosmos, signing in with Entra to fetch the account's read-only key through Azure Resource Manager (#65). */
+export type AuthKind = "entra" | "entraKeys" | "sql" | "key" | "windows" | "password" | "certificate";
 
 /** What the UI shows for a connection kind (backends.describe). */
 export type KindDescription = Narrow<Sidecar.KindDescription, { auths: { id: AuthKind; label: string }[] }>;
