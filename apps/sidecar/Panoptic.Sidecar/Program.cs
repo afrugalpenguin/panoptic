@@ -25,7 +25,17 @@ void Notify(string method, Action<Utf8JsonWriter> parameters) => _ = WriteLine(J
 
 var credentials = new Credentials(prompt =>
     Notify("auth.deviceCode", w => JsonSerializer.Serialize(w, prompt, SidecarJson.Default.DeviceCodePrompt)));
-var store = new ConfigStore(Environment.GetEnvironmentVariable("PANOPTIC_STORE") ?? ConfigStore.DefaultPath);
+ConfigStore store;
+try
+{
+    store = new ConfigStore(Environment.GetEnvironmentVariable("PANOPTIC_STORE") ?? ConfigStore.DefaultPath);
+}
+catch (StoreUnavailableException ex)
+{
+    // The shell shows the engine's last stderr line when it gives up (#191), so this is the line the user reads.
+    Console.Error.WriteLine(ex.Message);
+    return 3;
+}
 var tree = new TreeService(store, BackendRegistry.Create(credentials));
 
 var startupMs = (DateTime.Now - Process.GetCurrentProcess().StartTime).TotalMilliseconds;
@@ -51,6 +61,7 @@ while (await stdin.ReadLineAsync() is { } line)
     inFlight.Add(Handle(line));
 }
 await Task.WhenAll(inFlight);
+return 0;
 
 async Task Handle(string line)
 {

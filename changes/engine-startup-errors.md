@@ -1,0 +1,1 @@
+Fixed: when the database engine cannot start, Panoptic now says why (for example, its saved connections file is locked by another program) and where the log is, instead of only "exited 5 times in a row".
