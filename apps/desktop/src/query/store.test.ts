@@ -56,7 +56,7 @@ describe("QueryWorkspace", () => {
     expect(tab.results[0].rows).toEqual([[1], [2], [3]]);
     expect(tab.messages.map((m) => m.text)).toEqual(["(3 rows affected)"]);
 
-    finish({ resultSets: [{ rowCount: 3 }] });
+    finish({ resultSets: [{ rowCount: 3, truncated: false }] });
     await done;
     expect(tab.running).toBe(false);
     expect(tab.summary?.resultSets[0].rowCount).toBe(3);

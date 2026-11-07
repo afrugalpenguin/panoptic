@@ -197,7 +197,7 @@ export class QueryWorkspace {
 
   /** The database of the node the tab was opened on; undefined for a connection, which runs in its default. */
   nodeDatabaseOf(tab: QueryTab): string | undefined {
-    return tab.target && this.scopeOf(tab.target).database;
+    return (tab.target && this.scopeOf(tab.target).database) ?? undefined;
   }
 
   /** The picker's choice; "" is "(connection default)", which drops the choice. */
@@ -303,10 +303,10 @@ export class QueryWorkspace {
 
   /** Explorer refresh on a connection or database (its query.scope): rebuild the catalogs of query tabs open against it. */
   refreshForScope(node: QueryScope): void {
-    this.forgetFailed(node.connection, node.database);
+    this.forgetFailed(node.connection, node.database ?? undefined);
     for (const t of this.tabs) {
       if (t.kind !== "query" || !t.target || this.scopeOf(t.target).connection !== node.connection) continue;
-      if (node.database === undefined || node.database.toLowerCase() === this.databaseOf(t)?.toLowerCase()) this.refreshCatalog(t);
+      if (node.database == null || node.database.toLowerCase() === this.databaseOf(t)?.toLowerCase()) this.refreshCatalog(t);
     }
   }
 
