@@ -3,7 +3,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import type { RpcClient } from "../rpc";
   import { connectSidecar, readyText, type PingResult, type SidecarStatus } from "../sidecar";
-  import { finishBenchmark, firstPaintEpochMs, nowEpochMs, type StartupInfo } from "../startup";
+  import { afterPaint, finishBenchmark, firstPaintEpochMs, nowEpochMs, type StartupInfo } from "../startup";
   import { sidecarView } from "../sidecar-status";
   import { scheduleUpdateChecks } from "../update-schedule";
   import { createUpdateChecker, currentVersion, type UpdateState } from "../updates";
@@ -236,6 +236,13 @@
     config = await api!.config();
     await model.loadRoot();
     await model.preload(model.envIds());
+    // Bench only: waiting for the paint would otherwise delay the rest of start-up for nothing.
+    let treeRenderedEpochMs: number | undefined;
+    if (info.benchMode === "startup") {
+      await tick();
+      await afterPaint();
+      treeRenderedEpochMs = nowEpochMs();
+    }
 
     const fcp = await firstPaintEpochMs();
     openedMs = Math.round(sidecarReadyEpochMs - info.mainStartEpochMs);
@@ -246,11 +253,13 @@
       sidecarReadyEpochMs,
       mainToFirstPaintMs: Math.round(fcp - info.mainStartEpochMs),
       mainToSidecarReadyMs: Math.round(sidecarReadyEpochMs - info.mainStartEpochMs),
+      treeRenderedEpochMs,
       sidecarStartupMs: ping.startupMs,
       sidecarMode: ping.mode,
     };
     startup = `First paint ${timings.mainToFirstPaintMs} ms, engine ready ${timings.mainToSidecarReadyMs} ms (engine ${ping.startupMs} ms, ${ping.mode}, v${ping.version})`;
     if (info.benchMode === "startup") await finishBenchmark(timings);
+    if (info.benchMode === "expand") await runExpandBench();
     if (info.benchMode) return;
     settings = await api!.settings();
     model.setEnvOrder(settings.explorer.envOrder);
@@ -260,6 +269,22 @@
     changelog = parseChangelog(await invoke<string>("changelog_markdown").catch(() => ""));
     await recordVersionSeen(current);
     stopUpdateSchedule = scheduleUpdateChecks(settings.updateCheck, checkForUpdates, { atLaunch: true });
+  }
+
+  /** Bench only (scripts/bench.ps1 -Suite expand): times expands on this machine's connections, then exits. */
+  async function runExpandBench() {
+    const { expandTargets, walkExpands } = await import("../bench/expand");
+    try {
+      const targets = expandTargets(model);
+      if (targets.length === 0) throw new Error("No connections to localhost in this store: run scripts/dev-seeded.ps1 -NoLaunch first.");
+      const steps = await walkExpands(model, targets, async () => {
+        await tick();
+        await afterPaint();
+      });
+      await finishBenchmark({ kind: "expand", steps });
+    } catch (e) {
+      await finishBenchmark({ kind: "expand", error: e instanceof Error ? e.message : String(e) });
+    }
   }
 
   /**

@@ -124,13 +124,13 @@ Each milestone has one definition of done, and the next one does not start until
 
 The first session is M0 and nothing else. It produces measurements, not features, and the plan above survives or changes based on what comes back.
 
-- [ ] Create afrugalpenguin/panoptic with the monorepo layout, licence, README stub, commit hook check, CI skeleton.
-- [ ] Scaffold Tauri 2 with a TypeScript front end and a .NET 10 console sidecar wired over stdio JSON-RPC. One round trip: UI sends `ping`, sidecar answers with its start-up time.
-- [ ] Measure cold start on the work laptop and the home machine: window visible, sidecar ready. Record both numbers in `docs/benchmarks.md`.
-- [ ] Render a synthetic 50k-node virtualised tree and a 100k-row grid from fixture data. Record frame times. Decide Svelte versus plain TS on these numbers and write the ADR.
+- [x] Create afrugalpenguin/panoptic with the monorepo layout, licence, README stub, commit hook check, CI skeleton.
+- [x] Scaffold Tauri 2 with a TypeScript front end and a .NET 10 console sidecar wired over stdio JSON-RPC. One round trip: UI sends `ping`, sidecar answers with its start-up time.
+- [ ] Measure cold start on the work laptop and the home machine: window visible, sidecar ready. Record both numbers in `docs/benchmarks.md`. Home is recorded; the work laptop is not.
+- [x] Render a synthetic 50k-node virtualised tree and a 100k-row grid from fixture data. Record frame times. Decide Svelte versus plain TS on these numbers and write the ADR.
 - [ ] Prove Entra sign-in from the sidecar on the work laptop (WAM broker, device-code fallback). Record which worked.
-- [ ] Connect to one real SQL Server and one real Cosmos account read-only, list databases through the node contract, and show them under one fake environment node.
-- [ ] Release workflow: per-user NSIS installer plus signed updater manifest on GitHub Releases. Install once on the work laptop, then confirm it updates itself to the next release. As built there is no tag step: every merge to main that changes more than docs releases, versioned as major.minor from apps/desktop/package.json plus the workflow's run number (release.yml, README "Release").
+- [x] Connect to one real SQL Server and one real Cosmos account read-only, list databases through the node contract, and show them under one fake environment node.
+- [x] Release workflow: per-user NSIS installer plus signed updater manifest on GitHub Releases. Install once on the work laptop, then confirm it updates itself to the next release. As built there is no tag step: every merge to main that changes more than docs releases, versioned as major.minor from apps/desktop/package.json plus the workflow's run number (release.yml, README "Release").
 
 Prompt to paste:
 
