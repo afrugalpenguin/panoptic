@@ -3,7 +3,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import type { RpcClient } from "../rpc";
   import { connectSidecar, readyText, type PingResult, type SidecarStatus } from "../sidecar";
-  import { afterPaint, finishBenchmark, firstPaintEpochMs, nowEpochMs, type StartupInfo } from "../startup";
+  import { afterPaint, finishBenchmark, firstPaintEpochMs, nowEpochMs, startupText, startupTimings, type StartupInfo } from "../startup";
   import { sidecarView } from "../sidecar-status";
   import { scheduleUpdateChecks } from "../update-schedule";
   import { createUpdateChecker, currentVersion, type UpdateState } from "../updates";
@@ -22,9 +22,8 @@
   import Landing from "./Landing.svelte";
   import SeekOverlay from "./SeekOverlay.svelte";
   import { livePlace, type SeekEnv, type SeekHost, type SeekIndex, type SeekRow } from "./seek";
-  import { globalShortcut } from "./shortcuts";
+  import { keyCommand } from "./shortcuts";
   import { loadUsage, recordUse, saveUsage, type Place } from "./usage";
-  import { shortcutAction } from "./node-menu";
   import { rowMenu, type RowMenuContext } from "./row-menu";
   import Workspace from "../query/Workspace.svelte";
   import { preloadMonaco } from "../query/preload";
@@ -245,22 +244,15 @@
       treeRenderedEpochMs = nowEpochMs();
     }
 
-    const fcp = await firstPaintEpochMs();
+    const firstPaint = await firstPaintEpochMs();
     openedMs = Math.round(sidecarReadyEpochMs - info.mainStartEpochMs);
-    const timings = {
-      kind: "startup",
-      mainStartEpochMs: info.mainStartEpochMs,
-      firstPaintEpochMs: fcp,
-      sidecarReadyEpochMs,
-      mainToFirstPaintMs: Math.round(fcp - info.mainStartEpochMs),
-      mainToSidecarReadyMs: Math.round(sidecarReadyEpochMs - info.mainStartEpochMs),
-      treeRenderedEpochMs,
-      sidecarStartupMs: ping.startupMs,
-      sidecarMode: ping.mode,
-    };
-    startup = `First paint ${timings.mainToFirstPaintMs} ms, engine ready ${timings.mainToSidecarReadyMs} ms (engine ${ping.startupMs} ms, ${ping.mode}, v${ping.version})`;
+    const timings = startupTimings(info, ping, { sidecarReadyEpochMs, firstPaintEpochMs: firstPaint, treeRenderedEpochMs });
+    startup = startupText(timings, ping);
     if (info.benchMode === "startup") await finishBenchmark(timings);
-    if (info.benchMode === "expand") await runExpandBench();
+    if (info.benchMode === "expand") {
+      const { benchExpand } = await import("../bench/expand");
+      await finishBenchmark(await benchExpand(model, async () => (await tick(), await afterPaint())));
+    }
     if (info.benchMode) return;
     settings = await api!.settings();
     model.setEnvOrder(settings.explorer.envOrder);
@@ -270,22 +262,6 @@
     changelog = parseChangelog(await invoke<string>("changelog_markdown").catch(() => ""));
     await recordVersionSeen(current);
     stopUpdateSchedule = scheduleUpdateChecks(settings.updateCheck, checkForUpdates, { atLaunch: true });
-  }
-
-  /** Bench only (scripts/bench.ps1 -Suite expand): times expands on this machine's connections, then exits. */
-  async function runExpandBench() {
-    const { expandTargets, walkExpands } = await import("../bench/expand");
-    try {
-      const targets = expandTargets(model);
-      if (targets.length === 0) throw new Error("No connections to localhost in this store: run scripts/dev-seeded.ps1 -NoLaunch first.");
-      const steps = await walkExpands(model, targets, async () => {
-        await tick();
-        await afterPaint();
-      });
-      await finishBenchmark({ kind: "expand", steps });
-    } catch (e) {
-      await finishBenchmark({ kind: "expand", error: e instanceof Error ? e.message : String(e) });
-    }
   }
 
   /**
@@ -574,24 +550,19 @@
   }
 
   function onGlobalKeydown(e: KeyboardEvent) {
-    // The Seek overlay is modal: its box keeps every key.
-    if (seeking) return;
-    const action = selectedRow?.type === "node" ? shortcutAction(e, selectedRow.node) : undefined;
-    if (action && selectedRow) {
-      e.preventDefault();
-      void openQuery(selectedRow, action);
-      return;
-    }
-    // Not while a dialog is open: its fields keep their keys.
-    if (dialog) return;
-    const global = globalShortcut(e, !!(e.target as Element | null)?.closest?.(".monaco-editor"));
-    if (!global) return;
+    const command = keyCommand(e, {
+      seeking,
+      dialogOpen: !!dialog,
+      inEditor: !!(e.target as Element | null)?.closest?.(".monaco-editor"),
+      selectedNode: selectedRow?.type === "node" ? selectedRow.node : undefined,
+    });
+    if (!command) return;
     e.preventDefault();
-    if (global === "newQuery") workspace.openUnconnected();
-    else if (global === "newConnection") {
+    if (command.kind === "nodeQuery") void openQuery(selectedRow!, command.action);
+    else if (command.action === "newQuery") workspace.openUnconnected();
+    else if (command.action === "newConnection") {
       if (sidecar === "connected") addConnection();
-    }
-    else if (global === "import") {
+    } else if (command.action === "import") {
       if (sidecar === "connected") dialog = { kind: "import" };
     } else void focusSeek();
   }

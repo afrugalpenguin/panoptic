@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { TreeNode } from "../app/api";
 import { TreeModel } from "../app/tree-model";
-import { expandTargets, walkExpands } from "./expand";
+import { benchExpand, expandTargets, walkExpands } from "./expand";
 
 const node = (id: string, kind: string, hasChildren = true, meta?: Record<string, string>): TreeNode => ({
   id,
@@ -69,5 +69,23 @@ describe("walkExpands", () => {
     expect(steps).toHaveLength(1);
     expect(steps[0].error).toContain("no route");
     expect(steps[0].warmMs).toBeUndefined();
+  });
+});
+
+describe("benchExpand", () => {
+  it("walks this machine's connections", async () => {
+    const { model } = await loaded();
+    const result = await benchExpand(model, async () => {});
+    expect(result.error).toBeUndefined();
+    expect(result.steps?.map((s) => s.kind)).toEqual(["connection", "database", "folder", "connection"]);
+  });
+
+  it("says why when the store has no local connections", async () => {
+    const model = new TreeModel(async () => [], () => {});
+    await model.loadRoot();
+    expect(await benchExpand(model, async () => {})).toEqual({
+      kind: "expand",
+      error: "No connections to localhost in this store: run scripts/dev-seeded.ps1 -NoLaunch first.",
+    });
   });
 });
