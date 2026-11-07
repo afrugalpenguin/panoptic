@@ -47,7 +47,10 @@ public sealed class ConfigStoreTests : IDisposable
         if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
     }
 
-    private static ConnectionConfig Sql(string id) => new(id, $"conn {id}", ConnectionKinds.Sql, "localhost,1433", AuthKinds.Sql, User: "sa");
+    private static ConnectionConfig Sql(string id) => new(id, $"conn {id}", ConnectionKinds.Sql, "localhost,1433", AuthKinds.Sql, User: $"user_{id}");
+
+    /// <summary>One server, user and database, for the duplicate tests.</summary>
+    private static ConnectionConfig Orders(string id) => new(id, $"conn {id}", ConnectionKinds.Sql, "localhost,1433", AuthKinds.Sql, User: "sa");
 
     [Fact]
     public void Persists_encrypted_and_reloads()
@@ -62,6 +65,79 @@ public sealed class ConfigStoreTests : IDisposable
         var reloaded = new ConfigStore(_path);
         Assert.Equal("conn c1", reloaded.Config.Environments.Single().Connections.Single().Name);
         Assert.Equal("s3cret-password", reloaded.GetSecret("c1"));
+    }
+
+    [Theory]
+    [InlineData("localhost,1433", "sa", null)]
+    [InlineData("LOCALHOST,1433", "SA", null)]
+    [InlineData("tcp:localhost,1433", "sa", null)]
+    [InlineData(" localhost,1433 ", "sa", null)]
+    public void Refuses_a_new_connection_to_a_server_already_added(string endpoint, string user, string? database)
+    {
+        var store = new ConfigStore(_path);
+        store.SaveEnvironment(new EnvironmentConfig("dev", "Dev", "#000", false, []));
+        store.SaveConnection("dev", Orders("c1"), "pw");
+
+        var ex = Assert.Throws<RpcException>(() =>
+            store.SaveConnection(null, Orders("c2") with { Endpoint = endpoint, User = user, Database = database }, "pw"));
+
+        Assert.Contains("conn c1", ex.Message);
+        Assert.Equal(["c1"], store.Config.Environments.Single().Connections.Select(c => c.Id));
+        Assert.Empty(store.Config.Connections);
+    }
+
+    [Theory]
+    [InlineData(ConnectionKinds.Sql, "otherhost,1433", AuthKinds.Sql, "sa", null)]
+    [InlineData(ConnectionKinds.Sql, "localhost,1433", AuthKinds.Sql, "reader", null)]
+    [InlineData(ConnectionKinds.Sql, "localhost,1433", AuthKinds.Sql, "sa", "Orders")]
+    [InlineData(ConnectionKinds.Synapse, "localhost,1433", AuthKinds.Sql, "sa", null)]
+    [InlineData(ConnectionKinds.Sql, "localhost,1433", AuthKinds.Windows, null, null)]
+    public void Allows_the_same_server_with_another_type_sign_in_user_or_database(string kind, string endpoint, string auth, string? user, string? database)
+    {
+        var store = new ConfigStore(_path);
+        store.SaveConnection(null, Orders("c1"), "pw");
+
+        store.SaveConnection(null, Orders("c2") with { Kind = kind, Endpoint = endpoint, Auth = auth, User = user, Database = database }, "pw");
+
+        Assert.Equal(["c1", "c2"], store.Config.Connections.Select(c => c.Id));
+    }
+
+    [Fact]
+    public void Editing_or_moving_a_connection_is_not_a_duplicate_of_itself()
+    {
+        var store = new ConfigStore(_path);
+        store.SaveEnvironment(new EnvironmentConfig("dev", "Dev", "#000", false, []));
+        store.SaveConnection(null, Orders("c1"), "pw");
+
+        store.SaveConnection(null, Orders("c1") with { Name = "renamed" }, null);
+        store.SaveConnection("dev", Orders("c1") with { Name = "renamed" }, null);
+
+        Assert.Equal("renamed", store.Config.Environments.Single().Connections.Single().Name);
+    }
+
+    [Fact]
+    public void Refuses_an_edit_that_points_a_connection_at_another_ones_server()
+    {
+        var store = new ConfigStore(_path);
+        store.SaveConnection(null, Orders("c1"), "pw");
+        store.SaveConnection(null, Orders("c2") with { User = "reader" }, "pw");
+
+        Assert.Throws<RpcException>(() => store.SaveConnection(null, Orders("c2"), "pw"));
+
+        Assert.Equal("reader", store.Config.Connections.Single(c => c.Id == "c2").User);
+    }
+
+    [Fact]
+    public void Duplicates_saved_by_earlier_versions_can_still_be_renamed_and_moved()
+    {
+        var store = new ConfigStore(_path);
+        store.SaveEnvironment(new EnvironmentConfig("dev", "Dev", "#000", false, []));
+        // Earlier versions allowed this; restoring a config is how one gets back in.
+        store.Restore(store.Config with { Connections = [Orders("c1"), Orders("c2")] });
+
+        store.SaveConnection("dev", Orders("c2") with { Name = "second" }, null);
+
+        Assert.Equal("second", store.Config.Environments.Single().Connections.Single().Name);
     }
 
     [Fact]

@@ -71,6 +71,7 @@ Moving a connection:
 - Drag a connection row onto an environment header or its empty row to move it there, or onto the Ungrouped header to take it out of its environment. The target is outlined while a drop is possible.
 - A connection's menu has **Move to environment...** (the environments other than its own, or New environment..., which creates one) and, for a connection in an environment, **Remove from environment**.
 - New connection and Import ask for an environment with a picker whose default is None (docs/landing.md).
+- A server can be added once: saving a connection with the same type, server, sign-in, user and database as another one is refused, wherever that one is, and the message names it (#269). Server names compare ignoring case, surrounding spaces and a `tcp:` prefix.
 
 A connection's node id never includes its environment, so moving one keeps open query tabs, recent objects and anything expanded below it. Deleting an environment still deletes its connections; its confirmation says so.
 
