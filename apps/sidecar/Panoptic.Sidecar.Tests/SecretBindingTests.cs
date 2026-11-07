@@ -123,7 +123,7 @@ public sealed class SecretBindingTests : IDisposable
     public async Task Connection_nodes_say_when_the_certificate_is_trusted()
     {
         var sidecar = Sidecar();
-        _store.SaveConnection("prod", Saved with { Id = "c2", Name = "Trusting", TrustServerCertificate = true }, "pw");
+        _store.SaveConnection("prod", Saved with { Id = "c2", Name = "Trusting", User = "auditor", TrustServerCertificate = true }, "pw");
 
         var request = JsonSerializer.Serialize(new { jsonrpc = "2.0", id = ++_id, method = "tree.children", @params = new { nodeId = "env:prod" } });
         var nodes = JsonDocument.Parse((await sidecar.HandleAsync(request))!).RootElement.GetProperty("result").EnumerateArray().ToList();

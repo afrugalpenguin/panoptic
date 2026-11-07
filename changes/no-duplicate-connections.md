@@ -1,0 +1,1 @@
+Fixed: a server can no longer be added twice. Saving a connection with the same type, server, sign-in, user and database as an existing one now says which connection already has it, instead of adding a second copy to the explorer.

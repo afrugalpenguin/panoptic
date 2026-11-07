@@ -152,6 +152,7 @@ public sealed class ConfigStore
         lock (_lock)
         {
             var previous = FindConnection(connection.Id)?.Connection;
+            RefuseDuplicate(connection, previous);
             if (secret is null && previous is not null && !SameSecretTarget(previous, connection)) secret = "";
             var envs = _file.Config.Environments.ToList();
             var envIndex = environmentId is null ? -1 : envs.FindIndex(e => e.Id == environmentId);
@@ -175,6 +176,22 @@ public sealed class ConfigStore
             }
             Commit(_file with { Config = new AppConfig(envs, loose), Secrets = secrets });
         }
+    }
+
+    /// <summary>
+    /// Refuses a connection that another one already makes: same type, server, sign-in, user and database (#269). The
+    /// server, user and database compare as Import's "already added" check does. An edit that keeps its own identity
+    /// passes, so duplicates saved by earlier versions can still be renamed, moved or deleted.
+    /// </summary>
+    private void RefuseDuplicate(ConnectionConfig connection, ConnectionConfig? previous)
+    {
+        static string Identity(ConnectionConfig c) => $"{c.Kind}|{c.Auth}|{Import.ImportKey.Of(c.Endpoint, c.User, c.Database)}";
+        var key = Identity(connection);
+        if (previous is not null && string.Equals(key, Identity(previous), StringComparison.OrdinalIgnoreCase)) return;
+        var existing = _file.Config.Environments.SelectMany(e => e.Connections).Concat(_file.Config.Connections)
+            .FirstOrDefault(c => c.Id != connection.Id && string.Equals(key, Identity(c), StringComparison.OrdinalIgnoreCase));
+        if (existing is not null)
+            throw new RpcException(RpcException.InvalidParams, $"This server is already added as \"{existing.Name}\". Edit that connection instead, or set a different user or database.");
     }
 
     /// <summary>Removes a connection. Its secret stays until <see cref="PurgeSecrets"/> (or the next start), as for an environment.</summary>
