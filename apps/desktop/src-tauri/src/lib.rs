@@ -1,6 +1,9 @@
 //! The shell is a pipe: it owns the sidecar process and moves newline-delimited JSON-RPC
 //! between it and the UI. It never parses or holds connection data.
 
+mod diagnostics;
+
+use diagnostics::{failure_text, Log, Tail};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -151,6 +154,8 @@ fn set_status(app: &AppHandle, status: SidecarStatus) {
 fn supervise(app: AppHandle, generation: u32) {
     let sidecar = app.state::<Sidecar>();
     let superseded = || sidecar.stopping.load(Ordering::SeqCst) || sidecar.generation.load(Ordering::SeqCst) != generation;
+    // %LOCALAPPDATA%\<identifier>\logs\sidecar.log; without a log dir the engine still runs, just unlogged.
+    let log = app.path().app_log_dir().ok().map(|dir| Log::new(dir.join("sidecar.log")));
     let mut failures = 0u32;
     loop {
         if superseded() {
@@ -158,11 +163,18 @@ fn supervise(app: AppHandle, generation: u32) {
         }
         set_status(&app, SidecarStatus::Starting { attempt: failures + 1 });
         let started = Instant::now();
+        if let Some(log) = &log {
+            log.roll_if_full();
+            log.write(&format!("[shell] starting database engine (attempt {})", failures + 1));
+        }
 
         match spawn_sidecar(&app) {
             Ok((rx, pid)) => {
                 set_status(&app, SidecarStatus::Running { pid });
-                let code = pump(&app, rx);
+                let (code, tail) = pump(&app, rx, log.as_ref());
+                if let Some(log) = &log {
+                    log.write(&format!("[shell] database engine exited (code {})", code.map_or("none".into(), |c| c.to_string())));
+                }
                 if let Ok(mut c) = sidecar.child.lock() {
                     // A newer supervisor may already own the slot.
                     if sidecar.generation.load(Ordering::SeqCst) == generation {
@@ -175,13 +187,20 @@ fn supervise(app: AppHandle, generation: u32) {
                 failures = if started.elapsed() >= HEALTHY_AFTER { 1 } else { failures + 1 };
                 set_status(&app, SidecarStatus::Exited { code });
                 if failures >= MAX_CONSECUTIVE_FAILURES {
-                    set_status(&app, SidecarStatus::Failed { error: format!("database engine exited {failures} times in a row (last code {code:?})") });
+                    let error = failure_text(failures, code, &tail, log.as_ref().map(Log::path));
+                    if let Some(log) = &log {
+                        log.write(&format!("[shell] gave up: {error}"));
+                    }
+                    set_status(&app, SidecarStatus::Failed { error });
                     return;
                 }
             }
             Err(e) => {
                 failures += 1;
                 eprintln!("[shell] sidecar spawn failed (attempt {failures}): {e}");
+                if let Some(log) = &log {
+                    log.write(&format!("[shell] could not start the database engine (attempt {failures}): {e}"));
+                }
                 if failures >= MAX_CONSECUTIVE_FAILURES {
                     set_status(&app, SidecarStatus::Failed { error: e.to_string() });
                     return;
@@ -206,8 +225,10 @@ fn spawn_sidecar(app: &AppHandle) -> Result<(Receiver<CommandEvent>, u32), Box<d
     Ok((rx, pid))
 }
 
-/// Forwards sidecar output to the UI until the process ends. Returns its exit code.
-fn pump(app: &AppHandle, mut rx: Receiver<CommandEvent>) -> Option<i32> {
+/// Forwards sidecar output to the UI until the process ends. Returns its exit code and the last lines it wrote to
+/// stderr, which also go to the log (release builds have no console to see them in).
+fn pump(app: &AppHandle, mut rx: Receiver<CommandEvent>, log: Option<&Log>) -> (Option<i32>, Tail) {
+    let mut tail = Tail::default();
     while let Some(event) = tauri::async_runtime::block_on(rx.recv()) {
         match event {
             CommandEvent::Stdout(bytes) => {
@@ -215,13 +236,20 @@ fn pump(app: &AppHandle, mut rx: Receiver<CommandEvent>) -> Option<i32> {
                 let _ = app.emit("sidecar://message", line);
             }
             CommandEvent::Stderr(bytes) => {
-                eprintln!("[sidecar] {}", String::from_utf8_lossy(&bytes).trim_end());
+                let text = String::from_utf8_lossy(&bytes);
+                for line in text.lines() {
+                    eprintln!("[sidecar] {line}");
+                    tail.push(line);
+                    if let Some(log) = log {
+                        log.write(&format!("[sidecar] {line}"));
+                    }
+                }
             }
-            CommandEvent::Terminated(payload) => return payload.code,
+            CommandEvent::Terminated(payload) => return (payload.code, tail),
             _ => {}
         }
     }
-    None
+    (None, tail)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

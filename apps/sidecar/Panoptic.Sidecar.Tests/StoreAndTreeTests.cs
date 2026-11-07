@@ -473,6 +473,24 @@ public sealed class ConfigStoreTests : IDisposable
     }
 
     [Fact]
+    public void A_locked_store_is_a_plain_error_and_is_left_where_it_is()
+    {
+        // #191: another program holding store.bin used to crash the engine with an unhandled IOException.
+        new ConfigStore(_path).SaveEnvironment(new EnvironmentConfig("dev", "Dev", "#000", false, []));
+        var before = File.ReadAllBytes(_path);
+
+        StoreUnavailableException ex;
+        using (new FileStream(_path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            ex = Assert.Throws<StoreUnavailableException>(() => new ConfigStore(_path));
+
+        Assert.StartsWith("Panoptic could not open its saved connections file", ex.Message);
+        Assert.Contains(_path, ex.Message);
+        Assert.IsAssignableFrom<IOException>(ex.InnerException);
+        Assert.Equal(before, File.ReadAllBytes(_path));
+        Assert.Empty(CorruptCopies());
+    }
+
+    [Fact]
     public void Garbage_file_is_moved_aside_and_the_store_starts_empty()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
