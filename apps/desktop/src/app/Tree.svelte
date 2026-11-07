@@ -519,18 +519,4 @@
     border: 1px solid var(--border);
     color: var(--text-muted);
   }
-  .tree-row :global(.spinner) {
-    flex: none;
-    width: 10px;
-    height: 10px;
-    border: 2px solid var(--border);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-  }
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
 </style>

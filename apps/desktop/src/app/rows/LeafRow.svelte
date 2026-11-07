@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Spinner from "../Spinner.svelte";
   import Icon from "../Icon.svelte";
   import { errorTooltip } from "../problems";
   import type { Row } from "../tree-model";
@@ -15,7 +16,7 @@
   <span class="name"><SegmentedLabel label={row.label} /></span>
   {#if row.secondary}<span class="secondary">{row.secondary}</span>{/if}
   {#if row.error}<WarningIcon small title="Failed to load. Expand to see why." />{/if}
-  {#if row.loading}<span class="spinner" aria-label="Loading"></span>{/if}
+  {#if row.loading}<Spinner label="Loading" />{/if}
   {#if row.stale}<span class="stale" title="Loaded a while ago. F5 to refresh.">stale</span>{/if}
 {:else if row.type === "loading"}
   <span class="chevron none"></span><span class="note">Loading...</span>

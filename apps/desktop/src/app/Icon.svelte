@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { GLYPHS as STROKES } from "./glyphs";
   import { kindDescription } from "./kinds";
   import KindBadge from "./rows/KindBadge.svelte";
 
@@ -38,7 +39,7 @@
   <KindBadge badge={engine.badge} />
 {:else if icon === "folder"}
   <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
-    <path d="M1.5 3.5h4l1.5 1.5h7.5v8h-13z" fill="none" style:stroke={color} stroke-width="1.2" />
+    <path d={STROKES.folder} fill="none" style:stroke={color} stroke-width="1.2" />
   </svg>
 {:else}
   <span class="icon badge" style:--c={color} aria-hidden="true">{glyph[0]}</span>

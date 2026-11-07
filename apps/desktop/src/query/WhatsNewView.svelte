@@ -1,6 +1,6 @@
 <script lang="ts">
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import logo from "../../src-tauri/icons/128x128@2x.png";
+  import logo from "../../src-tauri/icons/icon.svg";
   import { onMount } from "svelte";
   import { bullets, category, inlineTokens, openLink, sentenceCase, shortDate, subtitle } from "../whats-new";
   import type { WhatsNewTab } from "./store.svelte";

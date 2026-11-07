@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Kbd from "./Kbd.svelte";
   // The Seek box (docs/landing.md, "Seek"): an input over seek()'s rows. Ranking and keys live in seek.ts; this only
   // renders and forwards. Used by the landing (scope "all") and the unconnected query tab's picker ("connections").
   import { onMount } from "svelte";
@@ -99,7 +100,7 @@
       {placeholder}
       {onkeydown}
     />
-    {#if chip}<kbd>{chip}</kbd>{/if}
+    {#if chip}<Kbd keys={chip} />{/if}
   </label>
   {#if rows.length > 0}
     <ul id="{uid}-list" role="listbox" aria-label={label}>
@@ -177,15 +178,6 @@
   }
   input::placeholder {
     color: var(--text-muted);
-  }
-  kbd {
-    flex: none;
-    padding: 1px 6px;
-    border: 1px solid var(--kbd-border);
-    border-radius: 4px;
-    background: var(--kbd-bg);
-    color: var(--text-muted);
-    font: var(--fs-xs) var(--font-mono);
   }
   ul {
     margin: 0;

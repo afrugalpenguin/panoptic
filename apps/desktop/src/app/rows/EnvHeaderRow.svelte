@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Spinner from "../Spinner.svelte";
   import type { Row } from "../tree-model";
   import ReadOnlyPill from "./ReadOnlyPill.svelte";
   import WarningIcon from "./WarningIcon.svelte";
@@ -10,7 +11,7 @@
 <span class="name">{row.node.label}</span>
 {#if row.readOnly}<ReadOnlyPill />{/if}
 {#if row.error}<WarningIcon small title="Failed to load. Expand to see why." />{/if}
-{#if row.loading}<span class="spinner" aria-label="Loading"></span>{/if}
+{#if row.loading}<Spinner label="Loading" />{/if}
 <span class="count">{row.count ?? ""}</span>
 
 <style>

@@ -180,6 +180,23 @@ select {
   padding: 4px 6px;
   user-select: text;
 }
+/* A button with no border or background of its own: components add only their layout (docs/design-tokens.md). */
+button.ghost {
+  border: none;
+  background: none;
+}
+/* A button that reads as a link. */
+button.link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+button.link:hover {
+  text-decoration: underline;
+}
 input:focus,
 select:focus,
 button:focus-visible {

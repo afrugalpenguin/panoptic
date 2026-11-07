@@ -85,7 +85,7 @@
       {#each engines as e (e.kind)}
         <button
           type="button"
-          class="toggle"
+          class="toggle ghost"
           aria-pressed={!hidden.has(e.kind)}
           aria-label={e.badge.name}
           title="{e.badge.name} ({e.count})"
@@ -128,9 +128,9 @@
           <input class="find" type="text" placeholder="Find engine" aria-label="Find engine" bind:value={find} />
         {/if}
         <div class="links">
-          <button type="button" onclick={() => onChange(new Set())}>All</button>
-          <button type="button" onclick={() => onChange(new Set(engines.map((e) => e.kind)))}>None</button>
-          <button type="button" onclick={() => onChange(new Set(engines.filter((e) => !hidden.has(e.kind)).map((e) => e.kind)))}>Invert</button>
+          <button class="link" type="button" onclick={() => onChange(new Set())}>All</button>
+          <button class="link" type="button" onclick={() => onChange(new Set(engines.map((e) => e.kind)))}>None</button>
+          <button class="link" type="button" onclick={() => onChange(new Set(engines.filter((e) => !hidden.has(e.kind)).map((e) => e.kind)))}>Invert</button>
         </div>
         <ul class="list">
           {#each listed as e (e.kind)}
@@ -184,9 +184,7 @@
     min-width: 22px;
     height: 22px;
     padding: 0 4px;
-    border: none;
     border-radius: 4px;
-    background: none;
     color: var(--text);
     font-size: 11.5px;
     opacity: 0.45;
@@ -267,14 +265,7 @@
     padding: 2px 4px 4px;
   }
   .links button {
-    padding: 0;
-    border: none;
-    background: none;
-    color: var(--accent);
     font-size: 11.5px;
-  }
-  .links button:hover {
-    text-decoration: underline;
   }
   .list {
     margin: 0;
