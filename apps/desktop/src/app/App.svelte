@@ -17,6 +17,9 @@
   import DetailPane from "./DetailPane.svelte";
   import EnvironmentDialog from "./EnvironmentDialog.svelte";
   import ImportDialog from "./ImportDialog.svelte";
+  import BackupImportDialog from "./BackupImportDialog.svelte";
+  import { open as openFileDialog, save as saveFileDialog } from "@tauri-apps/plugin-dialog";
+  import type { BackupPreview } from "../sidecar-types.generated";
   import MoveDialog from "./MoveDialog.svelte";
   import Explorer from "./Explorer.svelte";
   import Landing from "./Landing.svelte";
@@ -67,6 +70,7 @@
     | { kind: "connection"; environmentId: string | null; initial?: ConnectionConfig }
     | { kind: "move"; connection: ConnectionConfig; from?: string }
     | { kind: "import" }
+    | { kind: "backup"; path: string; preview: BackupPreview }
     | { kind: "settings" }
   >();
   /** A destructive action waiting on ConfirmDialog. */
@@ -400,6 +404,22 @@
     } catch (e) {
       lastLoad = { id: "", label: found.connection.name, count: 0, ms: 0, error: e instanceof Error ? e.message : String(e) };
     }
+  }
+
+  /** Settings' Export to a file (#28): the sidecar writes it. Returns what was written, for the dialog to show. */
+  async function exportConnections(): Promise<string | undefined> {
+    const path = await saveFileDialog({ defaultPath: "panoptic-connections.json", filters: [{ name: "Panoptic connections", extensions: ["json"] }] });
+    if (!path) return undefined;
+    const r = await api!.exportBackup(path);
+    const name = path.split(/[\\/]/).pop();
+    return `Exported ${r.connections} connection${r.connections === 1 ? "" : "s"} in ${r.environments} environment${r.environments === 1 ? "" : "s"} to ${name}, without passwords or keys.`;
+  }
+
+  /** Settings' Import from a backup (#28): pick the file, then preview it in its own dialog. Throws if it cannot be read. */
+  async function importConnections() {
+    const picked = await openFileDialog({ multiple: false, directory: false, filters: [{ name: "Panoptic connections", extensions: ["json"] }] });
+    if (typeof picked !== "string") return;
+    dialog = { kind: "backup", path: picked, preview: await api!.readBackup(picked) };
   }
 
   /** Resolves true only when the user picks the destructive action. */
@@ -771,7 +791,20 @@
       workspace.openWhatsNew(changelog, "settings");
       dialog = undefined;
     }}
+    onExportConnections={exportConnections}
+    onImportConnections={importConnections}
     onClose={() => (dialog = undefined)} />
+{:else if dialog?.kind === "backup" && api}
+  <BackupImportDialog
+    {api}
+    path={dialog.path}
+    preview={dialog.preview}
+    onImported={(r) => {
+      if (r.connectionsAdded > 0 || r.environmentsCreated > 0) configChanged();
+      lastLoad = { id: "", label: "Import from backup", count: r.connectionsAdded, ms: 0 };
+    }}
+    onClose={() => (dialog = undefined)}
+  />
 {:else if dialog?.kind === "import" && api}
   <ImportDialog
     {api}

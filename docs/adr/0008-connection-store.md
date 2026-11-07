@@ -19,7 +19,9 @@ As first accepted, this ADR put secrets in Windows Credential Manager and includ
 
 Export and import move to M4 (plan.md, milestones): a single file holding environments and connections but no secrets, with credentials re-entered or re-acquired on import.
 
+Built (#28, 2026-11-07): Settings > Connections has **Export to a file** and **Import from a backup**. The file is versioned JSON (`"format": "panoptic.connections"`, `"version": 1`) holding environments (name, colour, read-only) and connections (every setting but the id), and no secrets or settings. The sidecar reads and writes it (`Backup/ConnectionBackup.cs`, RPCs `backup.export`, `backup.read`, `backup.import`), so the UI has no file access and secrets never come near the file. Import shows a preview and adds the chosen connections with new ids: environments join one of the same name here (keeping its colour and read-only flag) or are created; a connection the store already has (the duplicate rule from #269), or of a kind or sign-in this version lacks, is skipped with the reason shown; a file from a newer format version is refused. Secrets, optionally passphrase-encrypted, would need this ADR changed first.
+
 ## Consequences
 
-- The store is tied to the Windows user who wrote it. Copying `store.bin` to another machine is not a way to move connections; until M4, the connection importer (SSMS, Azure Data Studio, VS Code) is the only bulk way in.
+- The store is tied to the Windows user who wrote it. Copying `store.bin` to another machine is not a way to move connections; a backup file is, with passwords and keys entered again on the other machine.
 - Settings and secrets share one file and one write, so they cannot get out of step with the connections they belong to.

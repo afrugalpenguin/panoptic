@@ -1,0 +1,1 @@
+Added: Settings can export your environments and connections to a file and import them from one, to back them up or move them to another machine. Passwords and keys are never in the file, and connections you already have are skipped.
