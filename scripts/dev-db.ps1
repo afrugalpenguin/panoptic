@@ -48,18 +48,37 @@ $deadline = (Get-Date).AddMinutes(2)
 $ready = $false
 do {
     Start-Sleep -Seconds 3
-    # Login fails until SQL Server finishes starting; Windows PowerShell treats that stderr as an error.
+    # Login fails until SQL Server finishes starting, and user databases can still be recovering after it does (a
+    # plain SELECT 1 succeeds then, and the seed fails with Msg 5011). Ready means every database is ONLINE.
+    # Windows PowerShell treats the stderr of a failed attempt as an error.
     $ErrorActionPreference = 'Continue'
-    & docker @sqlcmd -Q 'SELECT 1' 2>&1 | Out-Null
+    & docker @sqlcmd -Q "IF EXISTS (SELECT 1 FROM sys.databases WHERE state_desc <> 'ONLINE') RAISERROR('recovering', 16, 1)" 2>&1 | Out-Null
     $ready = $LASTEXITCODE -eq 0
     $ErrorActionPreference = 'Stop'
 } until ($ready -or (Get-Date) -gt $deadline)
-if (-not $ready) { throw 'SQL Server did not become ready' }
+if (-not $ready) { throw 'SQL Server did not become ready (or a database stayed offline)' }
+
+# Data files left behind by an earlier volume, for a seed database SQL Server does not know, make CREATE DATABASE fail
+# (Msg 5170 / 1802). A file with no registered database is not in use, so it can go.
+$seedDatabases = 'Orders', 'Inventory'
+foreach ($db in $seedDatabases) {
+    $registered = & docker @sqlcmd -h -1 -Q "SET NOCOUNT ON; SELECT CASE WHEN DB_ID('$db') IS NULL THEN 0 ELSE 1 END"
+    if ($LASTEXITCODE -ne 0) { throw "Could not check whether $db exists" }
+    if (($registered | Out-String).Trim() -eq '0') {
+        & docker exec panoptic-dev-sql-1 rm -f "/var/opt/mssql/data/$db.mdf" "/var/opt/mssql/data/${db}_log.ldf"
+    }
+}
 
 docker cp (Join-Path $root 'docker\seed.sql') panoptic-dev-sql-1:/tmp/seed.sql | Out-Null
+# One retry: a database can still be finishing recovery or a drop when the seed starts.
 & docker @sqlcmd -i /tmp/seed.sql
-if ($LASTEXITCODE -ne 0) { throw 'SQL seed failed' }
-Write-Host 'SQL Server seeded: Orders, Inventory'
+if ($LASTEXITCODE -ne 0) {
+    Write-Host 'SQL seed failed; retrying once in 5 seconds...'
+    Start-Sleep -Seconds 5
+    & docker @sqlcmd -i /tmp/seed.sql
+    if ($LASTEXITCODE -ne 0) { throw 'SQL seed failed' }
+}
+Write-Host "SQL Server seeded: $($seedDatabases -join ', ')"
 
 # --- PostgreSQL ---------------------------------------------------------------
 Write-Host 'Waiting for PostgreSQL...'
