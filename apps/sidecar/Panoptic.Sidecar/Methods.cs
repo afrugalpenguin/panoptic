@@ -120,25 +120,47 @@ public static class Methods
         };
 
         // Reads other tools' saved connections on this machine. Flags ones that are already in Panoptic.
-        methods["import.scan"] = (_, _) =>
+        Import.ImportSource MarkAdded(Import.ImportSource source)
         {
             var existing = store.Config.Environments.SelectMany(e => e.Connections).Concat(store.Config.Connections)
                 .Select(c => Import.ImportKey.Of(c.Endpoint, c.User, c.Database))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            return source with
+            {
+                Groups = source.Groups.Select(g => g with
+                {
+                    Connections = g.Connections
+                        .Select(c => c with { AlreadyAdded = existing.Contains(Import.ImportKey.Of(c.Endpoint, c.User, c.Database)) })
+                        .ToList(),
+                }).ToList(),
+            };
+        }
+
+        methods["import.scan"] = (_, _) =>
+        {
             var sources = Import.ConnectionImporter.Scan(
                     Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData))
-                .Select(s => s with
-                {
-                    Groups = s.Groups.Select(g => g with
-                    {
-                        Connections = g.Connections
-                            .Select(c => c with { AlreadyAdded = existing.Contains(Import.ImportKey.Of(c.Endpoint, c.User, c.Database)) })
-                            .ToList(),
-                    }).ToList(),
-                })
+                .Select(MarkAdded)
                 .ToArray();
             return Task.FromResult(Rpc.Result(sources, SidecarJson.Default.ImportSourceArray));
+        };
+
+        // A file the user picked (#25): an exported .regsrvr, a RegSrvr or UserSettings .xml, or a settings.json.
+        methods["import.scanFile"] = (p, _) =>
+        {
+            var path = Rpc.Params(p, SidecarJson.Default.ImportFileParams).Path;
+            return Task.FromResult(Rpc.Result(MarkAdded(Import.ConnectionImporter.ScanFile(path)), SidecarJson.Default.ImportSource));
+        };
+
+        // The values-free structure report the import dialog copies for an issue (#25).
+        methods["import.diagnostics"] = (_, _) =>
+        {
+            var report = Import.ConnectionImporter.Diagnostics(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                info.Version);
+            return Task.FromResult<Action<System.Text.Json.Utf8JsonWriter>>(w => w.WriteStringValue(report));
         };
 
         if (query is not null)

@@ -119,6 +119,8 @@ public sealed record AppConfig(List<EnvironmentConfig> Environments, List<Connec
 public sealed record SaveConnectionParams(string? EnvironmentId, ConnectionConfig Connection, string? Secret);
 public sealed record TestConnectionParams(ConnectionConfig Connection, string? Secret);
 public sealed record IdParams(string Id);
+/// <summary>import.scanFile: a file the user picked to import from (#25).</summary>
+public sealed record ImportFileParams(string Path);
 public sealed record PurgeSecretsParams(List<string>? ConnectionIds);
 public sealed record TreeChildrenParams(string NodeId);
 public sealed record TestConnectionResult(bool Ok, double ElapsedMs, string? Error);
@@ -263,6 +265,8 @@ public sealed record StoreFile(AppConfig Config, Dictionary<string, string> Secr
 [JsonSerializable(typeof(TestConnectionResult))]
 [JsonSerializable(typeof(DeviceCodePrompt))]
 [JsonSerializable(typeof(Import.ImportSource[]))]
+[JsonSerializable(typeof(Import.ImportSource))]
+[JsonSerializable(typeof(ImportFileParams))]
 [JsonSerializable(typeof(QueryRequest))]
 [JsonSerializable(typeof(QueryCancelParams))]
 [JsonSerializable(typeof(QuerySummary))]
