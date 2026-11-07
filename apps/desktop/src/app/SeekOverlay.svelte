@@ -51,7 +51,7 @@
     {index}
     chip="Esc"
     autofocus
-    placeholder="Seek anything, anywhere"
+    placeholder="Environments, connections, recent objects"
     label="Seek environments, connections and objects"
     onOpen={(row) => act(onOpen, row)}
     onQuery={(row) => act(onQuery, row)}

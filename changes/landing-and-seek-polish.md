@@ -1,0 +1,1 @@
+Changed: Seek shows the READ ONLY pill and engine badges, says what it searches when nothing matches, and the start page no longer lists your last place twice. On a first run it leads with Import and New connection. The connection dialog opens on Server, and What's new starts on its heading.

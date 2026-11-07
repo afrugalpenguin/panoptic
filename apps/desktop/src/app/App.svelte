@@ -21,7 +21,7 @@
   import Explorer from "./Explorer.svelte";
   import Landing from "./Landing.svelte";
   import SeekOverlay from "./SeekOverlay.svelte";
-  import { livePlace, type SeekEnv, type SeekHost, type SeekIndex, type SeekRow } from "./seek";
+  import { type SeekEnv, type SeekHost, type SeekIndex, type SeekRow } from "./seek";
   import { keyCommand } from "./shortcuts";
   import { loadUsage, recordUse, saveUsage, type Place } from "./usage";
   import { rowMenu, type RowMenuContext } from "./row-menu";
@@ -95,6 +95,8 @@
   let openedMs = $state<number>();
   let explorer = $state<Explorer>();
   let landing = $state<Landing>();
+  /** The first config has arrived: until then an empty config does not mean a first run. */
+  let configLoaded = $state(false);
 
   const model = new TreeModel(
     (id, signal) => api!.children(id, signal),
@@ -127,8 +129,8 @@
         .childIds(envId)
         .map((id) => model.node(id))
         .filter((n): n is TreeNode => n?.kind === "connection")
-        .map((n) => ({ id: n.id, name: n.label, envId }));
-      return [{ id: envId, name: env.label, color: env.meta?.color, hosts }];
+        .map((n) => ({ id: n.id, name: n.label, envId, kind: n.meta?.connectionKind }));
+      return [{ id: envId, name: env.label, color: env.meta?.color, readOnly: env.meta?.readOnly === "true", hosts }];
     });
   }
   /** Connections in no environment, for Seek. */
@@ -136,7 +138,7 @@
     void rows;
     return model.looseIds().flatMap((id) => {
       const n = model.node(id);
-      return n ? [{ id, name: n.label }] : [];
+      return n ? [{ id, name: n.label, kind: n.meta?.connectionKind }] : [];
     });
   }
   const seekIndex = $derived<SeekIndex>({ envs: seekEnvs(), hosts: seekHosts(), usage });
@@ -272,6 +274,7 @@
   async function firstLoad(ping: PingResult) {
     const sidecarReadyEpochMs = nowEpochMs();
     config = await api!.config();
+    configLoaded = true;
     await model.loadRoot();
     await model.preload(model.envIds());
     // Bench only: waiting for the paint would otherwise delay the rest of start-up for nothing.
@@ -717,13 +720,10 @@
         {version}
         engine={sidecar}
         {openedMs}
+        firstRun={configLoaded && config.environments.length === 0 && config.connections.length === 0}
         onSeekOpen={seekOpen}
         onSeekQuery={seekQuery}
         onSeekLeave={() => explorer?.focus()}
-        onReopen={() => {
-          const last = livePlace(seekIndex);
-          if (last) void reopen(last);
-        }}
         onNewQuery={() => workspace.openUnconnected()}
         onNewConnection={() => sidecar === "connected" && addConnection()}
         onImport={() => sidecar === "connected" && (dialog = { kind: "import" })}

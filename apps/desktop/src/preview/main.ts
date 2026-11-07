@@ -11,15 +11,22 @@ import App from "../app/App.svelte";
 import Landing from "../app/Landing.svelte";
 import type { SeekEnv, SeekHost, SeekIndex } from "../app/seek";
 import type { Place } from "../app/usage";
+import { BUILTIN_KINDS } from "../app/builtin-kinds";
+import { registerKinds } from "../app/kinds";
 import Preview from "./Preview.svelte";
 
-const host = (env: string, name: string) => ({ id: `conn:${name}`, name, envId: `env:${env}` });
-const env = (id: string, name: string, color: string, hosts: string[]): SeekEnv => ({ id: `env:${id}`, name, color, hosts: hosts.map((h) => host(id, h)) });
+// The engine from the synthetic name, for Seek's badges; the standalone landing has no sidecar to describe the kinds.
+registerKinds(BUILTIN_KINDS);
+const kindOf = (name: string) => (name.includes("pg") ? "postgres" : name.includes("cosmos") ? "cosmos" : "sql");
+const host = (env: string, name: string) => ({ id: `conn:${name}`, name, envId: `env:${env}`, kind: kindOf(name) });
+const env = (id: string, name: string, color: string, hosts: string[], readOnly = false): SeekEnv => ({
+  id: `env:${id}`, name, color, readOnly, hosts: hosts.map((h) => host(id, h)),
+});
 
 // Synthetic names only (no real servers or tenants).
 const envs: SeekEnv[] = [
   env("dev", "Dev", "#2f9e44", ["dev-sql-01", "uk-dev-pg"]),
-  env("prod", "Prod", "#e03131", ["uk-prod-sql-01", "uk-prod-sql-02", "us-prod-sql-01"]),
+  env("prod", "Prod", "#e03131", ["uk-prod-sql-01", "uk-prod-sql-02", "us-prod-sql-01"], true),
   env("uat", "UAT", "#f08c00", ["uat-sql-01"]),
   env("test", "Test", "#1971c2", ["test-sql-01"]),
   env("staging", "Staging", "#7048e8", ["stg-sql-01", "stg-cosmos"]),
@@ -173,7 +180,6 @@ function mountLanding() {
       onSeekOpen: noop,
       onSeekQuery: noop,
       onSeekLeave: noop,
-      onReopen: noop,
       onNewQuery: noop,
       onNewConnection: noop,
       onImport: noop,

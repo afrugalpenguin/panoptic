@@ -3,7 +3,7 @@
   // action list, the engine's status and a faded wordmark. Renders and forwards only; App does the work.
   import mark from "../../src-tauri/icons/icon.svg";
   import SeekBox from "./SeekBox.svelte";
-  import { livePlace, seekSummary, type SeekIndex, type SeekRow } from "./seek";
+  import { seekSummary, type SeekIndex, type SeekRow } from "./seek";
 
   let {
     index,
@@ -12,11 +12,11 @@
     version,
     engine,
     openedMs,
+    firstRun = false,
     query = $bindable(""),
     onSeekOpen,
     onSeekQuery,
     onSeekLeave,
-    onReopen,
     onNewQuery,
     onNewConnection,
     onImport,
@@ -30,11 +30,12 @@
     engine: "connecting" | "connected" | "disconnected";
     /** Launch to engine ready, once known. */
     openedMs?: number;
+    /** Config loaded and no connections yet: lead with Import and New connection (#220). */
+    firstRun?: boolean;
     query?: string;
     onSeekOpen: (row: SeekRow) => void;
     onSeekQuery: (row: SeekRow) => void;
     onSeekLeave: () => void;
-    onReopen: () => void;
     onNewQuery: () => void;
     /** Opens the connection dialog, environment None (App's addConnection). */
     onNewConnection: () => void;
@@ -47,12 +48,53 @@
     box?.focus();
   }
 
-  const last = $derived(livePlace(index));
-  const lastPath = $derived(
-    last ? [index.envs.find((e) => e.id === last.envId)?.name, last.hostName, last.label].filter(Boolean).join(" / ") : "",
-  );
   const hint = $derived(seekSummary(envCount, connectionCount));
+
+  // A first run has nothing to seek: start on Import, the action a new user most likely needs (#220).
+  let importButton = $state<HTMLButtonElement>();
+  $effect(() => {
+    if (firstRun) importButton?.focus();
+  });
 </script>
+
+{#snippet newQueryAction()}
+  <li>
+    <button onclick={onNewQuery}>
+      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+        <path d="M3.5 1.5h6l3 3v10h-9z M9.5 1.5v3h3 M8 7.5v5 M5.5 10h5" fill="none" stroke="currentColor" stroke-width="1.3" />
+      </svg>
+      <span class="label">New query</span>
+      <kbd>Ctrl N</kbd>
+    </button>
+  </li>
+{/snippet}
+
+{#snippet newConnectionAction(why?: string)}
+  <li>
+    <button onclick={onNewConnection}>
+      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+        <ellipse cx="7" cy="3.5" rx="4.5" ry="1.8" fill="none" stroke="currentColor" stroke-width="1.3" />
+        <path d="M2.5 3.5v8c0 1 2 1.8 4.5 1.8 M11.5 3.5V8 M2.5 7.5c0 1 2 1.8 4.5 1.8 M12 10.5v4 M10 12.5h4" fill="none" stroke="currentColor" stroke-width="1.3" />
+      </svg>
+      <span class="label">New connection</span>
+      {#if why}<span class="why">{why}</span>{/if}
+      <kbd>Ctrl Shift N</kbd>
+    </button>
+  </li>
+{/snippet}
+
+{#snippet importAction(why?: string)}
+  <li class:dim={!why}>
+    <button bind:this={importButton} onclick={onImport}>
+      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+        <path d="M8 2v8 M5 7l3 3 3-3 M2.5 11v2.5h11V11" fill="none" stroke="currentColor" stroke-width="1.3" />
+      </svg>
+      <span class="label">Import</span>
+      {#if why}<span class="why">{why}</span>{/if}
+      <kbd>Ctrl I</kbd>
+    </button>
+  </li>
+{/snippet}
 
 <section class="landing">
   <div class="column">
@@ -68,8 +110,8 @@
       bind:query
       {index}
       chip="Ctrl P"
-      autofocus
-      placeholder="Seek anything, anywhere"
+      autofocus={!firstRun}
+      placeholder="Environments, connections, recent objects"
       label="Seek environments, connections and objects"
       onOpen={onSeekOpen}
       onQuery={onSeekQuery}
@@ -77,47 +119,17 @@
     />
     <p class="muted-line">{hint}</p>
 
+    <!-- The last place is Seek's first row ("Pick up where you left off"), so it is not repeated here (#223). -->
     <ul class="actions">
-      {#if last}
-        <li>
-          <button onclick={onReopen}>
-            <svg class="amber" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-              <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.4" />
-              <path d="M8 4.5V8l2.5 1.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
-            </svg>
-            <span class="label">Reopen last session</span>
-            <span class="where">{lastPath}</span>
-          </button>
-        </li>
+      {#if firstRun}
+        {@render importAction("Bring in saved connections from SSMS, Azure Data Studio or VS Code.")}
+        {@render newConnectionAction("Add a server or account by hand.")}
+        {@render newQueryAction()}
+      {:else}
+        {@render newQueryAction()}
+        {@render newConnectionAction()}
+        {@render importAction()}
       {/if}
-      <li>
-        <button onclick={onNewQuery}>
-          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-            <path d="M3.5 1.5h6l3 3v10h-9z M9.5 1.5v3h3 M8 7.5v5 M5.5 10h5" fill="none" stroke="currentColor" stroke-width="1.3" />
-          </svg>
-          <span class="label">New query</span>
-          <kbd>Ctrl N</kbd>
-        </button>
-      </li>
-      <li>
-        <button onclick={onNewConnection}>
-          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-            <ellipse cx="7" cy="3.5" rx="4.5" ry="1.8" fill="none" stroke="currentColor" stroke-width="1.3" />
-            <path d="M2.5 3.5v8c0 1 2 1.8 4.5 1.8 M11.5 3.5V8 M2.5 7.5c0 1 2 1.8 4.5 1.8 M12 10.5v4 M10 12.5h4" fill="none" stroke="currentColor" stroke-width="1.3" />
-          </svg>
-          <span class="label">New connection</span>
-          <kbd>Ctrl Shift N</kbd>
-        </button>
-      </li>
-      <li class="dim">
-        <button onclick={onImport}>
-          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-            <path d="M8 2v8 M5 7l3 3 3-3 M2.5 11v2.5h11V11" fill="none" stroke="currentColor" stroke-width="1.3" />
-          </svg>
-          <span class="label">Import</span>
-          <kbd>Ctrl I</kbd>
-        </button>
-      </li>
     </ul>
   </div>
 
@@ -205,17 +217,15 @@
     flex: none;
     color: var(--text-muted);
   }
-  .actions svg.amber {
-    color: var(--brand-amber);
-  }
   .label {
     flex: none;
   }
-  .where {
-    margin-left: auto;
+  /* First run only: one line on what the action is for. */
+  .why {
+    min-width: 0;
     overflow: hidden;
     color: var(--text-muted);
-    font: 11px var(--font-mono);
+    font: 12px var(--font-ui);
     text-overflow: ellipsis;
     white-space: nowrap;
   }

@@ -44,6 +44,13 @@ function pick(kind: string) {
   flushSync();
 }
 
+describe("connection dialog focus", () => {
+  it("opens on the Server field, not the optional Environment picker", () => {
+    open(BUILTIN_KINDS);
+    expect(document.activeElement?.id).toBe("c-endpoint");
+  });
+});
+
 describe("connection kinds from the sidecar", () => {
   it("lists the described kinds, first one picked", () => {
     open(BUILTIN_KINDS);

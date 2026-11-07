@@ -2,6 +2,9 @@
   // The Seek box (docs/landing.md, "Seek"): an input over seek()'s rows. Ranking and keys live in seek.ts; this only
   // renders and forwards. Used by the landing (scope "all") and the unconnected query tab's picker ("connections").
   import { onMount } from "svelte";
+  import { kindBadge } from "./kinds";
+  import KindBadge from "./rows/KindBadge.svelte";
+  import ReadOnlyPill from "./rows/ReadOnlyPill.svelte";
   import { seek, seekKey, selectable, type SeekIndex, type SeekRow } from "./seek";
 
   let {
@@ -35,6 +38,8 @@
   let active = $state(0);
 
   const rows = $derived(seek(index, query, scope));
+  /** A miss: something typed and nothing found. Seek says what it looked through, since it does not search inside databases (#215). */
+  const missed = $derived(query.trim() !== "" && rows.length === 0);
   const list = $derived(rows.filter(selectable));
 
   // A new query starts at the top again.
@@ -112,9 +117,12 @@
             {:else if row.kind === "env"}
               <span class="swatch" style:--c={row.env.color ?? "transparent"}></span>
               <span class="main">{row.env.name}</span>
+              {#if row.env.readOnly}<ReadOnlyPill color={row.env.color} />{/if}
             {:else if row.kind === "host"}
+              {#if row.host.kind}<KindBadge badge={kindBadge(row.host.kind)} />{/if}
               <span class="main mono">{row.host.name}</span>
               {#if row.env}<span class="sub">{row.env.name}</span>{/if}
+              {#if row.env?.readOnly}<ReadOnlyPill color={row.env.color} />{/if}
             {:else}
               <span class="main mono">{row.place.label}</span>
               <span class="sub mono">{row.place.hostName}</span>
@@ -123,6 +131,12 @@
         {/if}
       {/each}
     </ul>
+  {:else if missed}
+    <p class="miss" role="status">
+      {scope === "connections"
+        ? "No connection matches."
+        : "Nothing matches. Seek looks through environments, connections and objects you have opened; expand a connection in the explorer to find anything else."}
+    </p>
   {/if}
 </div>
 
@@ -222,5 +236,10 @@
     height: 8px;
     border-radius: 2px;
     background: var(--c);
+  }
+  .miss {
+    margin: 4px 14px 0;
+    color: var(--text-muted);
+    font-size: 12.5px;
   }
 </style>

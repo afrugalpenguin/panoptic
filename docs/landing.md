@@ -11,9 +11,10 @@ The landing shows when no tab is open **and** nothing is selected in the tree. I
 A centred column, at most 460px wide:
 
 - Header: the 32px mark (`src-tauri/icons/icon.svg`), `PANOPTIC` (16px, 600, letter-spacing 2.4px, muted), the version in mono 11px on the right.
-- The Seek box: 56px tall, radius 12, a cyan border with a 4px cyan ring, placeholder "Seek anything, anywhere", a `Ctrl P` chip. Focused when the landing shows.
-- A muted line: "Objects across all N environments. Type a table, container, proc or host." ("No environments yet" with none.)
-- Actions, 44px rows with dividers: Reopen last session (amber clock and the last place in muted mono, only when there is one), New query `Ctrl N`, New connection `Ctrl Shift N` (with no environments yet it asks for one first; New environment stays in the explorer footer), Import `Ctrl I` (dimmed).
+- The Seek box: 56px tall, radius 12, a cyan border with a 4px cyan ring, placeholder "Environments, connections, recent objects" (what it searches; it does not search inside databases, #215), a `Ctrl P` chip. Focused when the landing shows, except on a first run.
+- A muted line saying what Seek looks through: "Seeks 3 environments, 10 connections and the objects you have opened." ("No connections yet" with none.)
+- Actions, 44px rows with dividers: New query `Ctrl N`, New connection `Ctrl Shift N` (New environment stays in the explorer footer), Import `Ctrl I` (dimmed). The last place is not repeated here: it is Seek's first row, "Pick up where you left off" (#223).
+- **First run** (config loaded, no environments and no connections): Import comes first, then New connection, both undimmed with one muted line each ("Bring in saved connections from SSMS, Azure Data Studio or VS Code.", "Add a server or account by hand."), then New query. Import has focus instead of Seek, which has nothing to find yet (#220).
 - Bottom left, mono 11px: a green dot (`--ok`, as in the status bar), "Ready" and "opened in NNN ms" when the engine is up; "Starting database engine..."; or "Database engine stopped" and Restart.
 - Bottom right: a faded 300px "Panoptic" wordmark overflowing the corner, `aria-hidden`, behind everything.
 
@@ -36,9 +37,13 @@ With no environment matching, the connections in no environment and their recent
 
 So "uk prod" ranks Prod first with only its `uk-` hosts under it: "uk" is in neither `us-prod-sql-01` nor "Prod".
 
+**Rows:** an environment row shows its colour swatch and, for a read-only environment, the tree's READ ONLY pill; a connection row shows its engine badge, its environment's name and the same pill (#227).
+
+**A miss:** something typed and no rows says what Seek searched: "Nothing matches. Seek looks through environments, connections and objects you have opened; expand a connection in the explorer to find anything else." In the connection picker: "No connection matches." (#215)
+
 **Connections only** (the unconnected tab's picker): every connection, the last used one first when nothing is typed; typed, tokens AND across the host and environment names, the host name counting double. A connection in no environment matches on its own name only.
 
-**Stale usage:** usage outlives config. A remembered place whose connection has since been removed is never offered, in Seek or as Reopen last session. A place's environment is looked up from its connection, not remembered, so a connection that moved keeps its places under its new environment (or none).
+**Stale usage:** usage outlives config. A remembered place whose connection has since been removed is never offered, in Seek. A place's environment is looked up from its connection, not remembered, so a connection that moved keeps its places under its new environment (or none).
 
 ### Keys
 
@@ -64,7 +69,7 @@ Kept in local storage under `panoptic.usage`, on this machine only, never sent a
 - the last place: the environment, connection and node of the last query tab opened;
 - recent objects: places below connection level (a database, table, view, procedure or container), newest first, 20 kept.
 
-Reopen last session and Pick up where you left off restore the **place only**: the tree focuses the environment and connection, selects the connection, and a new query tab opens on the node. No tabs or text are restored. Broken or missing storage just means an empty landing.
+Pick up where you left off restores the **place only**: the tree focuses the environment and connection, selects the connection, and a new query tab opens on the node. No tabs or text are restored. Broken or missing storage just means an empty landing.
 
 ## Unconnected query tabs
 
