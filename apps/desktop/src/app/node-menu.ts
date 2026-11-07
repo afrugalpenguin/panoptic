@@ -27,10 +27,14 @@ export interface NodeActionHandlers {
 
 /**
  * The query action a keyboard shortcut starts on the selected node (Ctrl+N: newQuery), or undefined when the node does
- * not carry that action: a node whose backend cannot query never does.
+ * not carry that action: a node whose backend cannot query never does. Shift or Alt makes it another shortcut
+ * (Ctrl+Shift+N is New connection, shortcuts.ts), so those are left alone.
  */
-export function shortcutAction(e: Pick<KeyboardEvent, "ctrlKey" | "metaKey" | "key">, node: TreeNode | undefined): TabAction | undefined {
-  if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "n") return undefined;
+export function shortcutAction(
+  e: Pick<KeyboardEvent, "ctrlKey" | "metaKey" | "key"> & Partial<Pick<KeyboardEvent, "shiftKey" | "altKey">>,
+  node: TreeNode | undefined,
+): TabAction | undefined {
+  if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== "n") return undefined;
   return node?.actions.includes("newQuery") ? "newQuery" : undefined;
 }
 
