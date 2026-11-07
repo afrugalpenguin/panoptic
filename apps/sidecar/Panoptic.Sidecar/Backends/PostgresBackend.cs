@@ -113,7 +113,12 @@ public sealed class PostgresBackend(Credentials credentials) : IQueryBackend
         }
     }
 
-    public IReadOnlyList<string> AuthsFor(string kind) => [AuthKinds.Entra, AuthKinds.Password];
+    /// <summary>Entra users sign in under their Entra name, which the optional user overrides.</summary>
+    public KindDescription Describe(string kind) => new(
+        kind, "PostgreSQL / Azure Database for PostgreSQL", "Server", "myserver.postgres.database.azure.com or host:5432",
+        [AuthKinds.Option(AuthKinds.Entra), AuthKinds.Option(AuthKinds.Password)],
+        new KindBadge("PG", "#5f7a2e", "Postgres"),
+        new ConnectionFields(Database: true, CertificateOptions: true, EntraUser: true, TrustLocalOnly: false));
 
     public void Forget(string connectionId)
     {

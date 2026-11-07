@@ -629,7 +629,7 @@ public sealed class TreeServiceTests : IDisposable
 
         public void Forget(string connectionId) { }
 
-        public IReadOnlyList<string> AuthsFor(string kind) => [AuthKinds.Sql];
+        public KindDescription Describe(string kind) => TestKinds.Describe(kind, AuthKinds.Sql);
     }
 
     [Fact]

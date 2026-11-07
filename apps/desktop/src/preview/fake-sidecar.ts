@@ -4,6 +4,7 @@
 import { emit } from "@tauri-apps/api/event";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import type { AppConfig, ConnectionKind, EnvironmentConfig, TreeNode } from "../app/api";
+import { BUILTIN_KINDS } from "../app/builtin-kinds";
 
 const VERSION = "0.2.0";
 
@@ -230,6 +231,8 @@ function handle(req: Request): unknown {
         editor: { intellisense: true, catalogSampleDocs: 50, autoRefreshOnDdl: true, warnUnknownNames: true, maxRows: 100_000 },
         lastSeenVersion: VERSION,
       };
+    case "backends.describe":
+      return BUILTIN_KINDS;
     case "node.actionLabels":
       return { selectTop: "Select top 1000", newQuery: "New query", refresh: "Refresh" };
     case "tree.children":

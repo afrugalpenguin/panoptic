@@ -21,9 +21,12 @@ public interface IBackend
     /// <summary>Drops any cached client for a connection whose settings changed or was removed.</summary>
     void Forget(string connectionId);
 
-    /// <summary>The <see cref="AuthKinds"/> a connection of <paramref name="kind"/> may use. Saving or testing a
-    /// connection with any other is refused before it reaches the store or the backend, whatever the UI sent.</summary>
-    IReadOnlyList<string> AuthsFor(string kind);
+    /// <summary>
+    /// What the UI shows for connections of <paramref name="kind"/> (one of the kinds this backend is registered
+    /// for): labels, badge, auths and optional fields. The auths are also the only ones a connection may be saved or
+    /// tested with, whatever the UI sent.
+    /// </summary>
+    KindDescription Describe(string kind);
 
     // --- Node actions (optional) ---------------------------------------------------------------------
     // A node's action ids come with it from ChildrenAsync. Labels for the shared ones are in Nodes.ActionLabels.

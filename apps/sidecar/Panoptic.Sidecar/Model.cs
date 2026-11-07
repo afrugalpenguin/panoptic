@@ -44,7 +44,49 @@ public static class AuthKinds
     public const string Windows = "windows";
     /// <summary>User name and password (Postgres). SQL Server's equivalent is <see cref="Sql"/>.</summary>
     public const string Password = "password";
+
+    /// <summary>An auth as the connection dialog lists it.</summary>
+    public static AuthOption Option(string id) => new(id, id switch
+    {
+        Entra => "Microsoft Entra ID",
+        Sql => "SQL login",
+        Key => "Account key",
+        Windows => "Windows",
+        Password => "Username and password",
+        _ => id,
+    });
 }
+
+/// <summary>
+/// Everything engine-specific the UI shows for a connection kind (backends.describe, #203), so the UI hard-codes no
+/// engine: the connection dialog, the tree's kind badge and the engine filter all read this.
+/// </summary>
+/// <param name="Label">The kind as the connection dialog's Type list shows it.</param>
+/// <param name="EndpointLabel">What the endpoint field is called: "Server", "Account URI".</param>
+/// <param name="Auths">The auths a connection of this kind may use, in the order the dialog lists them. Saving or
+/// testing a connection with any other is refused (<see cref="TreeService.Validate"/>).</param>
+public sealed record KindDescription(
+    string Kind,
+    string Label,
+    string EndpointLabel,
+    string EndpointPlaceholder,
+    IReadOnlyList<AuthOption> Auths,
+    KindBadge Badge,
+    ConnectionFields Fields);
+
+public sealed record AuthOption(string Id, string Label);
+
+/// <param name="Letters">One or two letters shown in the tree's 14px square.</param>
+/// <param name="Name">The kind's short name, on the engine filter and in messages.</param>
+public sealed record KindBadge(string Letters, string Color, string Name);
+
+/// <summary>Which optional connection settings apply to a kind.</summary>
+/// <param name="Database">The tree can be limited to one database.</param>
+/// <param name="CertificateOptions">Takes a certificate host name and file (#261).</param>
+/// <param name="EntraUser">With Entra, takes an optional user to sign in as (Postgres maps Entra users to roles).</param>
+/// <param name="TrustLocalOnly">Skipping the certificate check is allowed for a server on this machine only (an
+/// emulator), so it carries no risk warning.</param>
+public sealed record ConnectionFields(bool Database, bool CertificateOptions, bool EntraUser, bool TrustLocalOnly);
 
 /// <param name="Endpoint">SQL Server host[,port], Postgres host[:port] or Cosmos account URI.</param>
 /// <param name="Database">Optional: restrict the tree to one database (needed for contained users).</param>
@@ -183,6 +225,7 @@ public sealed record StoreFile(AppConfig Config, Dictionary<string, string> Secr
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(TreeNode[]))]
+[JsonSerializable(typeof(KindDescription[]))]
 [JsonSerializable(typeof(NodeError))]
 [JsonSerializable(typeof(AppConfig))]
 [JsonSerializable(typeof(AppSettings))]
