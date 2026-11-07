@@ -61,6 +61,10 @@ export function createApi(rpc: RpcClient) {
       // Sign-in can include an interactive Entra prompt, so allow longer than a normal call.
       rpc.request<TestConnectionResult>("connection.test", { connection, secret: secret ?? null }, 180_000, signal),
     scanImports: () => rpc.request<ImportSource[]>("import.scan", undefined, 30_000),
+    /** Connections backups (#28): the sidecar reads and writes the file; secrets are never in it. */
+    exportBackup: (path: string) => rpc.request<Sidecar.BackupExportResult>("backup.export", { path }),
+    readBackup: (path: string) => rpc.request<Sidecar.BackupPreview>("backup.read", { path }),
+    importBackup: (path: string, connections: number[]) => rpc.request<Sidecar.BackupImportResult>("backup.import", { path, connections }),
     // A query can legitimately run for a long time; the user cancels it, so no RPC timeout applies.
     executeQuery: (request: { queryId: string; nodeId: string; text: string; database?: string }) =>
       rpc.request<import("../query/types").QuerySummary>("query.execute", request, 2_147_483_647),

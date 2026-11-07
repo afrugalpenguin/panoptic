@@ -19,6 +19,50 @@ export interface AuthOption {
   label: string;
 }
 
+export interface BackupExportResult {
+  environments: number;
+  connections: number;
+}
+
+export interface BackupImportParams {
+  path: string;
+  connections: number[];
+}
+
+export interface BackupImportResult {
+  environmentsCreated: number;
+  connectionsAdded: number;
+  skipped: number;
+}
+
+export interface BackupPathParams {
+  path: string;
+}
+
+export interface BackupPreview {
+  environments: BackupPreviewEnvironment[];
+  connections: BackupPreviewConnection[];
+}
+
+export interface BackupPreviewConnection {
+  index: number;
+  name: string;
+  kind: string;
+  endpoint: string;
+  auth: string;
+  user?: string | null;
+  database?: string | null;
+  environment?: string | null;
+  skip?: string | null;
+}
+
+export interface BackupPreviewEnvironment {
+  name: string;
+  color: string;
+  readOnly: boolean;
+  exists: boolean;
+}
+
 export interface CatalogNotice {
   key: string;
   state: string;
