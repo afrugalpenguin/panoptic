@@ -91,7 +91,7 @@ A connection's node id never includes its environment, so moving one keeps open 
 - Indent 30px from the bar, then chevron, engine badge, label, in that order with 8px gaps.
 - Engine badge: 14px square, 3px radius, letter(s) in 9px bold. Colours: SQL `#2d5aa0` "S", Cosmos `#1f7a74` "C", Synapse `#7b4fb5` "Sy", Postgres `#5f7a2e` "PG". New engines register a badge with the backend.
 - Badge visibility is a setting (`explorer.showKindBadge`, default true). Hidden badges leave no gap.
-- Label is the real endpoint in Consolas / Cascadia Mono 12.5px, split into three segments: dim prefix, bright core, dim suffix. Dim is `#6a6a6a`, bright is white weight 700.
+- Label is the real endpoint in Consolas / Cascadia Mono 12.5px, split into three segments: dim prefix, bright core, dim suffix. Dim is `#8b9199` in the dark theme and `#6a6a6a` in the light one (AA on a row and a hovered row in each; the original dark `#6a6a6a` was 3.05:1), bright is white weight 700.
 - The connection's display name follows in muted 11px UI type, only when the endpoint does not already contain it (a name left as the server or its host shows nothing). It shrinks before the endpoint does, so a narrow panel loses the name first (#214).
 - Selected row: background env colour at 22% alpha over the base (11% on hover), dim segments lift to `#9aa3b5`. Folder and leaf rows follow the same rule.
 

@@ -50,4 +50,10 @@ describe.each([
     expect(t["--on-accent"], "--on-accent").toBeDefined();
     expect(contrast(t["--on-accent"], t["--accent-fill"])).toBeGreaterThanOrEqual(4.5);
   });
+
+  it("the tree's dimmed name parts are AA text on a row, hovered or not, and on a selected row (#233)", () => {
+    expect(contrast(t["--tree-dim"], t["--bg-pane"])).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(t["--tree-dim"], t["--bg-hover"])).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(t["--tree-dim-selected"], t["--bg-selected"])).toBeGreaterThanOrEqual(4.5);
+  });
 });
