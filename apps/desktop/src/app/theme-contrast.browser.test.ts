@@ -44,4 +44,10 @@ describe.each([
     expect(contrast(t["--focus-ring"], t["--bg-pane"])).toBeGreaterThanOrEqual(3);
     expect(contrast(t["--focus-ring"], t["--bg"])).toBeGreaterThanOrEqual(3);
   });
+
+  it("text on a filled accent button (Run, Save, Update) is AA (#234)", () => {
+    expect(t["--accent-fill"], "--accent-fill").toBeDefined();
+    expect(t["--on-accent"], "--on-accent").toBeDefined();
+    expect(contrast(t["--on-accent"], t["--accent-fill"])).toBeGreaterThanOrEqual(4.5);
+  });
 });

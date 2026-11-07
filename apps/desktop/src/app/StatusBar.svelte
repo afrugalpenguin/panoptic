@@ -139,9 +139,9 @@
   .update {
     padding: 0 8px;
     font-size: 12px;
-    color: #fff;
-    background: var(--accent);
-    border-color: var(--accent);
+    color: var(--on-accent);
+    background: var(--accent-fill);
+    border-color: var(--accent-fill);
   }
   .spinner {
     width: 10px;

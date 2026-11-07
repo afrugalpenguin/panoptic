@@ -12,6 +12,9 @@
   --text: #1f2328;
   --text-muted: #656d76;
   --accent: #1f6feb;
+  /* A filled accent button and its text (Run, Save, Update), AA in each theme (theme-contrast test, #234). */
+  --accent-fill: #1f6feb;
+  --on-accent: #ffffff;
   --ok: #1a7f37;
   --bad: #cf222e;
   --warn: #9a6700;
@@ -53,6 +56,9 @@
     --text: #e6e7ea;
     --text-muted: #9198a1;
     --accent: #4c8dff;
+    /* The bright accent stays for links and focus on dark panes; white on it was 3.20:1, so fills are darker. */
+    --accent-fill: #2563d6;
+    --on-accent: #ffffff;
     --ok: #3fb950;
     --bad: #f85149;
     --warn: #d29922;
@@ -113,12 +119,12 @@ button:disabled {
   cursor: default;
 }
 button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+  background: var(--accent-fill);
+  border-color: var(--accent-fill);
+  color: var(--on-accent);
 }
 button.primary:hover:not(:disabled) {
-  background: var(--accent);
+  background: var(--accent-fill);
   filter: brightness(1.1);
 }
 button.danger {
