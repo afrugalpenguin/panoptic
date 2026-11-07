@@ -130,6 +130,8 @@ public sealed class PostgresBackend(Credentials credentials) : IQueryBackend
 
     public string EditorLanguage => "pgsql";
 
+    public QueryCapabilities Capabilities { get; } = new(DatabasePicker: true, UnknownNameWarnings: true, DdlRefresh: true);
+
     private static readonly HashSet<string> SelectableFolders = ["tables", "views", "matviews"];
 
     /// <summary>selectTop on a table, view or materialized view (the tree offers it there); any other action opens empty.</summary>
@@ -306,6 +308,20 @@ public sealed class PostgresBackend(Credentials credentials) : IQueryBackend
     /// and gets no script line: its position would be in the function's body.
     /// </summary>
     public static QueryError ToQueryError(string script, PostgresStatements.Statement? statement, string state, string message, int position,
+        string? where, string? detail, string? hint) =>
+        Located(script, statement, state, message, position, where, detail, hint) with { Unknown = UnknownName(state, message) };
+
+    /// <summary>Undefined table, column and function. 42P01 also covers "missing FROM-clause entry", which names no object
+    /// to look up, hence the wording check.</summary>
+    private static string? UnknownName(string state, string message) => state switch
+    {
+        "42P01" when message.Contains("does not exist", StringComparison.Ordinal) => UnknownNames.Object,
+        "42703" => UnknownNames.Column,
+        "42883" => UnknownNames.Function,
+        _ => null,
+    };
+
+    private static QueryError Located(string script, PostgresStatements.Statement? statement, string state, string message, int position,
         string? where, string? detail, string? hint)
     {
         var text = message;

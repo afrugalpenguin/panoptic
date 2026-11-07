@@ -44,19 +44,32 @@ public class QueryErrorTests
     [Fact]
     public void Batch_line_is_added_to_the_server_line()
     {
-        Assert.Equal(new QueryError(208, 41, "Line 41: Invalid object name 'x'."), SqlBackend.ToQueryError(208, 2, "", "Invalid object name 'x'.", 40));
+        Assert.Equal(new QueryError(208, 41, "Line 41: Invalid object name 'x'.", Unknown: UnknownNames.Object), SqlBackend.ToQueryError(208, 2, "", "Invalid object name 'x'.", 40));
     }
 
     [Fact]
     public void Error_inside_a_procedure_names_it_and_has_no_script_line()
     {
-        Assert.Equal(new QueryError(208, null, "Procedure p, line 3: Invalid object name 'x'."), SqlBackend.ToQueryError(208, 3, "p", "Invalid object name 'x'.", 40));
+        Assert.Equal(new QueryError(208, null, "Procedure p, line 3: Invalid object name 'x'.", Unknown: UnknownNames.Object), SqlBackend.ToQueryError(208, 3, "p", "Invalid object name 'x'.", 40));
     }
 
     [Fact]
     public void Error_without_a_line_keeps_its_text()
     {
         Assert.Equal(new QueryError(18456, null, "Login failed."), SqlBackend.ToQueryError(18456, 0, null, "Login failed.", 1));
+    }
+
+    // The UI places and suggests names by what was not found, not by SQL Server's numbers (#203).
+    [Theory]
+    [InlineData(208, UnknownNames.Object)]
+    [InlineData(207, UnknownNames.Column)]
+    [InlineData(2812, UnknownNames.Procedure)]
+    [InlineData(4104, UnknownNames.Qualifier)]
+    [InlineData(102, null)]
+    [InlineData(547, null)]
+    public void Name_errors_say_what_was_not_found(int number, string? unknown)
+    {
+        Assert.Equal(unknown, SqlBackend.ToQueryError(number, 1, null, "x", 0).Unknown);
     }
 }
 

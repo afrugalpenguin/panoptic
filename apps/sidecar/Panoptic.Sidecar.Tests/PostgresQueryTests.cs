@@ -92,7 +92,7 @@ public class PostgresQueryErrorTests
     {
         var e = PostgresBackend.ToQueryError(Script, Second, "42703", "column o.idd does not exist", 8, null, null, "Perhaps you meant to reference the column \"o.id\".");
 
-        Assert.Equal(new QueryError(0, 3, "Line 3: column o.idd does not exist\nHINT: Perhaps you meant to reference the column \"o.id\".", "42703", 8), e);
+        Assert.Equal(new QueryError(0, 3, "Line 3: column o.idd does not exist\nHINT: Perhaps you meant to reference the column \"o.id\".", "42703", 8, UnknownNames.Column), e);
     }
 
     [Fact]
@@ -109,6 +109,18 @@ public class PostgresQueryErrorTests
         var e = PostgresBackend.ToQueryError(Script, Second, "P0001", "boom", 0, "PL/pgSQL function sales.f(integer) line 3 at RAISE\nSQL statement \"...\"", null, null);
 
         Assert.Equal(new QueryError(0, null, "PL/pgSQL function sales.f(integer) line 3 at RAISE: boom", "P0001"), e);
+    }
+
+    // 42P01 also covers "missing FROM-clause entry", which names no object to look up (#203 moved this from the UI).
+    [Theory]
+    [InlineData("42P01", "relation \"sales.ordrs\" does not exist", UnknownNames.Object)]
+    [InlineData("42P01", "missing FROM-clause entry for table \"o\"", null)]
+    [InlineData("42703", "column o.idd does not exist", UnknownNames.Column)]
+    [InlineData("42883", "function sales.totl(integer) does not exist", UnknownNames.Function)]
+    [InlineData("22012", "division by zero", null)]
+    public void Name_errors_say_what_was_not_found(string state, string message, string? unknown)
+    {
+        Assert.Equal(unknown, PostgresBackend.ToQueryError(Script, Second, state, message, 8, null, null, null).Unknown);
     }
 }
 

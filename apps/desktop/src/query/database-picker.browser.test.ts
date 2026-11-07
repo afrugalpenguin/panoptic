@@ -9,7 +9,7 @@ import { QueryWorkspace } from "./store.svelte";
 import type { QuerySummary } from "./types";
 
 // Synthetic names only.
-const onConnection = { nodeId: "env:dev/conn:c1", label: "pg-dev", connection: "pg-dev", envColor: "#2f9e44", readOnly: false, language: "pgsql" as const };
+const onConnection = { nodeId: "env:dev/conn:c1", label: "pg-dev", connection: "pg-dev", envColor: "#2f9e44", readOnly: false, language: "pgsql" as const, capabilities: { databasePicker: true, unknownNameWarnings: true, ddlRefresh: true } };
 const onDatabase = { ...onConnection, nodeId: "env:dev/conn:c1/db:orders", label: "orders" };
 const seekIndex: SeekIndex = { environments: [], loose: [], usage: { recent: [] } } as unknown as SeekIndex;
 

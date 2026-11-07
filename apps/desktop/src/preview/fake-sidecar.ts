@@ -243,7 +243,10 @@ function handle(req: Request): unknown {
       const nodeId = String(p.nodeId);
       const obj = nodeId.split("/").at(-1)!;
       const text = p.action === "selectTop" && obj.startsWith("o:") ? `SELECT TOP (1000) *\nFROM ${obj.slice(2).split(".").map((s) => `[${s}]`).join(".")};` : "";
-      return { text, language: languageOf(nodeId), scope: scopeOf(nodeId) };
+      // As the sidecar's backends report them: Cosmos tabs have no database picker, unknown-name warnings or DDL refresh.
+      const queryable = languageOf(nodeId) !== "cosmos";
+      const capabilities = { databasePicker: queryable, unknownNameWarnings: queryable, ddlRefresh: queryable };
+      return { text, language: languageOf(nodeId), scope: scopeOf(nodeId), capabilities };
     }
     case "catalog.get":
     case "catalog.refresh": {

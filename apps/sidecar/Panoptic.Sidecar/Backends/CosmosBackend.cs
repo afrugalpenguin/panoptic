@@ -92,6 +92,9 @@ public sealed class CosmosBackend(Credentials credentials) : IQueryBackend
 
     public string EditorLanguage => "cosmos";
 
+    /// <summary>A tab is bound to its container, the catalog is sampled (it cannot say a name is missing), and there is no DDL.</summary>
+    public QueryCapabilities Capabilities { get; } = new(DatabasePicker: false, UnknownNameWarnings: false, DdlRefresh: false);
+
     /// <summary>selectTop on a container; any other action opens empty.</summary>
     public string? TemplateFor(NodePath path, string action)
     {

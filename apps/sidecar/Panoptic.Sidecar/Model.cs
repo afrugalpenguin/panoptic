@@ -133,7 +133,14 @@ public sealed record QuerySummary(string QueryId, ResultSetSummary[] ResultSets,
 public sealed record QueryTemplateParams(string NodeId, string Action);
 /// <param name="Language">The backend's editor language: "sql", "cosmos" or "pgsql".</param>
 /// <param name="Scope">What the tab runs against, so the UI never parses the node id.</param>
-public sealed record QueryTemplateResult(string? Text, string Language, QueryScope? Scope = null);
+public sealed record QueryTemplateResult(string? Text, string Language, QueryScope? Scope = null, QueryCapabilities? Capabilities = null);
+
+/// <summary>What a query tab on this backend offers beyond running text, so the UI tests no engine or language (#203).</summary>
+/// <param name="DatabasePicker">The tab can switch database (SQL Server, Postgres); a Cosmos tab is bound to its container.</param>
+/// <param name="UnknownNameWarnings">The editor may underline names its catalog does not have. A sampled catalog (Cosmos
+/// properties) cannot say a name does not exist.</param>
+/// <param name="DdlRefresh">After a run that changes objects (CREATE, ALTER, DROP), the catalog is rebuilt.</param>
+public sealed record QueryCapabilities(bool DatabasePicker, bool UnknownNameWarnings, bool DdlRefresh);
 /// <summary>A node's query scope for the UI (added 2026-10-30, ADR 0005).</summary>
 /// <param name="Connection">The connection's node id.</param>
 /// <param name="Database">The node's own database, if it is at or below one; null means the connection default.</param>
@@ -161,7 +168,24 @@ public sealed record QueryTarget(EnvironmentConfig? Environment, ConnectionConfi
 /// <param name="State">The SQLSTATE (Postgres: 42P01 undefined table, ...).</param>
 /// <param name="Column">1-based column on <paramref name="Line"/>, in UTF-16 code units as the editor counts, when the
 /// server gives an exact position (Postgres).</param>
-public sealed record QueryError(int Number, int? Line, string Text, string? State = null, int? Column = null);
+/// <param name="Unknown">For an error about a name the server could not resolve, what kind of name (<see cref="UnknownNames"/>):
+/// the UI finds it in the script and suggests the closest catalog name. Null for any other error.</param>
+public sealed record QueryError(int Number, int? Line, string Text, string? State = null, int? Column = null, string? Unknown = null);
+
+/// <summary>What an error says was not found, as each backend classifies its own error codes (#203).</summary>
+public static class UnknownNames
+{
+    /// <summary>A table or view (SQL Server 208, Postgres 42P01).</summary>
+    public const string Object = "object";
+    /// <summary>A column (SQL Server 207, Postgres 42703).</summary>
+    public const string Column = "column";
+    /// <summary>A stored procedure (SQL Server 2812).</summary>
+    public const string Procedure = "procedure";
+    /// <summary>A function (Postgres 42883).</summary>
+    public const string Function = "function";
+    /// <summary>A multi-part name's qualifier (SQL Server 4104): found in the script, but nothing to suggest.</summary>
+    public const string Qualifier = "qualifier";
+}
 public sealed record DeviceCodePrompt(string Message, string UserCode, string VerificationUri);
 
 public static class UpdateCheckModes
