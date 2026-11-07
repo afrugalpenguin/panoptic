@@ -1,0 +1,1 @@
+Added: the explorer filter also matches connection display names, and a connection whose name differs from its server shows the name after it. Selecting a node shows its actions as buttons and its details in plain words, such as a colour swatch and Read-only: Yes.

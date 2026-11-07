@@ -1,14 +1,16 @@
 <script lang="ts">
+  import { detailFields } from "./detail-fields";
   import Icon from "./Icon.svelte";
+  import type { MenuEntry } from "./row-menu";
   import type { Row } from "./tree-model";
 
   // Shown for a selected row; with nothing selected App shows the landing instead (docs/landing.md).
-  let { row }: { row: Row } = $props();
-
-  const HIDDEN_META = new Set(["json", "environmentId", "connectionId", "dragText", "copyText"]);
+  // actions: the row's right-click menu (rowMenu), offered as buttons too.
+  let { row, actions = [] }: { row: Row; actions?: MenuEntry[] } = $props();
 
   const node = $derived(row.type === "node" ? row.node : undefined);
-  const meta = $derived(Object.entries(node?.meta ?? {}).filter(([k]) => !HIDDEN_META.has(k)));
+  const fields = $derived(node ? detailFields(node) : []);
+  const buttons = $derived(actions.filter((a) => a !== "separator"));
   const json = $derived.by(() => {
     const raw = node?.meta?.json;
     if (!raw) return "";
@@ -41,11 +43,18 @@
       <h2>{node.label}</h2>
       <span class="kind">{label(node.kind)}</span>
     </header>
-    {#if meta.length}
+    {#if buttons.length}
+      <div class="actions">
+        {#each buttons as a}
+          <button type="button" class:danger={a.danger} disabled={a.disabled} onclick={a.run}>{a.label}</button>
+        {/each}
+      </div>
+    {/if}
+    {#if fields.length}
       <dl>
-        {#each meta as [k, v]}
-          <dt>{label(k)}</dt>
-          <dd>{v}</dd>
+        {#each fields as f}
+          <dt>{f.label}</dt>
+          <dd>{#if f.swatch}<span class="swatch inline" style:background={f.swatch}></span>{/if}{f.value}</dd>
         {/each}
       </dl>
     {/if}
@@ -80,6 +89,17 @@
     width: 12px;
     height: 12px;
     border-radius: 3px;
+  }
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 14px 0 0;
+  }
+  .swatch.inline {
+    display: inline-block;
+    margin-right: 6px;
+    vertical-align: -1px;
   }
   dl {
     display: grid;

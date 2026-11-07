@@ -21,7 +21,7 @@ The user-facing word for SQL Server / Cosmos / Synapse / Postgres is **engine**.
 
 Replaces the old `EXPLORER` title row and the chip row. No title; the panel icon identifies it.
 
-- Left: text filter input, flex 1, min-width 0. Placeholder "Filter" at narrow widths, "Filter connections" when the input is wider than 200px. Matches against the full endpoint and the environment name, case-insensitive, substring. Filtering collapses nothing and expands nothing; it hides non-matching connection rows and any environment with no visible children. Debounced 50ms; the tree model is filtered, not the DOM. Esc clears it; Down moves to the tree.
+- Left: text filter input, flex 1, min-width 0. Placeholder "Filter" at narrow widths, "Filter connections" when the input is wider than 200px. Matches against the full endpoint, the connection's display name and the environment name, case-insensitive, substring (#214). Filtering collapses nothing and expands nothing; it hides non-matching connection rows and any environment with no visible children. Debounced 50ms; the tree model is filtered, not the DOM. Esc clears it; Down moves to the tree.
 - Right: the engine control, one of two forms chosen by available width (the filter bar's own width, not window width):
   - **Toggles**: one icon-only toggle per engine present in the tree, 22px square, badge inside, `aria-pressed`. On = full opacity with `#2a3356` background; off = 45% opacity. Multi-select. When the bar is wider than 380px each toggle also shows its engine name, but only while the named toggles fit at their natural width and still leave the filter at least 80px; otherwise they stay icon-only (names are never clipped). The filter input never goes under 80px.
   - **Button + popover**: used when the toggles would not fit at 22px each plus 2px gaps, leaving the filter at least 80px. One button labelled `Engine` with a `selected/total` count (`12/15`), chevron, `aria-expanded`. Opens a popover anchored to its right edge, max height = panel height minus footer: a find box (shown only when 8 or more engines), `All` / `None` / `Invert` links, then one checkbox row per engine with badge, name and connection count. The list scrolls vertically; the popover never widens past 240px or the panel.
@@ -91,7 +91,8 @@ A connection's node id never includes its environment, so moving one keeps open 
 - Indent 30px from the bar, then chevron, engine badge, label, in that order with 8px gaps.
 - Engine badge: 14px square, 3px radius, letter(s) in 9px bold. Colours: SQL `#2d5aa0` "S", Cosmos `#1f7a74` "C", Synapse `#7b4fb5` "Sy", Postgres `#5f7a2e` "PG". New engines register a badge with the backend.
 - Badge visibility is a setting (`explorer.showKindBadge`, default true). Hidden badges leave no gap.
-- Label is the real endpoint in Consolas / Cascadia Mono 12.5px, split into three segments: dim prefix, bright core, dim suffix. Dim is `#6a6a6a`, bright is white weight 700. No alias field.
+- Label is the real endpoint in Consolas / Cascadia Mono 12.5px, split into three segments: dim prefix, bright core, dim suffix. Dim is `#6a6a6a`, bright is white weight 700.
+- The connection's display name follows in muted 11px UI type, only when the endpoint does not already contain it (a name left as the server or its host shows nothing). It shrinks before the endpoint does, so a narrow panel loses the name first (#214).
 - Selected row: background env colour at 22% alpha over the base (11% on hover), dim segments lift to `#9aa3b5`. Folder and leaf rows follow the same rule.
 
 ### Prefix and suffix detection
@@ -139,3 +140,7 @@ Up/Down, Page Up/Down, Home/End move. Right expands (or steps into), Left collap
 ## Out of scope for this change
 
 Display-name aliases, pipeline ordering with an Other divider, region chips. All on the canvas, all rejected or deferred.
+
+## Detail pane
+
+Shows the selected node when one is selected (with nothing selected, the landing shows instead: docs/landing.md). Under the node's name and kind come its actions as buttons, the same ones and in the same order as its right-click menu (`rowMenu`), with destructive ones in red. Below them, the node's details in words: an environment's colour as a swatch, Yes or No for flags such as Read-only, a connection's engine by name and its endpoint under the label the connection dialog uses (Server, Account URI). Internal meta (ids, drag and copy text) is not shown; a Cosmos item's JSON shows as a block of its own (#225).
