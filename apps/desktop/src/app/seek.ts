@@ -10,6 +10,8 @@ export interface SeekHost {
   name: string;
   /** The environment's node id; absent for a connection in no environment. */
   envId?: string;
+  /** The connection's engine ("sql", "cosmos"...), for its badge. */
+  kind?: string;
 }
 
 export interface SeekEnv {
@@ -18,6 +20,8 @@ export interface SeekEnv {
   name: string;
   /** The environment's colour from config, for the row's swatch. */
   color?: string;
+  /** Read-only environments show the tree's READ ONLY pill in Seek too. */
+  readOnly?: boolean;
   hosts: SeekHost[];
 }
 
@@ -96,12 +100,10 @@ export const livePlace = (index: SeekIndex): Place | undefined => liveUsage(inde
 
 /** The landing's muted line: environments when there are any, otherwise connections. */
 export function seekSummary(envCount: number, connectionCount: number): string {
-  const hint = "Type a table, container, proc or host.";
-  if (envCount === 1) return `Objects across 1 environment. ${hint}`;
-  if (envCount) return `Objects across all ${envCount} environments. ${hint}`;
-  if (connectionCount === 1) return `Objects across 1 connection. ${hint}`;
-  if (connectionCount) return `Objects across all ${connectionCount} connections. ${hint}`;
-  return "No connections yet";
+  if (!envCount && !connectionCount) return "No connections yet";
+  const count = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
+  const envs = envCount ? `${count(envCount, "environment")}, ` : "";
+  return `Seeks ${envs}${count(connectionCount, "connection")} and the objects you have opened.`;
 }
 
 export function seek(index: SeekIndex, query: string, scope: "all" | "connections" = "all"): SeekRow[] {

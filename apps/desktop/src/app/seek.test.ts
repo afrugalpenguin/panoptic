@@ -170,10 +170,10 @@ describe("seek: connections in no environment", () => {
 
 describe("seekSummary", () => {
   it("counts environments, or with none, connections", () => {
-    expect(seekSummary(3, 10)).toBe("Objects across all 3 environments. Type a table, container, proc or host.");
-    expect(seekSummary(1, 10)).toBe("Objects across 1 environment. Type a table, container, proc or host.");
-    expect(seekSummary(0, 4)).toBe("Objects across all 4 connections. Type a table, container, proc or host.");
-    expect(seekSummary(0, 1)).toBe("Objects across 1 connection. Type a table, container, proc or host.");
+    // What Seek looks through, honestly: not every object in every database, only the ones opened (#215).
+    expect(seekSummary(3, 10)).toBe("Seeks 3 environments, 10 connections and the objects you have opened.");
+    expect(seekSummary(1, 1)).toBe("Seeks 1 environment, 1 connection and the objects you have opened.");
+    expect(seekSummary(0, 4)).toBe("Seeks 4 connections and the objects you have opened.");
     expect(seekSummary(0, 0)).toBe("No connections yet");
   });
 });

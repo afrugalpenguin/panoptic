@@ -77,6 +77,11 @@ export function category(item: string): { category: Category | undefined; text: 
 const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+/** An item with its first letter capitalised, when it starts with one: fragments are not always written that way. */
+export function sentenceCase(text: string): string {
+  return /^[a-z]/.test(text) ? text[0].toUpperCase() + text.slice(1) : text;
+}
+
 /** "2026-10-30" as "30 Oct"; empty when there is no date. */
 export function shortDate(date: string): string {
   const m = DATE.exec(date);
@@ -90,7 +95,7 @@ export type WhatsNewSource = "launch" | "settings";
 export function subtitle(sections: ChangelogSection[], opened: WhatsNewSource, today: Date): string {
   if (sections.length === 0) return "";
   const n = sections.length;
-  const holds = opened === "settings" ? "Every release." : `${n} ${n === 1 ? "release" : "releases"} since you last opened it.`;
+  const holds = opened === "settings" ? "All releases." : `${n} ${n === 1 ? "release" : "releases"} since you last opened it.`;
   const m = DATE.exec(sections[0].date);
   if (!m) return holds;
   const days = Math.round((Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()) - Date.UTC(+m[1], +m[2] - 1, +m[3])) / 86_400_000);

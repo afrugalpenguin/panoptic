@@ -197,7 +197,7 @@
   </select>
 
   <label for="c-endpoint">{described.endpointLabel}</label>
-  <input id="c-endpoint" bind:value={endpoint} {placeholder} spellcheck="false" />
+  <input id="c-endpoint" bind:value={endpoint} {placeholder} spellcheck="false" data-autofocus />
 
   <label for="c-auth">Authentication</label>
   <select id="c-auth" bind:value={auth}>

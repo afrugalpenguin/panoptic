@@ -22,7 +22,8 @@
 
   onMount(() => {
     dialog.showModal();
-    dialog.querySelector<HTMLElement>("input, select")?.focus();
+    // A dialog can name the field to start on (data-autofocus); otherwise its first field.
+    (dialog.querySelector<HTMLElement>("[data-autofocus]") ?? dialog.querySelector<HTMLElement>("input, select"))?.focus();
   });
 </script>
 

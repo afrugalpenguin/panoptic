@@ -98,7 +98,7 @@ Known bug fixed here: the logo never rendered in the installed build. `128x128.p
 
 ### Masthead
 
-Full width, background `--bg-pane`, bottom border `--border`, padding about 30px 40px 26px. A two-stripe left edge, 4px cyan then 4px amber, full height of the masthead. Contents, left to right: the logo at 64px (the existing `128x128@2x.png` or `icon.png`, whichever is sharp at 64px on a 2x display); a title block with `Panoptic 0.2.44` at 26px/600, the version in amber; under it a muted 13px line: `Updated today. N releases since you last opened it.` (N = unseen count; when opened from Settings: `Every release.`); a spacer; a secondary button `Releases on GitHub` opening `https://github.com/afrugalpenguin/panoptic/releases` through the opener. The tab strip title becomes `What's new` with the 14px logo as the tab icon, env band transparent.
+Full width, background `--bg-pane`, bottom border `--border`, padding about 30px 40px 26px. A two-stripe left edge, 4px cyan then 4px amber, full height of the masthead. Contents, left to right: the logo at 64px (the existing `128x128@2x.png` or `icon.png`, whichever is sharp at 64px on a 2x display); a title block with `Panoptic 0.2.44` at 26px/600, the version in amber; under it a muted 13px line: `Updated today. N releases since you last opened it.` (N = unseen count; when opened from Settings: `All releases.`). Focus starts on the title, and each note is shown with a capital first letter; a spacer; a secondary button `Releases on GitHub` opening `https://github.com/afrugalpenguin/panoptic/releases` through the opener. The tab strip title becomes `What's new` with the 14px logo as the tab icon, env band transparent.
 
 ### Timeline
 

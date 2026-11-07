@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { bullets, category, compareVersions, inlineTokens, openLink, parseChangelog, sectionsSince, shortDate, subtitle } from "./whats-new";
+import { sentenceCase, bullets, category, compareVersions, inlineTokens, openLink, parseChangelog, sectionsSince, shortDate, subtitle } from "./whats-new";
 
 const FIXTURE = `# Panoptic changelog
 
@@ -158,16 +158,26 @@ describe("subtitle", () => {
   });
 
   it("says every release when opened from Settings", () => {
-    expect(subtitle(at("2026-10-30"), "settings", today)).toBe("Updated today. Every release.");
+    expect(subtitle(at("2026-10-30"), "settings", today)).toBe("Updated today. All releases.");
   });
 
   it("dates an older newest release", () => {
-    expect(subtitle(at("2026-10-29"), "settings", today)).toBe("Updated yesterday. Every release.");
-    expect(subtitle(at("2026-10-20"), "settings", today)).toBe("Updated 20 Oct. Every release.");
+    expect(subtitle(at("2026-10-29"), "settings", today)).toBe("Updated yesterday. All releases.");
+    expect(subtitle(at("2026-10-20"), "settings", today)).toBe("Updated 20 Oct. All releases.");
   });
 
   it("leaves out the update when the newest release has no date, and is empty with no releases", () => {
-    expect(subtitle(at(""), "settings", today)).toBe("Every release.");
+    expect(subtitle(at(""), "settings", today)).toBe("All releases.");
     expect(subtitle([], "settings", today)).toBe("");
+  });
+});
+
+describe("sentenceCase", () => {
+  it("capitalises an item's first letter and leaves the rest alone", () => {
+    expect(sentenceCase("drag a table into the editor")).toBe("Drag a table into the editor");
+    expect(sentenceCase("Already capitalised")).toBe("Already capitalised");
+    expect(sentenceCase("**Copy name** copies the name")).toBe("**Copy name** copies the name");
+    expect(sentenceCase("`TOP` is flagged")).toBe("`TOP` is flagged");
+    expect(sentenceCase("")).toBe("");
   });
 });

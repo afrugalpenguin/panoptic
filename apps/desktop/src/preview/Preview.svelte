@@ -72,7 +72,6 @@
       onSeekOpen={noop}
       onSeekQuery={noop}
       onSeekLeave={noop}
-      onReopen={noop}
       onNewQuery={noop}
       onNewConnection={noop}
       onImport={noop}

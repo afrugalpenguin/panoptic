@@ -1,13 +1,18 @@
 <script lang="ts">
   import { openUrl } from "@tauri-apps/plugin-opener";
   import logo from "../../src-tauri/icons/128x128@2x.png";
-  import { bullets, category, inlineTokens, openLink, shortDate, subtitle } from "../whats-new";
+  import { onMount } from "svelte";
+  import { bullets, category, inlineTokens, openLink, sentenceCase, shortDate, subtitle } from "../whats-new";
   import type { WhatsNewTab } from "./store.svelte";
 
   let { tab, onLinkError }: { tab: WhatsNewTab; onLinkError: (message: string) => void } = $props();
 
   const RELEASES = "https://github.com/afrugalpenguin/panoptic/releases";
   const open = (href: string) => void openLink(href, openUrl, onLinkError);
+
+  // Focus starts on the heading, so a screen reader announces the tab and keys scroll it (#230).
+  let heading = $state<HTMLHeadingElement>();
+  onMount(() => heading?.focus());
 </script>
 
 {#snippet inline(text: string)}
@@ -27,7 +32,7 @@
   <header>
     <img src={logo} alt="" />
     <div class="heading">
-      <h1>Panoptic {#if tab.sections.length}<span class="version">{tab.sections[0].version}</span>{/if}</h1>
+      <h1 bind:this={heading} tabindex="-1">Panoptic {#if tab.sections.length}<span class="version">{tab.sections[0].version}</span>{/if}</h1>
       <p class="muted">{subtitle(tab.sections, tab.opened, new Date())}</p>
     </div>
     <button onclick={() => open(RELEASES)}>Releases on GitHub</button>
@@ -46,7 +51,7 @@
             {@const note = category(item)}
             <div class="note">
               <span class="tag {note.category?.toLowerCase()}">{note.category ?? ""}</span>
-              <span>{@render lines(note.text)}</span>
+              <span>{@render lines(sentenceCase(note.text))}</span>
             </div>
           {:else}
             <p>{@render inline(section.body)}</p>
