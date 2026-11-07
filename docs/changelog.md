@@ -17,12 +17,12 @@ Every merge to main ships a release and the patch number is the workflow run num
 
 ## Enforcement: the ruleset on main
 
-The fragment check only blocks a merge if it is a required status check. The repository ruleset `main` (Settings > Rules > Rulesets, created 2026-10-29) is the source of truth; this is what it holds, and what to set if it is ever recreated:
+The fragment check only blocks a merge if it is a required status check. The repository ruleset `main` (Settings > Rules > Rulesets, created 2026-10-29, revised 2026-11-07 with ADR 0016) is the source of truth; this is what it holds, and what to set if it is ever recreated:
 
-- Target: the default branch. Enforcement: Active. Bypass list: empty.
-- Restrict deletions; block force pushes.
-- Require a pull request before merging, 0 approvals (single maintainer).
-- Require status checks to pass, source GitHub Actions, checks `ui`, `sidecar`, `shell` (ci.yml) and `fragment` (fragment.yml). These are job names, not workflow names. "Require branches to be up to date" off: every merge releases, and the checks already run on the test merge commit.
+- Target: the default branch. Enforcement: Active. Bypass list: Repository admin, always.
+- Restrict deletions; block force pushes; require linear history.
+- Require a pull request before merging: 1 approval, from a code owner (`.github/CODEOWNERS`), stale approvals dismissed on push, conversations resolved. With a single maintainer, who cannot approve their own pull requests, merges go through the admin bypass.
+- Require status checks to pass, source GitHub Actions, checks `ui`, `sidecar`, `sidecar-sql`, `sidecar-pg`, `shell` (ci.yml), `fragment` (fragment.yml) and `dco` (dco.yml). These are job names, not workflow names. "Require branches to be up to date" on.
 
 A required check that is skipped (a job whose `if:` is false) reports success and does not block the merge. So a job may only carry an `if:` that is false when skipping it is safe: fragment.yml's job has none, and the fragment check lives in its own workflow so a retitle never touches ci.yml. ci.yml's four build jobs are skipped on purpose for docs-only pull requests (every changed file under `docs/` or a `.md` file), decided by its `changes` job; that `if:` fails closed, so the jobs run unless `changes` positively reports docs only. A path filter on the workflow itself would not work: a workflow that never starts leaves its required checks pending, which blocks the merge. A cancelled run (fragment.yml cancels superseded runs) does not count as passing; the newer run decides.
 
