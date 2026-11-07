@@ -20,7 +20,7 @@ fn epoch_ms() -> f64 {
 #[serde(rename_all = "camelCase")]
 struct StartupInfo {
     main_start_epoch_ms: f64,
-    /// Set by scripts/bench.ps1: "startup" or "ui".
+    /// Set by scripts/bench.ps1: "startup", "ui" or "expand".
     bench_mode: Option<String>,
 }
 
@@ -28,7 +28,7 @@ struct StartupInfo {
 fn startup_info() -> StartupInfo {
     StartupInfo {
         main_start_epoch_ms: *MAIN_START_EPOCH_MS.get().unwrap_or(&0.0),
-        bench_mode: std::env::var("PANOPTIC_BENCH").ok().filter(|m| m == "startup" || m == "ui"),
+        bench_mode: std::env::var("PANOPTIC_BENCH").ok().filter(|m| matches!(m.as_str(), "startup" | "ui" | "expand")),
     }
 }
 

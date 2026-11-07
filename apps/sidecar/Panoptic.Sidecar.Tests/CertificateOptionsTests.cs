@@ -107,9 +107,9 @@ public sealed class CertificateOptionsTests : IDisposable
     private TreeService Tree() => new(new ConfigStore(Path.Combine(_dir, "store.bin")), BackendRegistry.Create(new Credentials(_ => { })));
 
     [Fact]
-    public void Validation_accepts_a_host_name_and_a_certificate_file()
+    public async Task Validation_accepts_a_host_name_and_a_certificate_file()
     {
-        Tree().Validate(Pg with { CertificateHostName = "localhost", CertificateFile = SelfSignedPem().Result });
+        Tree().Validate(Pg with { CertificateHostName = "localhost", CertificateFile = await SelfSignedPem() });
     }
 
     [Theory]

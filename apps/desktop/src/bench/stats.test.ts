@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { summarise } from "./stats";
+import { median, summarise } from "./stats";
 
 describe("summarise", () => {
   it("computes percentiles and counts late and dropped frames", () => {
@@ -16,5 +16,15 @@ describe("summarise", () => {
 
   it("handles no frames", () => {
     expect(summarise([]).frames).toBe(0);
+  });
+});
+
+describe("median", () => {
+  it("takes the middle value of an odd count", () => {
+    expect(median([30, 10, 20])).toBe(20);
+  });
+
+  it("averages the two middle values of an even count", () => {
+    expect(median([40, 10, 30, 20])).toBe(25);
   });
 });

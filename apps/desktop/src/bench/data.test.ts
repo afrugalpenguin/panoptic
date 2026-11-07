@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { flatten, generateGrid, generateTree } from "./data";
+import { generateGrid, generateTree } from "./data";
 
 describe("generateTree", () => {
   const tree = generateTree(50_000);
@@ -21,27 +21,6 @@ describe("generateTree", () => {
   it("starts with environments at depth 0", () => {
     expect(tree.depth[0]).toBe(0);
     expect(tree.label[0]).toMatch(/dev|uat|prod|sandbox/);
-  });
-});
-
-describe("flatten", () => {
-  const tree = generateTree(1_000);
-
-  it("shows only roots when nothing is expanded", () => {
-    const rows = flatten(tree, new Uint8Array(tree.count));
-    expect([...rows].every((i) => tree.depth[i] === 0)).toBe(true);
-  });
-
-  it("shows every node when everything is expanded", () => {
-    const rows = flatten(tree, new Uint8Array(tree.count).fill(1));
-    expect(rows.length).toBe(tree.count);
-  });
-
-  it("hides the subtree of a collapsed node", () => {
-    const expanded = new Uint8Array(tree.count).fill(1);
-    expanded[0] = 0;
-    const rows = flatten(tree, expanded);
-    expect(rows.length).toBe(tree.count - tree.size[0] + 1);
   });
 });
 

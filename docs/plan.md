@@ -114,7 +114,7 @@ Each milestone has one definition of done, and the next one does not start until
 - `afrugalpenguin/panoptic`, MIT, public from the first commit. Personal git identity, global commit-msg hook stays on, no attribution trailers.
 - Monorepo: `apps/desktop` (Tauri + Svelte) and `apps/sidecar` (.NET). The pnpm workspace holds only `apps/desktop`; there is no `packages/` folder. Both backends live in the sidecar project (`Backends/SqlBackend.cs`, `Backends/CosmosBackend.cs`), next to its test project.
 - Conventional commits, `type(scope): description`, 72-char subject. Scopes: `tree`, `grid`, `editor`, `sidecar`, `sql`, `cosmos`, `auth`, `build`.
-- Feature branches and PRs from day one, even solo. CI on GitHub Actions (ci.yml) is the only test gate: UI type-check, unit tests and build, a changelog generator run, sidecar tests on Windows, a `cargo check` of the shell, and npm, NuGet and Rust dependency audits. fragment.yml checks that feat and fix PRs add a change fragment. A Playwright smoke test that opens the window and expands a fixture tree is open M3 work.
+- Feature branches and PRs from day one, even solo. CI on GitHub Actions (ci.yml) is the only test gate: UI type-check, unit tests and build, a changelog generator run, sidecar tests on Windows, `cargo clippy` of the shell, with warnings failing svelte-check, the sidecar build and clippy alike, and npm, NuGet and Rust dependency audits. fragment.yml checks that feat and fix PRs add a change fragment. A Playwright smoke test that opens the window and expands a fixture tree is open M3 work.
 - Fail closed: every write action is off until the connection is marked writable; every network call has a timeout; the sidecar dying puts the UI into an obvious disconnected state rather than hanging.
 - Observable progress: every long operation reports through the status bar with an elapsed timer and a cancel.
 - PowerShell for all scripts under `scripts/`, Windows paths in docs.
@@ -124,13 +124,13 @@ Each milestone has one definition of done, and the next one does not start until
 
 The first session is M0 and nothing else. It produces measurements, not features, and the plan above survives or changes based on what comes back.
 
-- [ ] Create afrugalpenguin/panoptic with the monorepo layout, licence, README stub, commit hook check, CI skeleton.
-- [ ] Scaffold Tauri 2 with a TypeScript front end and a .NET 10 console sidecar wired over stdio JSON-RPC. One round trip: UI sends `ping`, sidecar answers with its start-up time.
-- [ ] Measure cold start on the work laptop and the home machine: window visible, sidecar ready. Record both numbers in `docs/benchmarks.md`.
-- [ ] Render a synthetic 50k-node virtualised tree and a 100k-row grid from fixture data. Record frame times. Decide Svelte versus plain TS on these numbers and write the ADR.
+- [x] Create afrugalpenguin/panoptic with the monorepo layout, licence, README stub, commit hook check, CI skeleton.
+- [x] Scaffold Tauri 2 with a TypeScript front end and a .NET 10 console sidecar wired over stdio JSON-RPC. One round trip: UI sends `ping`, sidecar answers with its start-up time.
+- [ ] Measure cold start on the work laptop and the home machine: window visible, sidecar ready. Record both numbers in `docs/benchmarks.md`. Home is recorded; the work laptop is not.
+- [x] Render a synthetic 50k-node virtualised tree and a 100k-row grid from fixture data. Record frame times. Decide Svelte versus plain TS on these numbers and write the ADR.
 - [ ] Prove Entra sign-in from the sidecar on the work laptop (WAM broker, device-code fallback). Record which worked.
-- [ ] Connect to one real SQL Server and one real Cosmos account read-only, list databases through the node contract, and show them under one fake environment node.
-- [ ] Release workflow: per-user NSIS installer plus signed updater manifest on GitHub Releases. Install once on the work laptop, then confirm it updates itself to the next release. As built there is no tag step: every merge to main that changes more than docs releases, versioned as major.minor from apps/desktop/package.json plus the workflow's run number (release.yml, README "Release").
+- [x] Connect to one real SQL Server and one real Cosmos account read-only, list databases through the node contract, and show them under one fake environment node.
+- [x] Release workflow: per-user NSIS installer plus signed updater manifest on GitHub Releases. Install once on the work laptop, then confirm it updates itself to the next release. As built there is no tag step: every merge to main that changes more than docs releases, versioned as major.minor from apps/desktop/package.json plus the workflow's run number (release.yml, README "Release").
 
 Prompt to paste:
 
