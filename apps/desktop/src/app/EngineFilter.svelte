@@ -12,12 +12,18 @@
     engines,
     hidden,
     form,
+    named = false,
+    namedWidth = $bindable(0),
     onChange,
   }: {
     engines: EngineSummary[];
     /** Engines switched off (the model's Set<kind>). */
     hidden: ReadonlySet<string>;
     form: "toggles" | "menu";
+    /** The toggles also show engine names (explorer-view.ts, toggleNames). */
+    named?: boolean;
+    /** Out: the toggles' natural width with names, so the parent can tell whether they fit. */
+    namedWidth?: number;
     onChange: (hidden: Set<string>) => void;
   } = $props();
 
@@ -67,7 +73,15 @@
 
 <div class="engines" bind:this={root}>
   {#if form === "toggles"}
-    <div class="toggles" role="group" aria-label="Engines">
+    <!-- An unseen copy of the named toggles at their natural width: names show only when this fits. -->
+    <div class="sizer-host" aria-hidden="true">
+      <div class="sizer" bind:clientWidth={namedWidth}>
+        {#each engines as e (e.kind)}
+          <span class="toggle"><KindBadge badge={e.badge} /><span class="name">{e.badge.name}</span></span>
+        {/each}
+      </div>
+    </div>
+    <div class="toggles" class:named role="group" aria-label="Engines">
       {#each engines as e (e.kind)}
         <button
           type="button"
@@ -141,11 +155,25 @@
     flex: 0 1 auto;
     min-width: 0;
   }
-  .toggles {
+  .toggles,
+  .sizer {
     display: flex;
     gap: 2px;
     min-width: 0;
     overflow: hidden;
+  }
+  /* Zero-sized and clipped, so the sizer is laid out (and measured) without taking room or scrolling the bar. */
+  .sizer-host {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+    visibility: hidden;
+  }
+  .sizer {
+    width: max-content;
   }
   .toggle {
     display: inline-flex;
@@ -174,19 +202,15 @@
     display: none;
     white-space: nowrap;
   }
-  /* Over 380px each toggle also names its engine; the names give way before the filter does. */
-  @container filter-bar (width > 380px) {
-    .toggle {
-      flex: 0 1 auto;
-      min-width: 22px;
-      overflow: hidden;
-      justify-content: flex-start;
-      padding: 0 6px 0 4px;
-    }
-    .toggle .name {
-      display: inline;
-      overflow: hidden;
-    }
+  /* Named only when they fit at their natural width (the parent decides from the sizer), so they never shrink. */
+  .named .toggle,
+  .sizer .toggle {
+    justify-content: flex-start;
+    padding: 0 6px 0 4px;
+  }
+  .named .toggle .name,
+  .sizer .toggle .name {
+    display: inline;
   }
   .menu-button {
     display: inline-flex;
