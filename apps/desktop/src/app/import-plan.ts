@@ -1,4 +1,5 @@
 import type { ImportCandidate, ImportSource } from "./api";
+import { ENV_COLORS, ENV_EXTRA } from "./env-palette";
 
 export interface PlanGroup {
   key: string;
@@ -122,17 +123,17 @@ export function suggestEnvironments(candidates: ImportCandidate[]): (string | un
 }
 
 const STYLES: Record<string, { color: string; readOnly: boolean }> = {
-  Prod: { color: "#e03131", readOnly: true },
-  "Pre-prod": { color: "#e8590c", readOnly: false },
-  Staging: { color: "#f08c00", readOnly: false },
-  UAT: { color: "#f08c00", readOnly: false },
-  SIT: { color: "#1971c2", readOnly: false },
-  QA: { color: "#1971c2", readOnly: false },
-  Test: { color: "#1971c2", readOnly: false },
-  Dev: { color: "#2f9e44", readOnly: false },
-  Local: { color: "#868e96", readOnly: false },
+  Prod: { color: ENV_COLORS.red, readOnly: true },
+  "Pre-prod": { color: ENV_COLORS.deepOrange, readOnly: false },
+  Staging: { color: ENV_COLORS.orange, readOnly: false },
+  UAT: { color: ENV_COLORS.orange, readOnly: false },
+  SIT: { color: ENV_COLORS.blue, readOnly: false },
+  QA: { color: ENV_COLORS.blue, readOnly: false },
+  Test: { color: ENV_COLORS.blue, readOnly: false },
+  Dev: { color: ENV_COLORS.green, readOnly: false },
+  Local: { color: ENV_COLORS.grey, readOnly: false },
 };
-const OTHER_COLORS = ["#7048e8", "#0c8599", "#d6336c", "#66a80f", "#5c7cfa"];
+const OTHER_COLORS = ENV_EXTRA;
 
 /** Colour and read-only default for a new environment, by its first word. Prod (and Prod UK...) starts read-only. */
 export function envStyleFor(name: string, index = 0): { color: string; readOnly: boolean } {

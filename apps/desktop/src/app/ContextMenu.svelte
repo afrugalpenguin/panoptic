@@ -75,7 +75,7 @@
     background: var(--bg-pane);
     border: 1px solid var(--border);
     border-radius: 6px;
-    box-shadow: 0 6px 24px rgb(0 0 0 / 0.25);
+    box-shadow: var(--shadow-popover);
   }
   button {
     display: block;

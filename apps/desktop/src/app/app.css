@@ -43,6 +43,24 @@
   --explorer-footer-bg: rgba(255, 255, 255, 0.9);
   --explorer-sticky-shadow: rgba(0, 0, 0, 0.15);
   --scrollbar-thumb: rgba(0, 0, 0, 0.3);
+
+  /* Object kinds in the explorer and detail pane: a letter on a tint of its colour (Icon.svelte). Both themes. */
+  --glyph-database: #2f9e44;
+  --glyph-table: #0c8599;
+  --glyph-view: #6741d9;
+  --glyph-proc: #e8590c;
+  --glyph-function: #d6336c;
+  --glyph-key: #f59f00;
+  --glyph-policy: #7048e8;
+  --glyph-neutral: #868e96;
+  /* Connection kind badges come from the sidecar (backends.describe); this is one it did not describe. */
+  --kind-unknown: #6a6a6a;
+  /* Letters on a filled badge. */
+  --on-badge: #ffffff;
+  /* Floating surfaces and what dims behind a modal. */
+  --shadow-popover: 0 6px 24px rgb(0 0 0 / 0.25);
+  --shadow-dialog: 0 12px 48px rgb(0 0 0 / 0.35);
+  --backdrop: rgb(0 0 0 / 0.35);
 }
 
 @media (prefers-color-scheme: dark) {

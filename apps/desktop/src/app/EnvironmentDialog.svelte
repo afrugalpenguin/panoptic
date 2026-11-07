@@ -1,8 +1,9 @@
 <script lang="ts">
+  import { ENV_PICKER } from "./env-palette";
   import type { EnvironmentConfig } from "./api";
   import Dialog from "./Dialog.svelte";
 
-  const COLORS = ["#2f9e44", "#1971c2", "#f08c00", "#e03131", "#7048e8", "#0c8599", "#868e96"];
+  const COLORS = ENV_PICKER;
 
   let {
     initial,

@@ -49,14 +49,14 @@
     background: var(--bg-pane);
     border: 1px solid var(--border);
     border-radius: 8px;
-    box-shadow: 0 12px 48px rgb(0 0 0 / 0.35);
+    box-shadow: var(--shadow-dialog);
     user-select: none;
   }
   dialog.wide {
     width: min(760px, calc(100vw - 32px));
   }
   dialog::backdrop {
-    background: rgb(0 0 0 / 0.35);
+    background: var(--backdrop);
   }
   h2 {
     margin: 0;
