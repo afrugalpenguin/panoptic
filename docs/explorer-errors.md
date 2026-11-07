@@ -31,6 +31,7 @@ Errors on a tree node render as one full-width inline row containing the raw exc
 
 - New workspace tab `kind: "problems"`, singleton like What's new, title `Problems (n)`.
 - One entry per node error: env, connection, node path, summary, code, time, and the full `detail` in a monospace block with a Copy button.
+- Failures outside the tree get entries too, filed under "Panoptic" with what was being done as the path: the explorer failing to load at start-up, a database engine that is running but not answering, output from the engine that is not a protocol message (or an error reply with no request), and any unhandled promise rejection. They last for the session.
 - Reachable from the status bar (error count badge, click to open) and the command palette.
 - Entries clear when the node is refreshed successfully or the connection is removed.
 

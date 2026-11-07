@@ -1,0 +1,1 @@
+Fixed: failures that used to happen silently, such as the explorer failing to load at start-up, a database engine that stops answering, or a database list that cannot be read, now show in the status bar, the query toolbar or the Problems tab.

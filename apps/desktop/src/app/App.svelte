@@ -2,7 +2,7 @@
   import { onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import type { RpcClient } from "../rpc";
-  import { connectSidecar, readyText, type PingResult, type SidecarStatus } from "../sidecar";
+  import { connectSidecar, ENGINE_STOPPED, readyText, type PingResult, type SidecarStatus } from "../sidecar";
   import { afterPaint, finishBenchmark, firstPaintEpochMs, nowEpochMs, startupText, startupTimings, type StartupInfo } from "../startup";
   import { sidecarView } from "../sidecar-status";
   import { scheduleUpdateChecks } from "../update-schedule";
@@ -32,7 +32,8 @@
   import SettingsDialog from "./SettingsDialog.svelte";
   import StatusBar from "./StatusBar.svelte";
   import { environmentOrder, moveEnvironment, TreeModel, UNGROUPED, type EngineSummary, type ExplorerSummary, type LoadReport, type Row } from "./tree-model";
-  import type { Problem } from "./problems";
+  import { appProblem, type Problem } from "./problems";
+  import { isAbortError } from "../rpc";
   import { UndoDelete } from "./undo-delete";
 
   let { info }: { info: StartupInfo } = $props();
@@ -43,6 +44,8 @@
   let config = $state<AppConfig>({ environments: [], connections: [] });
   let rows = $state.raw<Row[]>([]);
   let problems = $state.raw<Problem[]>([]);
+  /** Failures outside the tree (#197): start-up, dropped engine output, unhandled rejections. Kept for the session. */
+  let appProblems: Problem[] = [];
   let engines = $state.raw<EngineSummary[]>([]);
   let hiddenEngines = $state.raw<ReadonlySet<string>>(new Set());
   let summary = $state.raw<ExplorerSummary>({ environments: 0, connections: 0, matching: 0 });
@@ -97,8 +100,7 @@
     (id, signal) => api!.children(id, signal),
     () => {
       rows = model.rows();
-      problems = model.problems();
-      workspace.setProblems(problems);
+      showProblems();
       engines = model.engines();
       hiddenEngines = model.hiddenEngines();
       summary = model.summary();
@@ -169,18 +171,41 @@
   });
 
   onMount(() => {
+    // Anything async that failed with no one to catch it still reaches the user (#197). Aborts are deliberate.
+    const onUnhandled = (e: PromiseRejectionEvent) => {
+      if (!isAbortError(e.reason)) reportProblem("Unexpected error", e.reason);
+    };
+    window.addEventListener("unhandledrejection", onUnhandled);
     start();
+    return () => window.removeEventListener("unhandledrejection", onUnhandled);
   });
 
   let rpc: RpcClient | undefined;
   let runningBeforeConnected = false;
   let initialised = false;
 
+  /** The tree's problems, then the app's own, into the status bar count and the Problems tab. */
+  function showProblems() {
+    problems = [...model.problems(), ...appProblems];
+    workspace.setProblems(problems);
+  }
+
+  /** Files a failure outside the tree in the Problems tab (#197). */
+  function reportProblem(what: string, e: unknown) {
+    console.warn(`${what}:`, e);
+    appProblems = [...appProblems, appProblem(appProblems.length + 1, what, e)];
+    showProblems();
+  }
+
   async function start() {
-    rpc = await connectSidecar(onSidecarStatus, (method, params) => {
-      if (method === "auth.deviceCode") deviceCode = params as DeviceCodePrompt;
-      else if (method.startsWith("query.") || method.startsWith("catalog.")) workspace.handle(method, params);
-    });
+    rpc = await connectSidecar(
+      onSidecarStatus,
+      (method, params) => {
+        if (method === "auth.deviceCode") deviceCode = params as DeviceCodePrompt;
+        else if (method.startsWith("query.") || method.startsWith("catalog.")) workspace.handle(method, params);
+      },
+      (reason) => reportProblem("Database engine output", reason),
+    );
     api = createApi(rpc);
     if (runningBeforeConnected) await onRunning();
   }
@@ -211,8 +236,15 @@
       // Before the tree loads: its badges and the connection dialog come from these.
       kinds = await api!.describeBackends();
       registerKinds(kinds);
-    } catch {
-      return; // An exited/failed status follows and says what happened.
+    } catch (e) {
+      // The process went away: its exited/failed status says what happened. Anything else (no answer within the
+      // timeout, an error reply) means it is running but not responding, which no status will report (#197).
+      if (e instanceof Error && e.message === ENGINE_STOPPED) return;
+      sidecar = "disconnected";
+      sidecarText = "Database engine not responding";
+      lastLoad = { id: "", label: "Database engine", count: 0, ms: 0, error: `${e instanceof Error ? e.message : String(e)}. Restart Panoptic.` };
+      reportProblem("Starting the database engine", e);
+      return;
     }
     sidecar = "connected";
     sidecarText = readyText(ping);
@@ -220,15 +252,21 @@
       (labels) => (actionLabels = labels),
       () => {},
     );
-    if (initialised) {
-      // Restarted: requests in flight at the exit may have landed errors since, so forget again, then
-      // refresh environments and connections.
-      model.forgetConnections();
-      await configChanged();
-      return;
+    // onRunning is fired and forgotten from a status event, so its failures must be caught here (#197).
+    try {
+      if (initialised) {
+        // Restarted: requests in flight at the exit may have landed errors since, so forget again, then
+        // refresh environments and connections.
+        model.forgetConnections();
+        await configChanged();
+        return;
+      }
+      initialised = true;
+      await firstLoad(ping);
+    } catch (e) {
+      lastLoad = { id: "", label: "Loading the explorer", count: 0, ms: 0, error: e instanceof Error ? e.message : String(e) };
+      reportProblem("Loading the explorer", e);
     }
-    initialised = true;
-    await firstLoad(ping);
   }
 
   async function firstLoad(ping: PingResult) {

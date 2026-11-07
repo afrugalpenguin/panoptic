@@ -27,6 +27,9 @@ export type SidecarStatus =
   /** Stopped on purpose for an update; restarted only by sidecar_start. */
   | { state: "stopped" };
 
+/** The error pending requests get when the sidecar process exits, fails or is stopped. */
+export const ENGINE_STOPPED = "database engine stopped";
+
 /**
  * Connects the RPC client to the Tauri-managed sidecar. Status changes are reported as they happen,
  * starting with the current one (the sidecar may already be up by the time the UI subscribes).
@@ -34,10 +37,11 @@ export type SidecarStatus =
 export async function connectSidecar(
   onStatus: (status: SidecarStatus) => void,
   onNotification: (method: string, params: unknown) => void = () => {},
+  onDropped?: (reason: string) => void,
 ): Promise<RpcClient> {
-  const client = new RpcClient((line) => invoke("sidecar_send", { line }), onNotification);
+  const client = new RpcClient((line) => invoke("sidecar_send", { line }), onNotification, onDropped);
   const handle = (status: SidecarStatus) => {
-    if (status.state === "exited" || status.state === "failed" || status.state === "stopped") client.disconnect("database engine stopped");
+    if (status.state === "exited" || status.state === "failed" || status.state === "stopped") client.disconnect(ENGINE_STOPPED);
     onStatus(status);
   };
   await listen<string>("sidecar://message", (e) => client.receive(e.payload));

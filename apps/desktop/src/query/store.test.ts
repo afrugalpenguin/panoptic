@@ -89,6 +89,25 @@ describe("QueryWorkspace", () => {
     expect(api.cancelQuery).toHaveBeenCalledWith(api.executeQuery.mock.calls[0][0].queryId);
   });
 
+  it("closing a running tab whose cancel fails raises no unhandled rejection (#197)", async () => {
+    const { ws, api } = setup();
+    api.cancelQuery.mockImplementationOnce(async () => Promise.reject(new Error("database engine stopped")));
+    const unhandled = vi.fn();
+    // Node's process, typed here: the project has no Node types (it targets the webview).
+    const process = (globalThis as unknown as { process: { on(e: string, f: () => void): void; off(e: string, f: () => void): void } }).process;
+    process.on("unhandledRejection", unhandled);
+    try {
+      const tab = ws.open(target, "WAITFOR DELAY '00:01'");
+      ws.run(tab);
+      ws.close(tab.id);
+      await new Promise((r) => setTimeout(r, 10));
+      expect(api.cancelQuery).toHaveBeenCalled();
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off("unhandledRejection", unhandled);
+    }
+  });
+
   it("records a failed call as the tab's error instead of throwing", async () => {
     const api = { executeQuery: vi.fn(async () => Promise.reject(new Error("sidecar stopped"))), cancelQuery: vi.fn() };
     const ws = new QueryWorkspace(api);
@@ -357,6 +376,20 @@ describe("QueryWorkspace: IntelliSense", () => {
     return { ws: new QueryWorkspace(api), api };
   }
   const settle = () => new Promise((r) => setTimeout(r, 0));
+
+  it("keeps why the database list failed, rather than showing an empty picker with no reason (#197)", async () => {
+    const { ws, api } = setupCatalog();
+    api.databases.mockImplementationOnce(async () => Promise.reject(new Error("VIEW ANY DATABASE permission denied")));
+    const tab = ws.open(target, "");
+    await settle();
+    expect(tab.databases).toEqual([]);
+    expect(tab.databasesError).toBe("VIEW ANY DATABASE permission denied");
+
+    ws.connect(tab, target); // a later successful load clears it
+    await settle();
+    expect(tab.databases).toEqual(["Orders", "Sales"]);
+    expect(tab.databasesError).toBeUndefined();
+  });
 
   it("loads the tab's catalog and database list on open, and follows notifications", async () => {
     const { ws, api } = setupCatalog();

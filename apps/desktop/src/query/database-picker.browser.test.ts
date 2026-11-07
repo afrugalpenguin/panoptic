@@ -74,4 +74,25 @@ describe("database picker", () => {
     expect(shown(picker)).toBe("orders");
     expect([...picker.options].map((o) => o.textContent?.trim())).toEqual(["inventory", "orders", "postgres"]);
   });
+
+  it("says when the database list could not be loaded, with the reason on hover (#197)", async () => {
+    const workspace = new QueryWorkspace({
+      executeQuery: vi.fn(),
+      cancelQuery: vi.fn(async () => true),
+      databases: vi.fn(async () => Promise.reject(new Error("permission denied to list databases"))),
+    });
+    const tab = workspace.open(onConnection, "");
+    const host = document.createElement("div");
+    host.style.cssText = "width: 800px; height: 600px; display: flex; flex-direction: column;";
+    document.body.append(host);
+    mounted = mount(QueryView, { target: host, props: { tab, workspace, seekIndex, onConnect: () => {} } });
+
+    const note = await vi.waitFor(() => {
+      const el = host.querySelector<HTMLElement>(".databases-error");
+      if (!el) throw new Error("not shown yet");
+      return el;
+    });
+    expect(note.textContent?.trim()).toBe("Databases unavailable");
+    expect(note.title).toBe("Could not list databases: permission denied to list databases");
+  });
 });

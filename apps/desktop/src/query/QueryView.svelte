@@ -127,6 +127,7 @@
         {#each databaseOptions as name (name)}<option value={name}>{name}</option>{/each}
       </select>
     {/if}
+    {#if tab.databasesError}<span class="databases-error" title="Could not list databases: {tab.databasesError}">Databases unavailable</span>{/if}
     <button class="link muted" title={status.title ?? "Rebuild completions for this database"} onclick={() => workspace.refreshCatalog(tab)}
       >{status.text}</button
     >
@@ -262,6 +263,11 @@
     max-width: 220px;
     padding: 1px 4px;
     font-size: 12px;
+  }
+  .databases-error {
+    color: var(--warn);
+    font-size: 12px;
+    cursor: help;
   }
   .toolbar .link {
     padding: 0;
