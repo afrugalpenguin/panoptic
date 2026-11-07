@@ -224,6 +224,12 @@ public sealed class PostgresBackend(Credentials credentials) : IQueryBackend
 
         while (await reader.ReadAsync(ct))
         {
+            // Past the row limit: the caller's NextResult skips the rest of this set; later statements still run.
+            if (sink.RowCount(index) + batch.Count >= sink.MaxRows)
+            {
+                sink.Truncated(index);
+                break;
+            }
             var row = new object?[reader.FieldCount];
             for (var i = 0; i < row.Length; i++) row[i] = reader.IsDBNull(i) ? null : PostgresValues.FromText(types[i], reader.GetString(i));
             batch.Add(row);

@@ -110,6 +110,8 @@ export interface EditorSettings {
   autoRefreshOnDdl: boolean;
   /** Underline tables and columns the catalog does not know, before the query runs. */
   warnUnknownNames: boolean;
+  /** Rows kept per result set, 1,000 to 1,000,000; reading a set stops there. */
+  maxRows: number;
 }
 
 export interface AppSettings {

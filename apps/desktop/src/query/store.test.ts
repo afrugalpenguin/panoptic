@@ -397,6 +397,25 @@ describe("QueryWorkspace: IntelliSense", () => {
     expect(tab.database).toBeUndefined();
   });
 
+  it("a tab opened on a connection runs in the connection's default until a database is picked, and can go back to it", async () => {
+    const { ws, api } = setupCatalog();
+    const tab = ws.open({ ...target, nodeId: "env:dev/conn:c1", label: "sql-dev" }, "select 1");
+    await settle();
+    expect(ws.nodeDatabaseOf(tab)).toBeUndefined();
+    expect(ws.databaseOf(tab)).toBeUndefined();
+
+    ws.setDatabase(tab, "Sales");
+    await ws.run(tab);
+    expect(api.executeQuery.mock.calls[0][0].database).toBe("Sales");
+
+    ws.setDatabase(tab, "");
+    expect(tab.database).toBeUndefined();
+    await settle();
+    expect(api.catalogGet).toHaveBeenLastCalledWith("env:dev/conn:c1", undefined);
+    await ws.run(tab);
+    expect(api.executeQuery.mock.calls[1][0].database).toBeUndefined();
+  });
+
   it("refreshes the catalog after DDL, not after a query, and not when turned off", async () => {
     const { ws, api } = setupCatalog();
     const tab = ws.open(target, "");

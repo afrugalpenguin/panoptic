@@ -81,6 +81,16 @@ public interface IQuerySink
     /// <summary>Rows per query.rows notification, and the page size to ask a driver for.</summary>
     int BatchSize { get; }
 
+    /// <summary>
+    /// Rows kept per result set (the user's row limit). Past it, a backend stops reading the set, calls
+    /// <see cref="Truncated"/>, and moves on to the next set: the rest of the script still runs. Rows sent past it are
+    /// dropped anyway.
+    /// </summary>
+    int MaxRows { get; }
+
+    /// <summary>The set had more rows than <see cref="MaxRows"/>; the rest were not read. Reported once per set.</summary>
+    void Truncated(int set);
+
     /// <summary>Result sets begun so far.</summary>
     int SetCount { get; }
 

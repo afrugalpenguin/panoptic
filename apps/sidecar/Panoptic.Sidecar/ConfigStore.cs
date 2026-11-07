@@ -55,6 +55,8 @@ public sealed class ConfigStore
             throw new RpcException(RpcException.InvalidParams, $"Unknown keyword case: {settings.Editor.KeywordCase}");
         if (settings.Editor.CatalogSampleDocs is < 10 or > 500)
             throw new RpcException(RpcException.InvalidParams, "Cosmos sample size must be between 10 and 500 documents");
+        if (settings.Editor.MaxRows is < 1_000 or > 1_000_000)
+            throw new RpcException(RpcException.InvalidParams, "The row limit must be between 1,000 and 1,000,000 rows");
         lock (_lock) Commit(_file with { Settings = settings });
     }
 

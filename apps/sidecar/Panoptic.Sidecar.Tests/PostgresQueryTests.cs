@@ -225,7 +225,14 @@ public sealed class RecordingSink : IQuerySink
     public bool IsCommitted { get; private set; }
 
     public int BatchSize => 500;
+    public int MaxRows { get; init; } = int.MaxValue;
+    public List<int> TruncatedSets { get; } = [];
     public int SetCount => Sets.Count;
+
+    public void Truncated(int set)
+    {
+        if (!TruncatedSets.Contains(set)) TruncatedSets.Add(set);
+    }
 
     public int BeginSet()
     {
@@ -266,11 +273,27 @@ public sealed class PostgresQueryIntegrationTests
     private static QueryTarget Target(bool readOnly = false, string database = "orders") =>
         new(new EnvironmentConfig("dev", "Dev", "#000", readOnly, []), DevPg, database, null);
 
-    private static async Task<RecordingSink> Run(string text, bool readOnly = false, CancellationToken ct = default)
+    private static async Task<RecordingSink> Run(string text, bool readOnly = false, CancellationToken ct = default, int maxRows = int.MaxValue)
     {
-        var sink = new RecordingSink();
+        var sink = new RecordingSink { MaxRows = maxRows };
         await Backend.ExecuteAsync(Target(readOnly), PgFactAttribute.Password, text, sink, ct);
         return sink;
+    }
+
+    [PgFact, Trait("Category", "PgIntegration")]
+    public async Task A_set_stops_at_the_row_limit_and_the_script_carries_on()
+    {
+        var sink = await Run("""
+            SELECT g AS n FROM generate_series(1, 1200) AS g;
+            SELECT g AS n FROM generate_series(1, 1000) AS g;
+            SELECT 'after' AS s;
+            """, maxRows: 1000);
+
+        Assert.Null(sink.Error);
+        Assert.Equal([1000, 1000, 1], sink.Sets.Select(s => s.Count));
+        Assert.Equal(1000L, sink.Sets[0][^1][0]);
+        Assert.Equal([0], sink.TruncatedSets); // exactly at the limit is not truncated
+        Assert.Equal("after", sink.Sets[2][0][0]);
     }
 
     [PgFact, Trait("Category", "PgIntegration")]

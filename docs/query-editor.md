@@ -125,9 +125,12 @@ editor.keywordCase         enum   lower | upper | preserve   default lower for t
 editor.catalogSampleDocs   int    default 50, range 10 to 500
 editor.autoRefreshOnDdl    bool   default true
 editor.warnUnknownNames    bool   default true   (off with IntelliSense)
+editor.maxRows             int    default 100000, range 1000 to 1000000
 ```
 
 Settings changes apply to open tabs without restart. `editor.keywordCase` only affects new insertions.
+
+`editor.maxRows` is the row limit per result set: every kept row lives in the UI, so it bounds memory (1M rows was about 1.6 GB). At the limit the backend stops keeping that set's rows and skips the rest of it (SQL Server and Postgres move on to the next result, so the rest of the script still runs; Cosmos stops paging). The result's tab reads "row limit reached" and Messages says how many rows were kept. Fetching more rows or saving the full result to a file are not done yet: both would mean running the script again.
 
 ## Out of scope for this change
 

@@ -125,7 +125,8 @@ public sealed record TestConnectionResult(bool Ok, double ElapsedMs, string? Err
 /// <param name="Database">Overrides the database the node resolves to (the tab's database picker).</param>
 public sealed record QueryRequest(string QueryId, string NodeId, string Text, string? Database = null);
 public sealed record QueryCancelParams(string QueryId);
-public sealed record ResultSetSummary(int RowCount);
+/// <param name="Truncated">The set reached the row limit (EditorSettings.MaxRows) and had more rows, which were not kept.</param>
+public sealed record ResultSetSummary(int RowCount, bool Truncated = false);
 /// <param name="RolledBack">Read-only environment, and the guard transaction was still open and rolled back.</param>
 /// <param name="Committed">Read-only environment, but the guard transaction ended before the rollback (a COMMIT or ROLLBACK in the script, or an error that aborted it): changes may have been committed.</param>
 public sealed record QuerySummary(string QueryId, ResultSetSummary[] ResultSets, double ElapsedMs, bool RolledBack, bool Committed, bool Cancelled, string? Error, double? RequestCharge);
@@ -197,8 +198,13 @@ public static class KeywordCases
 /// <param name="KeywordCase">Null: the language default (lower for T-SQL, upper for Cosmos).</param>
 /// <param name="CatalogSampleDocs">Documents sampled per Cosmos container for property path completion, 10 to 500.</param>
 /// <param name="WarnUnknownNames">Underline tables and columns the catalog does not know, before the query runs.</param>
+/// <param name="MaxRows">Rows kept per result set, 1,000 to 1,000,000 (#186): reading a set stops there and the rest of
+/// the script still runs. Every kept row lives in the UI, so this bounds its memory.</param>
 public sealed record EditorSettings(bool Intellisense = true, string? KeywordCase = null, int CatalogSampleDocs = 50, bool AutoRefreshOnDdl = true,
-    bool WarnUnknownNames = true);
+    bool WarnUnknownNames = true, int MaxRows = EditorSettings.DefaultMaxRows)
+{
+    public const int DefaultMaxRows = 100_000;
+}
 
 /// <param name="LastSeenVersion">The app version whose changes the user has been shown (ADR 0013). Null means never
 /// recorded: a fresh install, or a store written before this setting existed.</param>

@@ -353,10 +353,11 @@ public sealed class ConfigStoreTests : IDisposable
         Assert.Equal(50, store.Settings.Editor.CatalogSampleDocs);
         Assert.True(store.Settings.Editor.AutoRefreshOnDdl);
         Assert.True(store.Settings.Editor.WarnUnknownNames);
+        Assert.Equal(100_000, store.Settings.Editor.MaxRows);
 
-        store.SaveSettings(store.Settings with { Editor = new EditorSettings(false, KeywordCases.Upper, 200, false, false) });
+        store.SaveSettings(store.Settings with { Editor = new EditorSettings(false, KeywordCases.Upper, 200, false, false, 5_000) });
 
-        Assert.Equal(new EditorSettings(false, KeywordCases.Upper, 200, false, false), new ConfigStore(_path).Settings.Editor);
+        Assert.Equal(new EditorSettings(false, KeywordCases.Upper, 200, false, false, 5_000), new ConfigStore(_path).Settings.Editor);
     }
 
     [Fact]
@@ -365,16 +366,19 @@ public sealed class ConfigStoreTests : IDisposable
         var settings = System.Text.Json.JsonSerializer.Deserialize("""{"editor":{"intellisense":false}}""", SidecarJson.Default.AppSettings)!;
         Assert.False(settings.Editor.Intellisense);
         Assert.True(settings.Editor.WarnUnknownNames);
+        Assert.Equal(100_000, settings.Editor.MaxRows);
     }
 
     [Theory]
-    [InlineData("title", 50)]
-    [InlineData(null, 9)]
-    [InlineData(null, 501)]
-    public void Invalid_editor_settings_are_rejected(string? keywordCase, int sampleDocs)
+    [InlineData("title", 50, 100_000)]
+    [InlineData(null, 9, 100_000)]
+    [InlineData(null, 501, 100_000)]
+    [InlineData(null, 50, 999)]
+    [InlineData(null, 50, 1_000_001)]
+    public void Invalid_editor_settings_are_rejected(string? keywordCase, int sampleDocs, int maxRows)
     {
         var store = new ConfigStore(_path);
-        var ex = Assert.Throws<RpcException>(() => store.SaveSettings(store.Settings with { Editor = new EditorSettings(KeywordCase: keywordCase, CatalogSampleDocs: sampleDocs) }));
+        var ex = Assert.Throws<RpcException>(() => store.SaveSettings(store.Settings with { Editor = new EditorSettings(KeywordCase: keywordCase, CatalogSampleDocs: sampleDocs, MaxRows: maxRows) }));
         Assert.Equal(RpcException.InvalidParams, ex.Code);
     }
 
