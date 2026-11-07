@@ -20,6 +20,17 @@ export function engineControl(barWidth: number, engines: number): "none" | "togg
   return barWidth - BAR_CHROME - FILTER_MIN >= toggles ? "toggles" : "menu";
 }
 
+/** Toggles never show engine names in a bar this wide or narrower. */
+const NAMES_FROM = 380;
+
+/**
+ * Whether the toggles also name their engines: over 380px, and only while the named toggles (namedWidth, measured
+ * at their natural width; 0 until measured) still leave the filter its 80px. The names give way before the filter does.
+ */
+export function toggleNames(barWidth: number, namedWidth: number): boolean {
+  return namedWidth > 0 && barWidth > NAMES_FROM && barWidth - BAR_CHROME - FILTER_MIN >= namedWidth;
+}
+
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /** The footer's summary: `long` normally, `short` (no words) when the footer is under 260px. */

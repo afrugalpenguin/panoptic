@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { engineControl, summaryText } from "./explorer-view";
+import { engineControl, summaryText, toggleNames } from "./explorer-view";
 
 describe("summaryText", () => {
   it("counts environments and connections when nothing is hidden", () => {
@@ -36,5 +36,22 @@ describe("engineControl", () => {
   it("uses the menu for 8 engines at 250px", () => {
     expect(engineControl(250, 8)).toBe("menu");
     expect(engineControl(420, 8)).toBe("toggles");
+  });
+});
+
+describe("toggleNames", () => {
+  it("names the toggles only over 380px", () => {
+    expect(toggleNames(380, 100)).toBe(false);
+    expect(toggleNames(381, 100)).toBe(true);
+  });
+
+  it("drops the names when they would leave the filter under 80px", () => {
+    // 6px padding each side and a 6px gap: 400 - 18 - 302 = 80.
+    expect(toggleNames(400, 302)).toBe(true);
+    expect(toggleNames(400, 303)).toBe(false);
+  });
+
+  it("waits until the toggles have been measured", () => {
+    expect(toggleNames(1000, 0)).toBe(false);
   });
 });

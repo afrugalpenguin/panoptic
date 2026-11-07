@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy } from "svelte";
   import EngineFilter from "./EngineFilter.svelte";
-  import { engineControl, summaryText } from "./explorer-view";
+  import { engineControl, summaryText, toggleNames } from "./explorer-view";
   import IconButton from "./IconButton.svelte";
   import Tree from "./Tree.svelte";
   import type { EngineSummary, ExplorerSummary, Row, TreeModel } from "./tree-model";
@@ -65,9 +65,12 @@
   let text = $state("");
   let barWidth = $state(0);
   let filterWidth = $state(0);
+  /** The named toggles' natural width, measured by EngineFilter. */
+  let namedWidth = $state(0);
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   const form = $derived(engineControl(barWidth, engines.length));
+  const named = $derived(toggleNames(barWidth, namedWidth));
   const summaryLine = $derived(summaryText(summary));
 
   function onFilterInput() {
@@ -110,7 +113,7 @@
       />
     </span>
     {#if form !== "none"}
-      <EngineFilter {engines} hidden={hiddenEngines} {form} onChange={(next) => model.setHiddenEngines(next)} />
+      <EngineFilter {engines} hidden={hiddenEngines} {form} {named} bind:namedWidth onChange={(next) => model.setHiddenEngines(next)} />
     {/if}
   </div>
   <div class="tree-host">
@@ -174,7 +177,8 @@
   .filter {
     display: flex;
     flex: 1;
-    min-width: 0;
+    /* docs/explorer-ux.md, "Filter bar": the engine control gives way first. */
+    min-width: 80px;
   }
   .filter input {
     box-sizing: border-box;
