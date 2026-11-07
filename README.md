@@ -123,3 +123,5 @@ Entra support. Why the sidecar is a self-contained JIT build rather than Native 
 ## License
 
 [MIT](LICENSE)
+
+The core is and stays MIT; paid Pro add-ons for team and production use are planned as separate closed packages, see [ADR 0016](docs/adr/0016-open-core.md).
