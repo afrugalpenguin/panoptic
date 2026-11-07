@@ -73,3 +73,14 @@ export async function walkExpands(
   }
   return steps;
 }
+
+/** The expand bench (scripts/bench.ps1 -Suite expand) as the app runs it after first load: its results, or why it could not run. */
+export async function benchExpand(model: TreeModel, settle: () => Promise<void>): Promise<{ kind: "expand"; steps?: ExpandStep[]; error?: string }> {
+  try {
+    const targets = expandTargets(model);
+    if (targets.length === 0) throw new Error("No connections to localhost in this store: run scripts/dev-seeded.ps1 -NoLaunch first.");
+    return { kind: "expand", steps: await walkExpands(model, targets, settle) };
+  } catch (e) {
+    return { kind: "expand", error: e instanceof Error ? e.message : String(e) };
+  }
+}
