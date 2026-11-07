@@ -1,12 +1,57 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type { Api, AppConfig, EnvironmentConfig, ImportCandidate, ImportSource } from "./api";
+  import { open as openFile } from "@tauri-apps/plugin-dialog";
   import Dialog from "./Dialog.svelte";
   import { NEW_ENV, NO_ENV, pickerOptions, toEnvironmentId } from "./env-picker";
   import { candidateKey, envStyleFor, planGroups, type PlanGroup } from "./import-plan";
 
-  let { api, config, onImported, onClose }: { api: Api; config: AppConfig; onImported: (count: number) => void; onClose: () => void } =
-    $props();
+  let {
+    api,
+    config,
+    onImported,
+    onClose,
+    pickFile = async () => {
+      const picked = await openFile({
+        multiple: false,
+        directory: false,
+        filters: [{ name: "Saved connections", extensions: ["regsrvr", "xml", "json"] }],
+      });
+      return typeof picked === "string" ? picked : null;
+    },
+  }: {
+    api: Api;
+    config: AppConfig;
+    onImported: (count: number) => void;
+    onClose: () => void;
+    /** Picks a file to import from; the file dialog unless a test gives another. */
+    pickFile?: () => Promise<string | null>;
+  } = $props();
+
+  let diagnostics = $state("");
+
+  /** Choose a file (#25): an SSMS Registered Servers export, the fallback whichever version moved its files. */
+  async function chooseFile() {
+    const path = await pickFile();
+    if (!path) return;
+    try {
+      const source = await api.scanImportFile(path);
+      sources = [...sources.filter((s) => s.path !== source.path), source];
+      replan();
+    } catch (e) {
+      error = String(e instanceof Error ? e.message : e);
+    }
+  }
+
+  /** The values-free report to attach to an issue when a tool's files are not found (#25). */
+  async function copyDiagnostics() {
+    try {
+      await navigator.clipboard.writeText(await api.importDiagnostics());
+      diagnostics = "Copied. It names files and their structure, never servers, users or groups.";
+    } catch (e) {
+      diagnostics = `Could not copy: ${e instanceof Error ? e.message : e}`;
+    }
+  }
 
   const AUTH_LABEL: Record<string, string> = { entra: "Entra", sql: "SQL login", windows: "Windows", key: "Key" };
 
@@ -218,6 +263,11 @@
           </ul>
         {/if}
       </details>
+      <div class="fallback">
+        <button type="button" onclick={chooseFile}>Choose a file...</button>
+        <button type="button" onclick={copyDiagnostics}>Copy diagnostics</button>
+        <span class="muted">{diagnostics || "Not found? In SSMS, right-click a group in Registered Servers, choose Tasks > Export, then choose that file."}</span>
+      </div>
     {/if}
     {#if error}<p class="error">{error}</p>{/if}
   </div>
@@ -357,5 +407,12 @@
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 100%;
+  }
+  .fallback {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-4);
+    margin-top: var(--space-4);
   }
 </style>

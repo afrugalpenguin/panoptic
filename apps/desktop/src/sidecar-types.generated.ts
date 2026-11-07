@@ -178,6 +178,10 @@ export interface ImportCandidate {
   alreadyAdded: boolean;
 }
 
+export interface ImportFileParams {
+  path: string;
+}
+
 export interface ImportGroup {
   name: string;
   connections: ImportCandidate[];

@@ -1,0 +1,1 @@
+Added: Import can read a file you choose, such as an SSMS Registered Servers export (.regsrvr), for when Panoptic does not find your SSMS version's saved connections. Copy diagnostics copies a report of where it looked, with no server or user names, to attach to an issue.

@@ -146,6 +146,29 @@ SSMS 22's own `22.0\UserSettings.xml` holds no connection history; SSMS 22 keeps
 `RegSrvr17.xml`. SSMS also writes `UserSettings-<date>Backup.xml` copies, which can be truncated
 and are not read.
 
+### When SSMS moves its files: choose a file, and diagnostics (#25)
+
+Each SSMS version has kept its settings somewhere new, so the scan cannot be the only way in. The import dialog has two
+fallbacks under the list of files it looked in:
+
+- **Choose a file...** reads a file the user picks (`ConnectionImporter.ScanFile`, RPC `import.scanFile`): an
+  exported `.regsrvr` (Registered Servers > right-click a group > Tasks > Export, stable since SSMS 2005), a
+  `RegSrvr*.xml` or `UserSettings.xml` copied from another machine, or an Azure Data Studio or VS Code `settings.json`.
+  An export is the same SML-IF document as `RegSrvr*.xml` and goes through the same parser, groups and all. Choose
+  "Do not include user names and passwords" when exporting; passwords are never imported anyway.
+- **Copy diagnostics** copies a report (`ConnectionImporter.Diagnostics`, RPC `import.diagnostics`) to attach to an
+  issue when a version is not found: every place the scan looks, whether each file is there, its size and date, and its
+  structure only (XML element names and namespaces with counts; for the JSON settings, the connection lists' counts and
+  property names). No value is ever included: no server, user, group or database names, and profile folders show as
+  `%APPDATA%` and `%LOCALAPPDATA%`. Synthetic fixtures for each SSMS version are to be shaped from such reports.
+
+**SMO spike (2026-11-07).** Microsoft's own `RegisteredServersStore` ships in the
+`Microsoft.SqlServer.SqlManagementObjects` package (181.37.1, `Microsoft.SqlServer.Management.RegisteredServers.dll`
+for net10.0). Not adopted: its local store knows only `RegSrvr.xml`, `RegSrvr16.xml` and `RegSrvr17.xml`, the same
+files the scan already finds by globbing `RegSrvr*.xml`, so it adds no version coverage; it would add about 8 MB of
+assemblies (22 DLLs) plus System.Data.OleDb and System.Management to the sidecar; and it is built against
+Microsoft.Data.SqlClient 6.x while the sidecar runs 7.x. The `.regsrvr` export is the version-proof route instead.
+
 ### Authentication values
 
 `AuthenticationType` (RegSrvr) and `AuthenticationMethod` (UserSettings) are the index of the

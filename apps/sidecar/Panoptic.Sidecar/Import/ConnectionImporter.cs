@@ -26,7 +26,7 @@ public sealed record ImportSource(string Source, string Label, string Path, List
 /// Formats differ across versions, so parsers match on element and property names rather than
 /// exact document structure, and a file that can't be parsed is reported, not fatal.
 /// </summary>
-public static class ConnectionImporter
+public static partial class ConnectionImporter
 {
     private const string NoGroup = "(No group)";
     private const string PasswordNote = "SQL login: enter the password after importing";
@@ -38,10 +38,9 @@ public static class ConnectionImporter
     public static List<ImportSource> Scan(string roamingAppData, string localAppData)
     {
         var sources = new List<ImportSource>();
-
-        void Try(string source, string label, string path, Func<string, ImportSource?> parse)
+        foreach (var (source, label, path, parse) in Locations(roamingAppData, localAppData))
         {
-            if (!File.Exists(path)) return;
+            if (!File.Exists(path)) continue;
             try
             {
                 sources.Add(parse(path) ?? new ImportSource(source, label, path, []));
@@ -51,28 +50,32 @@ public static class ConnectionImporter
                 sources.Add(new ImportSource(source, label, path, [], $"Could not read this file: {ex.Message}"));
             }
         }
+        return sources;
+    }
 
-        var ssmsRoots = new[]
-        {
-            Path.Combine(roamingAppData, "Microsoft", "SQL Server Management Studio"),
-            Path.Combine(roamingAppData, "Microsoft", "SSMS"),
-            Path.Combine(localAppData, "Microsoft", "SQL Server Management Studio"),
-            Path.Combine(localAppData, "Microsoft", "SSMS"),
-        };
+    /// <summary>The SSMS settings folders, in the order they are searched.</summary>
+    internal static string[] SsmsRoots(string roamingAppData, string localAppData) =>
+    [
+        Path.Combine(roamingAppData, "Microsoft", "SQL Server Management Studio"),
+        Path.Combine(roamingAppData, "Microsoft", "SSMS"),
+        Path.Combine(localAppData, "Microsoft", "SQL Server Management Studio"),
+        Path.Combine(localAppData, "Microsoft", "SSMS"),
+    ];
 
-        foreach (var root in ssmsRoots.Where(Directory.Exists))
+    /// <summary>Every file the scan reads, found or not, with its parser: the one list Scan and Diagnostics share.</summary>
+    internal static IEnumerable<(string Source, string Label, string Path, Func<string, ImportSource?> Parse)> Locations(string roamingAppData, string localAppData)
+    {
+        foreach (var root in SsmsRoots(roamingAppData, localAppData).Where(Directory.Exists))
         {
             // RegSrvr.xml, RegSrvr16.xml, RegSrvr17.xml...: SSMS 21+ keeps its saved connections here.
             foreach (var regsrvr in TopLevelFiles(root, "RegSrvr*.xml").OrderByDescending(File.GetLastWriteTimeUtc))
-                Try("ssms-registered", $"SSMS saved connections ({Path.GetFileName(regsrvr)})", regsrvr, ParseRegisteredServers);
+                yield return ("ssms-registered", $"SSMS saved connections ({Path.GetFileName(regsrvr)})", regsrvr, ParseRegisteredServers);
             // Newest version first, so its history wins when the same server appears in several.
             foreach (var settings in FindFiles(root, "UserSettings.xml").OrderByDescending(File.GetLastWriteTimeUtc))
-                Try("ssms-recent", $"SSMS connection history ({VersionFolder(root, settings)})", settings, ParseSsmsUserSettings);
+                yield return ("ssms-recent", $"SSMS connection history ({VersionFolder(root, settings)})", settings, ParseSsmsUserSettings);
         }
-
-        Try("ads", "Azure Data Studio", Path.Combine(roamingAppData, "azuredatastudio", "User", "settings.json"), ParseAzureDataStudio);
-        Try("vscode", "VS Code (mssql extension)", Path.Combine(roamingAppData, "Code", "User", "settings.json"), ParseVsCode);
-        return sources;
+        yield return ("ads", "Azure Data Studio", Path.Combine(roamingAppData, "azuredatastudio", "User", "settings.json"), ParseAzureDataStudio);
+        yield return ("vscode", "VS Code (mssql extension)", Path.Combine(roamingAppData, "Code", "User", "settings.json"), ParseVsCode);
     }
 
     /// <summary>

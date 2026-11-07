@@ -416,4 +416,73 @@ public sealed class ImportTests : IDisposable
         var ex = Assert.Throws<System.Xml.XmlException>(() => ConnectionImporter.ParseRegisteredServers(path));
         Assert.Contains("DTD", ex.Message);
     }
+
+    // --- A file chosen by the user, and diagnostics (#25) ----------------------------------------------------
+
+    [Fact]
+    public void A_chosen_regsrvr_export_is_read_like_the_saved_connections_file()
+    {
+        var path = Write("Downloads/team.regsrvr", RegSrvr);
+
+        var source = ConnectionImporter.ScanFile(path);
+
+        Assert.Null(source.Error);
+        Assert.Equal("ssms-registered", source.Source);
+        Assert.Contains("team.regsrvr", source.Label);
+        Assert.Equal("orders (dev)", source.Groups.Single(g => g.Name == "Dev").Connections.Single().Name);
+    }
+
+    [Fact]
+    public void A_chosen_azure_data_studio_settings_file_is_read()
+    {
+        var path = Write("Copied/settings.json", """
+            { "datasource.connections": [ { "options": { "server": "app.example.test", "authenticationType": "Integrated" }, "providerName": "MSSQL" } ] }
+            """);
+
+        var source = ConnectionImporter.ScanFile(path);
+
+        Assert.Equal("ads", source.Source);
+        Assert.Equal("app.example.test", source.Groups.Single().Connections.Single().Endpoint);
+    }
+
+    [Theory]
+    [InlineData("relative.regsrvr", "full path")]
+    [InlineData("missing", "does not exist")]
+    [InlineData("notes.txt", "SSMS registered servers export")]
+    public void A_chosen_file_that_cannot_be_read_says_why(string which, string expected)
+    {
+        var path = which switch
+        {
+            "missing" => Path.Combine(_root, "gone.regsrvr"),
+            "notes.txt" => Write("notes.txt", "hello"),
+            _ => which,
+        };
+
+        Assert.Contains(expected, ConnectionImporter.ScanFile(path).Error);
+    }
+
+    [Fact]
+    public void Diagnostics_describe_the_files_without_any_of_their_values()
+    {
+        Write("Roaming/Microsoft/SQL Server Management Studio/RegSrvr17.xml", RegSrvr17);
+        Write("Roaming/Microsoft/SQL Server Management Studio/22.0/UserSettings.xml",
+            "<SqlStudio><SSMS><ConnectionOptions><ServerTypes><Element><Value><Element><Instance>secret-host.example.test</Instance></Element></Value></Element></ServerTypes></ConnectionOptions></SSMS></SqlStudio>");
+        Write("Roaming/azuredatastudio/User/settings.json", """
+            { "datasource.connectionGroups": [ { "name": "Payroll", "id": "g1" } ],
+              "datasource.connections": [ { "options": { "server": "ads-host.example.test", "user": "someone@example.com" }, "groupId": "g1" } ] }
+            """);
+
+        var report = ConnectionImporter.Diagnostics(Path.Combine(_root, "Roaming"), Path.Combine(_root, "Local"));
+
+        Assert.Contains("%APPDATA%", report);
+        Assert.DoesNotContain(_root, report);
+        Assert.Contains("RegSrvr17.xml", report);
+        Assert.Contains("RegisteredServer", report);
+        Assert.Contains("Instance", report);
+        Assert.Contains("datasource.connections: 1", report);
+        Assert.Contains("options.server", report);
+        Assert.Contains("not found", report);
+        foreach (var value in new[] { "secret-host", "ads-host", "someone@example.com", "Payroll", "app-uat", "WINBOX", "UAT", "windows.net", "example" })
+            Assert.DoesNotContain(value, report);
+    }
 }

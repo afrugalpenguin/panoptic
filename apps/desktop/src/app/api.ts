@@ -66,6 +66,10 @@ export function createApi(rpc: RpcClient) {
     exportBackup: (path: string) => rpc.request<Sidecar.BackupExportResult>("backup.export", { path }),
     readBackup: (path: string) => rpc.request<Sidecar.BackupPreview>("backup.read", { path }),
     importBackup: (path: string, connections: number[]) => rpc.request<Sidecar.BackupImportResult>("backup.import", { path, connections }),
+    /** A file the user picked (#25): an exported .regsrvr, a RegSrvr or UserSettings .xml, or a settings.json. */
+    scanImportFile: (path: string) => rpc.request<ImportSource>("import.scanFile", { path }, 30_000),
+    /** Every place the import looks and its structure, with no values in it (#25). */
+    importDiagnostics: () => rpc.request<string>("import.diagnostics", undefined, 30_000),
     // A query can legitimately run for a long time; the user cancels it, so no RPC timeout applies.
     executeQuery: (request: { queryId: string; nodeId: string; text: string; database?: string }) =>
       rpc.request<import("../query/types").QuerySummary>("query.execute", request, 2_147_483_647),
