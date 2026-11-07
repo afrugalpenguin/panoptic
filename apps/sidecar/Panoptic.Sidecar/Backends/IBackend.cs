@@ -21,9 +21,12 @@ public interface IBackend
     /// <summary>Drops any cached client for a connection whose settings changed or was removed.</summary>
     void Forget(string connectionId);
 
-    /// <summary>The <see cref="AuthKinds"/> a connection of <paramref name="kind"/> may use. Saving or testing a
-    /// connection with any other is refused before it reaches the store or the backend, whatever the UI sent.</summary>
-    IReadOnlyList<string> AuthsFor(string kind);
+    /// <summary>
+    /// What the UI shows for connections of <paramref name="kind"/> (one of the kinds this backend is registered
+    /// for): labels, badge, auths and optional fields. The auths are also the only ones a connection may be saved or
+    /// tested with, whatever the UI sent.
+    /// </summary>
+    KindDescription Describe(string kind);
 
     // --- Node actions (optional) ---------------------------------------------------------------------
     // A node's action ids come with it from ChildrenAsync. Labels for the shared ones are in Nodes.ActionLabels.
@@ -77,6 +80,16 @@ public interface IQuerySink
 {
     /// <summary>Rows per query.rows notification, and the page size to ask a driver for.</summary>
     int BatchSize { get; }
+
+    /// <summary>
+    /// Rows kept per result set (the user's row limit). Past it, a backend stops reading the set, calls
+    /// <see cref="Truncated"/>, and moves on to the next set: the rest of the script still runs. Rows sent past it are
+    /// dropped anyway.
+    /// </summary>
+    int MaxRows { get; }
+
+    /// <summary>The set had more rows than <see cref="MaxRows"/>; the rest were not read. Reported once per set.</summary>
+    void Truncated(int set);
 
     /// <summary>Result sets begun so far.</summary>
     int SetCount { get; }

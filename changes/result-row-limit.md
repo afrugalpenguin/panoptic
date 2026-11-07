@@ -1,0 +1,1 @@
+Fixed: very large query results no longer exhaust memory. Each result set keeps up to a **Row limit** (Settings, default 100,000 rows); past it, the rest of that result is not loaded, the result tab says so, and the rest of the script still runs.

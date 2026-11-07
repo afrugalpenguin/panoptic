@@ -113,7 +113,12 @@ public sealed class PostgresBackend(Credentials credentials) : IQueryBackend
         }
     }
 
-    public IReadOnlyList<string> AuthsFor(string kind) => [AuthKinds.Entra, AuthKinds.Password];
+    /// <summary>Entra users sign in under their Entra name, which the optional user overrides.</summary>
+    public KindDescription Describe(string kind) => new(
+        kind, "PostgreSQL / Azure Database for PostgreSQL", "Server", "myserver.postgres.database.azure.com or host:5432",
+        [AuthKinds.Option(AuthKinds.Entra), AuthKinds.Option(AuthKinds.Password)],
+        new KindBadge("PG", "#5f7a2e", "Postgres"),
+        new ConnectionFields(Database: true, CertificateOptions: true, EntraUser: true, TrustLocalOnly: false));
 
     public void Forget(string connectionId)
     {
@@ -219,6 +224,12 @@ public sealed class PostgresBackend(Credentials credentials) : IQueryBackend
 
         while (await reader.ReadAsync(ct))
         {
+            // Past the row limit: the caller's NextResult skips the rest of this set; later statements still run.
+            if (sink.RowCount(index) + batch.Count >= sink.MaxRows)
+            {
+                sink.Truncated(index);
+                break;
+            }
             var row = new object?[reader.FieldCount];
             for (var i = 0; i < row.Length; i++) row[i] = reader.IsDBNull(i) ? null : PostgresValues.FromText(types[i], reader.GetString(i));
             batch.Add(row);

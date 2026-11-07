@@ -3,12 +3,13 @@
   import { invoke } from "@tauri-apps/api/core";
   import type { RpcClient } from "../rpc";
   import { connectSidecar, readyText, type PingResult, type SidecarStatus } from "../sidecar";
-  import { finishBenchmark, firstPaintEpochMs, nowEpochMs, type StartupInfo } from "../startup";
+  import { afterPaint, finishBenchmark, firstPaintEpochMs, nowEpochMs, type StartupInfo } from "../startup";
   import { sidecarView } from "../sidecar-status";
   import { scheduleUpdateChecks } from "../update-schedule";
   import { createUpdateChecker, currentVersion, type UpdateState } from "../updates";
   import { parseChangelog, sectionsSince, type ChangelogSection } from "../whats-new";
-  import { createApi, type Api, type AppConfig, type AppSettings, type ConnectionConfig, type DeviceCodePrompt, type EnvironmentConfig, type TreeNode } from "./api";
+  import { createApi, type Api, type AppConfig, type AppSettings, type ConnectionConfig, type DeviceCodePrompt, type EnvironmentConfig, type KindDescription, type TreeNode } from "./api";
+  import { registerKinds } from "./kinds";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import { confirmText, readOnlyMoveText, type ConfirmText } from "./confirm";
   import ConnectionDialog from "./ConnectionDialog.svelte";
@@ -19,6 +20,7 @@
   import MoveDialog from "./MoveDialog.svelte";
   import Explorer from "./Explorer.svelte";
   import Landing from "./Landing.svelte";
+  import SeekOverlay from "./SeekOverlay.svelte";
   import { livePlace, type SeekEnv, type SeekHost, type SeekIndex, type SeekRow } from "./seek";
   import { globalShortcut } from "./shortcuts";
   import { loadUsage, recordUse, saveUsage, type Place } from "./usage";
@@ -51,8 +53,12 @@
   let update = $state<UpdateState>();
   let deviceCode = $state<DeviceCodePrompt>();
   let menu = $state<{ x: number; y: number; items: (MenuItem | "separator")[] }>();
+  /** Ctrl+P with tabs open: Seek over the workspace. */
+  let seeking = $state(false);
   /** Context menu labels for node action ids, from the sidecar (node.actionLabels). */
   let actionLabels = $state.raw<Record<string, string>>({});
+  /** Connection kinds as the sidecar describes them (backends.describe). */
+  let kinds = $state.raw<KindDescription[]>([]);
   let dialog = $state<
     | { kind: "environment"; initial?: EnvironmentConfig }
     | { kind: "connection"; environmentId: string | null; initial?: ConnectionConfig }
@@ -75,7 +81,7 @@
   let settings = $state<AppSettings>({
     updateCheck: "startup",
     explorer: { showKindBadge: true, rowFont: "mono", envOrder: [] },
-    editor: { intellisense: true, catalogSampleDocs: 50, autoRefreshOnDdl: true, warnUnknownNames: true },
+    editor: { intellisense: true, catalogSampleDocs: 50, autoRefreshOnDdl: true, warnUnknownNames: true, maxRows: 100_000 },
   });
   const checkForUpdates = createUpdateChecker((s) => (update = s));
   let stopUpdateSchedule = () => {};
@@ -202,6 +208,9 @@
     try {
       // Generous: the first run after install or update can be slow (antivirus scan, .NET unpacking).
       ping = await rpc!.request<PingResult>("ping", undefined, 120_000);
+      // Before the tree loads: its badges and the connection dialog come from these.
+      kinds = await api!.describeBackends();
+      registerKinds(kinds);
     } catch {
       return; // An exited/failed status follows and says what happened.
     }
@@ -227,6 +236,13 @@
     config = await api!.config();
     await model.loadRoot();
     await model.preload(model.envIds());
+    // Bench only: waiting for the paint would otherwise delay the rest of start-up for nothing.
+    let treeRenderedEpochMs: number | undefined;
+    if (info.benchMode === "startup") {
+      await tick();
+      await afterPaint();
+      treeRenderedEpochMs = nowEpochMs();
+    }
 
     const fcp = await firstPaintEpochMs();
     openedMs = Math.round(sidecarReadyEpochMs - info.mainStartEpochMs);
@@ -237,11 +253,13 @@
       sidecarReadyEpochMs,
       mainToFirstPaintMs: Math.round(fcp - info.mainStartEpochMs),
       mainToSidecarReadyMs: Math.round(sidecarReadyEpochMs - info.mainStartEpochMs),
+      treeRenderedEpochMs,
       sidecarStartupMs: ping.startupMs,
       sidecarMode: ping.mode,
     };
     startup = `First paint ${timings.mainToFirstPaintMs} ms, engine ready ${timings.mainToSidecarReadyMs} ms (engine ${ping.startupMs} ms, ${ping.mode}, v${ping.version})`;
     if (info.benchMode === "startup") await finishBenchmark(timings);
+    if (info.benchMode === "expand") await runExpandBench();
     if (info.benchMode) return;
     settings = await api!.settings();
     model.setEnvOrder(settings.explorer.envOrder);
@@ -251,6 +269,22 @@
     changelog = parseChangelog(await invoke<string>("changelog_markdown").catch(() => ""));
     await recordVersionSeen(current);
     stopUpdateSchedule = scheduleUpdateChecks(settings.updateCheck, checkForUpdates, { atLaunch: true });
+  }
+
+  /** Bench only (scripts/bench.ps1 -Suite expand): times expands on this machine's connections, then exits. */
+  async function runExpandBench() {
+    const { expandTargets, walkExpands } = await import("../bench/expand");
+    try {
+      const targets = expandTargets(model);
+      if (targets.length === 0) throw new Error("No connections to localhost in this store: run scripts/dev-seeded.ps1 -NoLaunch first.");
+      const steps = await walkExpands(model, targets, async () => {
+        await tick();
+        await afterPaint();
+      });
+      await finishBenchmark({ kind: "expand", steps });
+    } catch (e) {
+      await finishBenchmark({ kind: "expand", error: e instanceof Error ? e.message : String(e) });
+    }
   }
 
   /**
@@ -512,15 +546,23 @@
     await openQueryOn(model.node(place.nodeId) ?? { id: place.nodeId, label: place.label }, envColor, readOnly, "newQuery");
   }
 
-  /** Seek's Enter: scope the tree to the row, or reopen a place. */
-  function seekOpen(row: SeekRow) {
+  /**
+   * Seek's Enter: scope the tree to the row and hand focus to the tree on it, so the arrows carry on from there (the
+   * landing unmounts once a row is selected, which used to drop focus to the page). A place reopens.
+   */
+  async function seekOpen(row: SeekRow) {
     if (row.kind === "env") {
       selectedKey = row.env.id;
       void model.focus(row.env.id);
     } else if (row.kind === "host") {
       selectedKey = row.host.id;
       void model.focus(row.host.envId, row.host.id);
-    } else if (row.kind === "resume" || row.kind === "recent") void reopen(row.place);
+    } else {
+      if (row.kind === "resume" || row.kind === "recent") void reopen(row.place);
+      return;
+    }
+    await tick();
+    explorer?.focus();
   }
 
   /** Seek's Ctrl+Enter: a new query tab on the connection (an environment's first one); a place reopens. */
@@ -558,6 +600,8 @@
   }
 
   function onGlobalKeydown(e: KeyboardEvent) {
+    // The Seek overlay is modal: its box keeps every key.
+    if (seeking) return;
     const action = selectedRow?.type === "node" ? shortcutAction(e, selectedRow.node) : undefined;
     if (action && selectedRow) {
       e.preventDefault();
@@ -578,10 +622,13 @@
     } else void focusSeek();
   }
 
-  /** Ctrl+P: the landing's Seek. With tabs open there is nothing to focus yet (a palette comes later). */
+  /** Ctrl+P: the landing's Seek; with tabs open (no landing to show), Seek opens over the workspace. */
   async function focusSeek() {
+    if (workspace.tabs.length > 0) {
+      seeking = true;
+      return;
+    }
     selectedKey = undefined;
-    if (workspace.tabs.length > 0) return;
     await tick();
     landing?.focus();
   }
@@ -710,6 +757,10 @@
   </div>
 </div>
 
+{#if seeking}
+  <SeekOverlay index={seekIndex} onOpen={seekOpen} onQuery={seekQuery} onClose={() => (seeking = false)} />
+{/if}
+
 {#if menu}
   <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => (menu = undefined)} />
 {/if}
@@ -751,6 +802,7 @@
 {:else if dialog?.kind === "connection" && api}
   <ConnectionDialog
     {api}
+    {kinds}
     environments={config.environments}
     environmentId={dialog.environmentId}
     initial={dialog.initial}

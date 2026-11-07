@@ -11,7 +11,8 @@ export type CellValue = string | number | boolean | null | undefined;
 
 export interface QuerySummary {
   queryId: string;
-  resultSets: { rowCount: number }[];
+  /** truncated: the set reached the row limit (Settings) and its remaining rows were not loaded. */
+  resultSets: { rowCount: number; truncated?: boolean }[];
   elapsedMs: number;
   /** Read-only environment: the guard transaction was still open at the end and was rolled back. */
   rolledBack: boolean;

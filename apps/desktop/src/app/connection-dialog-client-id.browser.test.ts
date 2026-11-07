@@ -4,6 +4,7 @@ import { flushSync, mount, unmount } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "./app.css";
 import type { Api, ConnectionConfig } from "./api";
+import { BUILTIN_KINDS } from "./builtin-kinds";
 import ConnectionDialog from "./ConnectionDialog.svelte";
 
 const entra: ConnectionConfig = {
@@ -24,7 +25,7 @@ function open(initial: ConnectionConfig) {
   document.body.append(target);
   mounted = mount(ConnectionDialog, {
     target,
-    props: { api: { testConnection } as unknown as Api, environments: [], initial, onSaved: () => {}, onEnvironmentCreated: () => {}, onClose: () => {} },
+    props: { api: { testConnection } as unknown as Api, kinds: BUILTIN_KINDS, environments: [], initial, onSaved: () => {}, onEnvironmentCreated: () => {}, onClose: () => {} },
   });
   flushSync();
   const type = (id: string, value: string) => {

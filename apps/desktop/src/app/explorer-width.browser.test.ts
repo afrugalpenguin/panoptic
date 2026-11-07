@@ -5,6 +5,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import "./app.css";
 import type { TreeNode } from "./api";
 import Harness from "../test/ExplorerHarness.svelte";
+import { BUILTIN_KINDS } from "./builtin-kinds";
+import { registerKinds } from "./kinds";
+
+// The sidecar describes the kinds in the app; here the built-in ones stand in.
+registerKinds(BUILTIN_KINDS);
 
 // Synthetic names only. Endpoints are long on purpose: they must clip, not scroll.
 const env = (id: string, name: string, color: string, count: number): TreeNode => ({
@@ -75,15 +80,34 @@ describe("explorer width", () => {
 
   it("shows four engines as toggles at 220px, with names over 380px", async () => {
     const narrow = await show(220, FOUR);
-    expect(narrow.panel.querySelectorAll(".toggle")).toHaveLength(4);
-    expect(getComputedStyle(narrow.panel.querySelector(".toggle .name")!).display).toBe("none");
+    expect(narrow.panel.querySelectorAll(".toggles .toggle")).toHaveLength(4);
+    expect(getComputedStyle(narrow.panel.querySelector(".toggles .toggle .name")!).display).toBe("none");
     unmount(mounted!);
     mounted = undefined;
     document.body.innerHTML = "";
 
     const wide = await show(420, FOUR);
-    expect(getComputedStyle(wide.panel.querySelector(".toggle .name")!).display).not.toBe("none");
+    await vi.waitFor(() => expect(getComputedStyle(wide.panel.querySelector(".toggles .toggle .name")!).display).not.toBe("none"));
     noSideways(wide.panel);
+  });
+
+  // Eight named toggles need about 510px; until then they stay icons and the filter keeps its room
+  // (docs/explorer-ux.md, "Filter bar": at least 80px).
+  for (const width of [400, 440, 480, 560, 640, 800])
+    it(`keeps the filter at least 80px wide with 8 engines at ${width}px, and never clips an engine name`, async () => {
+      const { panel } = await show(width, EIGHT);
+      await vi.waitFor(() => expect(panel.querySelector(".toggles")).not.toBeNull());
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      expect(panel.querySelector<HTMLElement>(".filter")!.offsetWidth).toBeGreaterThanOrEqual(80);
+      for (const name of panel.querySelectorAll<HTMLElement>(".toggles .toggle .name"))
+        if (getComputedStyle(name).display !== "none") expect(name.scrollWidth, name.textContent!).toBeLessThanOrEqual(name.clientWidth);
+      noSideways(panel);
+      noSideways(panel.querySelector<HTMLElement>(".filter-bar")!);
+    });
+
+  it("names 8 engines once they fit beside the filter", async () => {
+    const { panel } = await show(800, EIGHT);
+    await vi.waitFor(() => expect(getComputedStyle(panel.querySelector(".toggles .toggle .name")!).display).not.toBe("none"));
   });
 
   it("uses the Engine button and popover for 8 engines at 250px, and the popover stays inside the panel", async () => {

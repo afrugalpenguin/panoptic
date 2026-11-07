@@ -1,7 +1,7 @@
 <script lang="ts">
   import { open as openFile } from "@tauri-apps/plugin-dialog";
   import { onDestroy } from "svelte";
-  import type { Api, AppConfig, AuthKind, ConnectionConfig, ConnectionKind, EnvironmentConfig, TestConnectionResult } from "./api";
+  import type { Api, AppConfig, AuthKind, ConnectionConfig, ConnectionKind, EnvironmentConfig, KindDescription, TestConnectionResult } from "./api";
   import Dialog from "./Dialog.svelte";
   import { NEW_ENV, NO_ENV, toEnvironmentId } from "./env-picker";
   import EnvPicker from "./EnvPicker.svelte";
@@ -9,6 +9,7 @@
 
   let {
     api,
+    kinds,
     environments,
     environmentId: initialEnvironmentId,
     initial,
@@ -17,6 +18,8 @@
     onClose,
   }: {
     api: Api;
+    /** The connection kinds the sidecar serves (backends.describe), in Type list order. */
+    kinds: KindDescription[];
     environments: EnvironmentConfig[];
     /** Preselected environment; null or absent preselects None. */
     environmentId?: string | null;
@@ -27,13 +30,6 @@
     onClose: () => void;
   } = $props();
 
-  const KINDS: { value: ConnectionKind; label: string; placeholder: string }[] = [
-    { value: "sql", label: "SQL Server / Azure SQL", placeholder: "myserver.database.windows.net" },
-    { value: "synapse", label: "Azure Synapse SQL", placeholder: "myworkspace.sql.azuresynapse.net or ...-ondemand..." },
-    { value: "cosmos", label: "Cosmos DB (NoSQL)", placeholder: "https://myaccount.documents.azure.com:443/" },
-    { value: "postgres", label: "PostgreSQL / Azure Database for PostgreSQL", placeholder: "myserver.postgres.database.azure.com or host:5432" },
-  ];
-
   // svelte-ignore state_referenced_locally
   const editing = initial !== undefined;
   // svelte-ignore state_referenced_locally
@@ -41,7 +37,7 @@
   // svelte-ignore state_referenced_locally
   let name = $state(initial?.name ?? "");
   // svelte-ignore state_referenced_locally
-  let kind = $state<ConnectionKind>(initial?.kind ?? "sql");
+  let kind = $state<ConnectionKind>(initial?.kind ?? kinds[0]?.kind ?? "");
   // svelte-ignore state_referenced_locally
   let endpoint = $state(initial?.endpoint ?? "");
   // svelte-ignore state_referenced_locally
@@ -69,37 +65,19 @@
   const testAbort = new AbortController();
   onDestroy(() => testAbort.abort());
 
-  const authOptions = $derived<{ value: AuthKind; label: string }[]>(
-    kind === "cosmos"
-      ? [
-          { value: "entra", label: "Microsoft Entra ID" },
-          { value: "key", label: "Account key" },
-        ]
-      : kind === "sql"
-        ? [
-            { value: "entra", label: "Microsoft Entra ID" },
-            { value: "sql", label: "SQL login" },
-            { value: "windows", label: "Windows" },
-          ]
-        : kind === "postgres"
-          ? [
-              { value: "entra", label: "Microsoft Entra ID" },
-              { value: "password", label: "Username and password" },
-            ]
-          : [
-              { value: "entra", label: "Microsoft Entra ID" },
-              { value: "sql", label: "SQL login" },
-            ],
-  );
+  /** The picked kind; a saved connection of a kind the sidecar no longer serves falls back to the first. */
+  const described = $derived(kinds.find((k) => k.kind === kind) ?? kinds[0]);
+  const fields = $derived(described.fields);
+  const authOptions = $derived(described.auths);
   const login = $derived(auth === "sql" || auth === "password");
   const needsSecret = $derived(login || auth === "key");
   /** Postgres signs Entra users in under their Entra name; blank means the name from the sign-in. */
-  const entraUser = $derived(kind === "postgres" && auth === "entra");
-  const placeholder = $derived(KINDS.find((k) => k.value === kind)!.placeholder);
+  const entraUser = $derived(fields.entraUser && auth === "entra");
+  const placeholder = $derived(described.endpointPlaceholder);
   const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  /** Cosmos allows skipping the check for a localhost emulator only (the sidecar refuses otherwise). */
+  /** Some kinds (Cosmos) allow skipping the check for a localhost emulator only (the sidecar refuses otherwise). */
   const trustWarning = $derived.by(() => {
-    if (!trust || kind === "cosmos" || !endpoint.trim() || isLoopback(endpoint)) return "";
+    if (!trust || fields.trustLocalOnly || !endpoint.trim() || isLoopback(endpoint)) return "";
     const what =
       auth === "entra"
         ? "your Microsoft Entra sign-in token, which could then be used against other Azure databases for up to an hour"
@@ -110,7 +88,7 @@
   });
 
   $effect(() => {
-    if (!authOptions.some((o) => o.value === auth)) auth = authOptions[0].value;
+    if (!authOptions.some((o) => o.id === auth)) auth = authOptions[0].id;
   });
 
   // A test result describes the settings it ran with: any edit to them makes it stale, so it goes (#263).
@@ -127,12 +105,12 @@
       endpoint: endpoint.trim(),
       auth,
       user: login || (entraUser && user.trim()) ? user.trim() : null,
-      database: kind !== "cosmos" && database.trim() ? database.trim() : null,
+      database: fields.database && database.trim() ? database.trim() : null,
       tenantId: auth === "entra" && tenantId.trim() ? tenantId.trim() : null,
       clientId: auth === "entra" && clientId.trim() ? clientId.trim() : null,
       trustServerCertificate: trust,
-      certificateHostName: kind !== "cosmos" && certHost.trim() ? certHost.trim() : null,
-      certificateFile: kind !== "cosmos" && certFile.trim() ? certFile.trim() : null,
+      certificateHostName: fields.certificateOptions && certHost.trim() ? certHost.trim() : null,
+      certificateFile: fields.certificateOptions && certFile.trim() ? certFile.trim() : null,
     };
   }
 
@@ -161,11 +139,11 @@
   const secretArg = () => (needsSecret ? (secret || (keepsSavedSecret ? undefined : "")) : "");
 
   function validate(): string {
-    if (!endpoint.trim()) return kind === "cosmos" ? "Account URI is required" : "Server is required";
+    if (!endpoint.trim()) return `${described.endpointLabel} is required`;
     if (login && !user.trim()) return "User is required";
     if (auth === "entra" && clientId.trim() && !GUID.test(clientId.trim()))
       return "Client id must be an app's Application (client) ID, a GUID such as 11111111-2222-3333-4444-555555555555";
-    if (kind !== "cosmos" && trust && (certHost.trim() || certFile.trim()))
+    if (fields.certificateOptions && trust && (certHost.trim() || certFile.trim()))
       return "Turn off Trust server certificate to use a certificate host name or file: trusting skips the checks they set up.";
     if (needsSecret && !secret && !keepsSavedSecret)
       return editing
@@ -215,15 +193,15 @@
 
   <label for="c-kind">Type</label>
   <select id="c-kind" bind:value={kind}>
-    {#each KINDS as k}<option value={k.value}>{k.label}</option>{/each}
+    {#each kinds as k}<option value={k.kind}>{k.label}</option>{/each}
   </select>
 
-  <label for="c-endpoint">{kind === "cosmos" ? "Account URI" : "Server"}</label>
+  <label for="c-endpoint">{described.endpointLabel}</label>
   <input id="c-endpoint" bind:value={endpoint} {placeholder} spellcheck="false" />
 
   <label for="c-auth">Authentication</label>
   <select id="c-auth" bind:value={auth}>
-    {#each authOptions as o}<option value={o.value}>{o.label}</option>{/each}
+    {#each authOptions as o}<option value={o.id}>{o.label}</option>{/each}
   </select>
 
   {#if login}
@@ -252,7 +230,7 @@
     <input id="c-client" bind:value={clientId} placeholder="An app registration's ID, if your tenant needs its own" spellcheck="false" autocomplete="off" />
   {/if}
 
-  {#if kind !== "cosmos"}
+  {#if fields.database}
     <label for="c-db">Database <span class="muted">(optional)</span></label>
     <input id="c-db" bind:value={database} placeholder="Only show this database" spellcheck="false" />
   {/if}
@@ -263,11 +241,11 @@
   <span></span>
   <label class="check">
     <input type="checkbox" bind:checked={trust} />
-    {kind === "cosmos" ? "Skip certificate validation (localhost emulator only)" : "Trust server certificate"}
+    {fields.trustLocalOnly ? "Skip certificate validation (localhost emulator only)" : "Trust server certificate"}
   </label>
   {#if trustWarning}<p class="full trust-warning">{trustWarning}</p>{/if}
 
-  {#if kind !== "cosmos"}
+  {#if fields.certificateOptions}
     <label for="c-cert-host">Certificate host name <span class="muted">(optional)</span></label>
     <input id="c-cert-host" bind:value={certHost} placeholder="The name on the certificate, if not the server's" spellcheck="false" autocomplete="off" />
     <label for="c-cert-file">Certificate file <span class="muted">(optional)</span></label>

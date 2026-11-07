@@ -1,26 +1,22 @@
-// Kind badges for connection rows (docs/explorer-ux.md, "Connection row"), keyed by backend kind.
+// Connection kinds as the sidecar describes them (backends.describe, #203): the UI knows no engine of its own. App
+// registers the descriptions once the sidecar answers, before the tree first loads.
+import type { KindBadge, KindDescription } from "./api";
 
-export interface KindBadge {
-  /** One or two letters shown in the 14px square. */
-  letters: string;
-  color: string;
-  /** Name shown on the kind filter chip. */
-  name: string;
+export type { KindBadge };
+
+const registry = new Map<string, KindDescription>();
+
+/** Replaces the known kinds with the sidecar's descriptions. */
+export function registerKinds(kinds: KindDescription[]): void {
+  registry.clear();
+  for (const k of kinds) registry.set(k.kind, k);
 }
 
-const registry = new Map<string, KindBadge>([
-  ["sql", { letters: "S", color: "#2d5aa0", name: "SQL" }],
-  ["cosmos", { letters: "C", color: "#1f7a74", name: "Cosmos" }],
-  ["synapse", { letters: "Sy", color: "#7b4fb5", name: "Synapse" }],
-  ["postgres", { letters: "PG", color: "#5f7a2e", name: "Postgres" }],
-]);
-
-/** A new backend registers its badge alongside its connection kind. */
-export function registerKindBadge(kind: string, badge: KindBadge): void {
-  registry.set(kind, badge);
+export function kindDescription(kind: string): KindDescription | undefined {
+  return registry.get(kind);
 }
 
-/** The badge for a kind; an unregistered kind gets its initial on neutral grey rather than nothing. */
+/** The badge for a kind (docs/explorer-ux.md, "Connection row"); an unknown kind gets its initial on neutral grey. */
 export function kindBadge(kind: string): KindBadge {
-  return registry.get(kind) ?? { letters: kind.charAt(0).toUpperCase() || "?", color: "#6a6a6a", name: kind };
+  return registry.get(kind)?.badge ?? { letters: kind.charAt(0).toUpperCase() || "?", color: "#6a6a6a", name: kind };
 }

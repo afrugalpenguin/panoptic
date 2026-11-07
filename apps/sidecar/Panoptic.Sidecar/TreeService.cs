@@ -113,16 +113,20 @@ public sealed class TreeService(ConfigStore store, IReadOnlyDictionary<string, I
             ? backend
             : throw new RpcException(RpcException.InvalidParams, $"Unknown connection kind: {connection.Kind}");
 
+    /// <summary>Every registered connection kind, described for the UI (backends.describe), in registration order.</summary>
+    public KindDescription[] Describe() => backends.Select(b => b.Value.Describe(b.Key)).ToArray();
+
     /// <summary>The backend for a connection about to be saved or tested, once its auth is one that kind supports.</summary>
     public IBackend Validate(ConnectionConfig connection)
     {
         var backend = BackendFor(connection);
-        if (!backend.AuthsFor(connection.Kind).Contains(connection.Auth))
+        var kind = backend.Describe(connection.Kind);
+        if (kind.Auths.All(a => a.Id != connection.Auth))
             throw new RpcException(RpcException.InvalidParams, $"{connection.Kind} connections do not support auth '{connection.Auth}'");
         // Sent to Entra as the app to sign in as, so only ever a plain GUID (an app's Application (client) ID).
         if (!string.IsNullOrWhiteSpace(connection.ClientId) && !Guid.TryParseExact(connection.ClientId.Trim(), "D", out _))
             throw new RpcException(RpcException.InvalidParams, "The client id must be an app's Application (client) ID, a GUID such as 11111111-2222-3333-4444-555555555555");
-        ValidateCertificateOptions(connection);
+        ValidateCertificateOptions(connection, kind);
         return backend;
     }
 
@@ -130,14 +134,14 @@ public sealed class TreeService(ConfigStore store, IReadOnlyDictionary<string, I
     /// The certificate host name and file (issue #261): only for SQL Server and Postgres, not alongside Trust server
     /// certificate (which skips the checks they configure), a DNS name, and an absolute path to a loadable certificate.
     /// </summary>
-    private static void ValidateCertificateOptions(ConnectionConfig c)
+    private static void ValidateCertificateOptions(ConnectionConfig c, KindDescription kind)
     {
         var host = c.CertificateHostName?.Trim();
         var file = c.CertificateFile?.Trim();
         if (string.IsNullOrEmpty(host) && string.IsNullOrEmpty(file)) return;
         static RpcException Bad(string message) => new(RpcException.InvalidParams, message);
-        if (c.Kind == ConnectionKinds.Cosmos)
-            throw Bad("Cosmos connections don't take a certificate host name or file.");
+        if (!kind.Fields.CertificateOptions)
+            throw Bad($"{kind.Badge.Name} connections don't take a certificate host name or file.");
         if (c.TrustServerCertificate)
             throw Bad("Turn off Trust server certificate to use a certificate host name or file: trusting skips the checks they set up.");
         if (!string.IsNullOrEmpty(host) && (host.Length > 253 || Uri.CheckHostName(host) != UriHostNameType.Dns))
