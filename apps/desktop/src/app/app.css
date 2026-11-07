@@ -68,7 +68,8 @@
     --focus-ring: #24c8db;
 
     --tree-bright: #ffffff;
-    --tree-dim: #6a6a6a;
+    /* AA on a row and a hovered row (theme-contrast test, #233); the spec's #6a6a6a was 3.05:1 here. */
+    --tree-dim: #8b9199;
     --tree-dim-selected: #9aa3b5;
     --tree-folder: #d0d0d0;
 
