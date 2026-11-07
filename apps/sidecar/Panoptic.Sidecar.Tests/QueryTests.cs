@@ -184,9 +184,10 @@ public sealed class QueryIntegrationTests : IDisposable
 
     private static string? SqlPassword => Environment.GetEnvironmentVariable("PANOPTIC_TEST_SQL_PASSWORD");
 
-    private QueryService Service(bool readOnly = false)
+    private QueryService Service(bool readOnly = false, int? maxRows = null)
     {
         var store = new ConfigStore(_path);
+        if (maxRows is { } max) store.SaveSettings(store.Settings with { Editor = store.Settings.Editor with { MaxRows = max } });
         store.SaveEnvironment(new EnvironmentConfig("dev", "Dev", "#000", readOnly, []));
         store.SaveConnection("dev", new ConnectionConfig("sql1", "dev", ConnectionKinds.Sql, "127.0.0.1,14333", AuthKinds.Sql, User: "sa", TrustServerCertificate: true), SqlPassword ?? "");
         store.SaveConnection("dev", new ConnectionConfig("cos1", "emu", ConnectionKinds.Cosmos, "https://localhost:8081", AuthKinds.Key, TrustServerCertificate: true), CosmosEmulatorKey);
@@ -257,6 +258,19 @@ public sealed class QueryIntegrationTests : IDisposable
         Assert.Equal(208, error.GetProperty("number").GetInt32());
         Assert.False(error.TryGetProperty("line", out _));
         Assert.Equal("Procedure dbo.PanopticTestMissing, line 3: Invalid object name 'dbo.NoSuchTable'.", error.GetProperty("text").GetString());
+    }
+
+    [SqlFact(NeedsWindows = true), Trait("Category", "SqlIntegration")]
+    public async Task Sql_set_stops_at_the_row_limit_and_the_script_carries_on()
+    {
+        var summary = await Service(maxRows: 1000).ExecuteAsync(new QueryRequest("q5", "conn:sql1/db:Orders",
+            "SELECT TOP (1200) o.object_id FROM sys.all_objects o\nSELECT 'after' AS s"), default);
+
+        Assert.Null(summary.Error);
+        Assert.Equal([1000, 1], summary.ResultSets.Select(r => r.RowCount));
+        Assert.Equal([true, false], summary.ResultSets.Select(r => r.Truncated));
+        Assert.Equal(1000, Notes("query.rows").Where(n => n.GetProperty("index").GetInt32() == 0).Sum(n => n.GetProperty("rows").GetArrayLength()));
+        Assert.Contains(Notes("query.message"), m => m.GetProperty("text").GetString()!.Contains("row limit"));
     }
 
     [SqlFact(NeedsWindows = true), Trait("Category", "SqlIntegration")]

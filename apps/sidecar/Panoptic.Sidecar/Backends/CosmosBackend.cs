@@ -144,11 +144,20 @@ public sealed class CosmosBackend(Credentials credentials) : IQueryBackend
                     rows.Add(row);
                 }
 
+                // Past the row limit: keep what fits and stop paging (a Cosmos query has one set, so nothing else runs).
+                var room = sink.MaxRows - sink.RowCount(set);
+                var full = rows.Count > room;
+                if (full) rows = rows[..room];
                 var newColumns = columns.Count != sent;
                 var none = sink.RowCount(set) == 0;
                 if (rows.Count > 0 || none)
                     sink.Rows(set, newColumns || none ? columns.Select(c => new ResultColumn(c, "")).ToArray() : null, rows);
                 sent = columns.Count;
+                if (full)
+                {
+                    sink.Truncated(set);
+                    break;
+                }
             }
         }
         catch (CosmosException ex) when (!ct.IsCancellationRequested)
