@@ -45,6 +45,11 @@
   /** The picker lists the connection's databases, plus the tab's own if the list has not loaded or lacks it. */
   const database = $derived(workspace.databaseOf(tab));
   const databaseOptions = $derived(database && !tab.databases.includes(database) ? [database, ...tab.databases] : tab.databases);
+  /**
+   * A tab opened on a connection (not a database) runs in the connection's default database until one is picked. The
+   * picker says so with its own entry; without it the select would show its first option, which the tab is not using.
+   */
+  const offersDefault = $derived(workspace.nodeDatabaseOf(tab) === undefined);
 
   async function exportAs(format: "csv" | "json") {
     if (!current) return;
@@ -115,9 +120,10 @@
         class="database"
         aria-label="Database"
         title="Database this tab runs against"
-        value={database}
+        value={database ?? ""}
         onchange={(e) => workspace.setDatabase(tab, e.currentTarget.value)}
       >
+        {#if offersDefault}<option value="">(connection default)</option>{/if}
         {#each databaseOptions as name (name)}<option value={name}>{name}</option>{/each}
       </select>
     {/if}

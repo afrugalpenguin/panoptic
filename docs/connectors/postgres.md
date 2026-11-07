@@ -55,7 +55,7 @@ Failures show on the node with the SQLSTATE as the code:
 
 ## Queries
 
-New query on a connection or database, and Select top 1000 on a table, view or materialized view (`SELECT * FROM schema.name LIMIT 1000;`), open a tab in the Postgres language. The database picker lists the connection's databases.
+New query on a connection or database, and Select top 1000 on a table, view or materialized view (`SELECT * FROM schema.name LIMIT 1000;`), open a tab in the Postgres language. The database picker lists the connection's databases; on a tab opened on the connection itself it starts on **(connection default)**, the database the server connects to when none is named.
 
 - **One statement at a time.** The script is split on semicolons (not inside strings, `"names"`, `$$` bodies, comments or a `BEGIN ATOMIC` body) and each statement runs on its own, so statements before an error stay done, as in psql and SSMS. The run stops at the first error. There is no `GO`.
 - **Results** show values as Postgres writes them: `interval '1 mon 2 days'`, arrays as `{1,2}`, ranges as `[1,5)`, `json` and `jsonb` as their text, `timestamptz` with its offset. `bytea` shows as `0x` hex. Numbers and booleans are numbers and booleans.
