@@ -1,0 +1,1 @@
+Fixed: keyboard shortcuts such as Ctrl+N no longer act behind an open dialog, confirmation or context menu; Enter in the connection dialog saves it; and closing a dialog, menu or tab puts focus back where it was, with a newly added connection selected in the tree.

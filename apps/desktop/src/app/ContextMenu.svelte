@@ -9,10 +9,13 @@
 
 <script lang="ts">
   import { onMount } from "svelte";
+  import { restoreFocus } from "./focus";
 
   let { x, y, items, onClose }: { x: number; y: number; items: (MenuItem | "separator")[]; onClose: () => void } = $props();
 
   let menu: HTMLDivElement;
+  /** What had focus when the menu opened (the tree): focus goes back there when it closes (#216). */
+  const opener = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
   let left = $state(0);
   let top = $state(0);
 
@@ -36,6 +39,7 @@
       window.removeEventListener("mousedown", close, true);
       window.removeEventListener("keydown", key, true);
       window.removeEventListener("blur", onClose);
+      restoreFocus(opener, menu);
     };
   });
 
@@ -59,6 +63,8 @@
         class:danger={item.danger}
         disabled={item.disabled}
         onclick={() => {
+          // Back to the opener first, so a dialog the item opens returns focus there, not to this menu.
+          restoreFocus(opener, menu);
           onClose();
           item.run();
         }}>{item.label}</button

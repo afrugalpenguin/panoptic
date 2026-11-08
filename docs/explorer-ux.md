@@ -71,6 +71,7 @@ Moving a connection:
 - Drag a connection row onto an environment header or its empty row to move it there, or onto the Ungrouped header to take it out of its environment. The target is outlined while a drop is possible.
 - A connection's menu has **Move to environment...** (the environments other than its own, or New environment..., which creates one) and, for a connection in an environment, **Remove from environment**.
 - New connection and Import ask for an environment with a picker whose default is None (docs/landing.md).
+- Saving a new connection selects it in the tree, expanding its environment and scrolling it into view, with focus on the tree (#216). Enter in a field of the connection dialog saves it, as Save does (#217).
 - A server can be added once: saving a connection with the same type, server, sign-in, user and database as another one is refused, wherever that one is, and the message names it (#269). Server names compare ignoring case, surrounding spaces and a `tcp:` prefix.
 
 A connection's node id never includes its environment, so moving one keeps open query tabs, recent objects and anything expanded below it. Deleting an environment still deletes its connections; its confirmation says so.
@@ -136,6 +137,8 @@ Moving a connection out of a read-only environment, into a writable one or none,
 ## Keys
 
 Up/Down, Page Up/Down, Home/End move. Right expands (or steps into), Left collapses (or steps to the parent). Enter toggles, F5 refreshes, typing jumps to a matching row, the context-menu key or right-click opens actions. Esc clears the selection, which brings back the landing when no tab is open (docs/landing.md).
+
+Closing a dialog, a confirmation or a context menu puts focus back where it was when it opened (the tree, or the button that opened it), not on the page (#216). An item of a context menu that opens a dialog hands focus back to the tree first, so the dialog returns it there. Closing a tab from its x focuses the tab shown next.
 
 ## Out of scope for this change
 

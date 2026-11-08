@@ -96,6 +96,11 @@
   export function focus() {
     tree?.focus();
   }
+
+  /** Selects a row and scrolls it into view: a new connection (#216). */
+  export function reveal(key: string) {
+    tree?.reveal(key);
+  }
 </script>
 
 <div class="explorer">
