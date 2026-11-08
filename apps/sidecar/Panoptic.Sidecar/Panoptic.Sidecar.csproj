@@ -25,6 +25,8 @@
     <PackageReference Include="Azure.Identity.Broker" Version="1.7.0" />
     <PackageReference Include="Microsoft.Azure.Cosmos" Version="3.63.3" />
     <PackageReference Include="Microsoft.Data.SqlClient" Version="7.1.1" />
+    <!-- Not used directly: Microsoft.Azure.Cosmos serializes with Newtonsoft.Json but does not list it as a
+         package dependency, and its build targets fail the build unless the app references it (>= 10.0.2). -->
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="Npgsql" Version="10.0.3" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.14" />

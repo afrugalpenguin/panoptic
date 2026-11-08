@@ -1,0 +1,1 @@
+Fixed: Postgres completions no longer double-quote names such as comment that Postgres accepts bare, and a script now splits correctly into statements on a server with standard_conforming_strings off.

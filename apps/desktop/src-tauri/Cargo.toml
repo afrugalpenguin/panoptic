@@ -1,7 +1,7 @@
 [package]
 name = "panoptic"
 version = "0.2.0"
-description = "Native multi-environment object explorer for SQL Server and Cosmos DB"
+description = "Desktop database client for SQL Server, Azure Synapse, Cosmos DB and PostgreSQL"
 authors = ["afrugalpenguin"]
 license = "MIT"
 edition = "2024"

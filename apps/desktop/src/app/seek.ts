@@ -26,6 +26,7 @@ export interface SeekEnv {
 }
 
 export interface SeekIndex {
+  /** In the tree's order (explorer.envOrder), which breaks every ranking tie. */
   envs: SeekEnv[];
   /** Connections in no environment. They rank on their own name only and never show as, or under, an environment. */
   hosts?: SeekHost[];
@@ -71,12 +72,10 @@ function cap(rows: SeekRow[]): SeekRow[] {
   return out;
 }
 
-/** Environments by last use, then use count, then name. */
+/** Environments by last use, then use count, then the tree's order (a stable sort over index.envs keeps it). */
 function byUse(usage: Usage) {
   return (a: SeekEnv, b: SeekEnv) =>
-    (usage.envs[b.id]?.last ?? 0) - (usage.envs[a.id]?.last ?? 0) ||
-    (usage.envs[b.id]?.uses ?? 0) - (usage.envs[a.id]?.uses ?? 0) ||
-    a.name.localeCompare(b.name);
+    (usage.envs[b.id]?.last ?? 0) - (usage.envs[a.id]?.last ?? 0) || (usage.envs[b.id]?.uses ?? 0) - (usage.envs[a.id]?.uses ?? 0);
 }
 
 /**
@@ -119,7 +118,8 @@ export function seek(index: SeekIndex, query: string, scope: "all" | "connection
   const looseRows = (hosts: SeekHost[]): SeekRow[] => hosts.map((host) => ({ kind: "host", group: "hosts", host }));
 
   if (scope === "connections") {
-    const hosts: { host: SeekHost; env?: SeekEnv }[] = [...ordered.flatMap((env) => env.hosts.map((host) => ({ host, env }))), ...loose.map((host) => ({ host }))];
+    // In the tree's order, so equal matches rank as the tree shows them.
+    const hosts: { host: SeekHost; env?: SeekEnv }[] = [...index.envs.flatMap((env) => env.hosts.map((host) => ({ host, env }))), ...loose.map((host) => ({ host }))];
     const ranked = tokens.length
       ? hosts
           .map((h) => ({
@@ -152,7 +152,8 @@ export function seek(index: SeekIndex, query: string, scope: "all" | "connection
   }
 
   // An environment matches when every token is in its name or id, a host's name, or a recent object's label in it.
-  const matched = ordered
+  // Equal matches keep the tree's order.
+  const matched = index.envs
     .map((env) => {
       const texts = [env.name, env.id, ...env.hosts.map((h) => h.name), ...recentIn(env).map((r) => r.label)];
       const all = tokens.every((t) => best(texts, t) > 0);
@@ -163,13 +164,14 @@ export function seek(index: SeekIndex, query: string, scope: "all" | "connection
 
   const rows: SeekRow[] = matched.slice(0, ENV_CAP).map(({ env }) => ({ kind: "env", group: "envs", env }));
   if (matched.length > ENV_CAP) rows.push({ kind: "more", group: "envs", count: matched.length - ENV_CAP });
+  const inEnv = (env: SeekEnv, texts: string[]) => tokens.every((t) => best([...texts, env.name, env.id], t) > 0);
+  // Every matching environment's matching hosts, grouped by environment in the order the environments rank (#228).
+  for (const { env } of matched) for (const host of env.hosts.filter((h) => inEnv(env, [h.name])).sort(byName)) rows.push({ kind: "host", group: "hosts", host, env });
   const top = matched[0]?.env;
-  const inTop = (texts: string[]) => !!top && tokens.every((t) => best([...texts, top.name, top.id], t) > 0);
-  if (top) for (const host of top.hosts.filter((h) => inTop([h.name])).sort(byName)) rows.push({ kind: "host", group: "hosts", host, env: top });
   const looseMatches = loose.map((h) => ({ h, s: looseScore(h) })).filter((m) => m.s > 0);
   rows.push(...looseRows(looseMatches.sort((a, b) => b.s - a.s || byName(a.h, b.h)).map((m) => m.h)));
   const recent = [
-    ...(top ? recentIn(top).filter((r) => inTop([r.label, r.hostName])) : []),
+    ...(top ? recentIn(top).filter((r) => inEnv(top, [r.label, r.hostName])) : []),
     ...looseRecent.filter((r) => tokens.every((t) => best([r.label, r.hostName], t) > 0)),
   ];
   for (const place of recent.slice(0, RECENT_CAP)) rows.push({ kind: "recent", group: "recent", place });

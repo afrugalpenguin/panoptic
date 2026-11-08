@@ -166,7 +166,9 @@ public sealed class PostgresBackend(Credentials credentials) : IQueryBackend
         try
         {
             var guardStart = readOnly ? await BeginReadOnly(conn, ct) : default;
-            foreach (var statement in PostgresStatements.Split(text))
+            // The server's setting as the session started, which Npgsql parses each statement with too (#242).
+            var conforming = !conn.PostgresParameters.TryGetValue("standard_conforming_strings", out var scs) || scs != "off";
+            foreach (var statement in PostgresStatements.Split(text, conforming))
             {
                 current = statement;
                 await Run(conn, statement, sink, ct);

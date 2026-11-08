@@ -80,15 +80,16 @@ export function defaultSchema(language: Language): string {
 }
 
 const RESERVED = new Set([...TSQL_KEYWORDS, ...TSQL_RESERVED].map((k) => k.toLowerCase()));
-const PG_RESERVED = new Set([...PGSQL_KEYWORDS, ...PGSQL_RESERVED].map((k) => k.toLowerCase()));
+const PG_RESERVED = new Set(PGSQL_RESERVED);
 
 /**
  * Brackets a T-SQL name that is not a plain identifier or is a keyword or reserved word. A Postgres name is double-quoted unless it is
- * plain lower case: unquoted names fold to lower case there, so "Order" written bare would name order.
+ * plain lower case and not a reserved word: unquoted names fold to lower case there, so "Order" written bare would name order. That
+ * is quote_ident()'s rule and the sidecar's PostgresBackend.QuoteIdentifier; pgsql-quote-cases.json keeps the two in step (#206).
  */
 export function quote(name: string, language: Language = "tsql"): string {
   if (language === "pgsql")
-    return /^[a-z_][a-z0-9_$]*$/.test(name) && !PG_RESERVED.has(name) ? name : `"${name.replaceAll('"', '""')}"`;
+    return /^[a-z_][a-z0-9_]*$/.test(name) && !PG_RESERVED.has(name) ? name : `"${name.replaceAll('"', '""')}"`;
   return /^[A-Za-z_][\w@#$]*$/.test(name) && !RESERVED.has(name.toLowerCase()) ? name : `[${name.replaceAll("]", "]]")}]`;
 }
 

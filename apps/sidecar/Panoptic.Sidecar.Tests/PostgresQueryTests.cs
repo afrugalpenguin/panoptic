@@ -1,3 +1,4 @@
+using System.Reflection;
 using Npgsql;
 using Panoptic.Sidecar.Backends;
 using Panoptic.Sidecar.Catalog;
@@ -79,6 +80,71 @@ public class PostgresStatementTests
         var statement = PostgresStatements.Split(script)[0];
 
         Assert.Equal((1, 14), PostgresStatements.Locate(script, statement, 13));
+    }
+
+    /// <summary>Scripts whose quoting is easy to get wrong (#242), with the statements Postgres's lexer makes of them.</summary>
+    public static TheoryData<string, string[]> Corpus => new()
+    {
+        { "DO $$ BEGIN PERFORM 1; END $$; SELECT 2", ["DO $$ BEGIN PERFORM 1; END $$", "SELECT 2"] },
+        { "DO $tag$ BEGIN RAISE NOTICE '$$;'; END $tag$; SELECT 2", ["DO $tag$ BEGIN RAISE NOTICE '$$;'; END $tag$", "SELECT 2"] },
+        { "SELECT $a$ $b$ ; $b$ $a$; SELECT 2", ["SELECT $a$ $b$ ; $b$ $a$", "SELECT 2"] },
+        { "SELECT $_$;$_$, $x1$;$x1$, $é$;$é$; SELECT 2", ["SELECT $_$;$_$, $x1$;$x1$, $é$;$é$", "SELECT 2"] },
+        { "SELECT $q$it's;$q$; SELECT 2", ["SELECT $q$it's;$q$", "SELECT 2"] },
+        { "SELECT $tag$a$tag; SELECT 2", ["SELECT $tag$a$tag; SELECT 2"] }, // never closed
+        { "SELECT $1; SELECT a$b$c, 1 AS x$$; SELECT 2", ["SELECT $1", "SELECT a$b$c, 1 AS x$$", "SELECT 2"] },
+        { "SELECT 1 /* a /* b; */ c; */; SELECT 2", ["SELECT 1 /* a /* b; */ c; */", "SELECT 2"] },
+        { "SELECT 2*/*c;*/3; SELECT 'x'/*;*/; SELECT 2", ["SELECT 2*/*c;*/3", "SELECT 'x'/*;*/", "SELECT 2"] },
+        { "SELECT 1 /* never closed ; SELECT 2", ["SELECT 1 /* never closed ; SELECT 2"] },
+        { "SELECT 1 -- x; y\n; SELECT 2 --;", ["SELECT 1 -- x; y", "SELECT 2 --;"] },
+        { "SELECT e'\\\\'; SELECT E'it''s;'; SELECT E'$$'; SELECT 2", ["SELECT e'\\\\'", "SELECT E'it''s;'", "SELECT E'$$'", "SELECT 2"] },
+        { "SELECT 1 AS e; SELECT E'\\'';SELECT 2", ["SELECT 1 AS e", "SELECT E'\\''", "SELECT 2"] },
+        { "SELECT 1 AS \"a;b\", 2 AS \"a\"\";b\", 3 AS U&\"a;b\"; SELECT 2", ["SELECT 1 AS \"a;b\", 2 AS \"a\"\";b\", 3 AS U&\"a;b\"", "SELECT 2"] },
+        { "SELECT U&'a;b', B'1', X'f;', ':a;'::text; SELECT 2", ["SELECT U&'a;b', B'1', X'f;', ':a;'::text", "SELECT 2"] },
+        { "SELECT 1;;; SELECT 2", ["SELECT 1", "SELECT 2"] },
+    };
+
+    [Theory]
+    [MemberData(nameof(Corpus))]
+    public void Tricky_scripts_split_as_postgres_and_npgsql_split_them(string script, string[] expected)
+    {
+        Assert.Equal(expected, Texts(script));
+        Assert.Equal(expected, NpgsqlSplit(script, standardConformingStrings: true));
+        Assert.Equal(NpgsqlSplit(script, standardConformingStrings: false),
+            PostgresStatements.Split(script, standardConformingStrings: false).Select(s => s.Text));
+    }
+
+    [Fact]
+    public void Without_standard_conforming_strings_a_backslash_escapes_in_plain_strings_too()
+    {
+        const string script = "SELECT 'a\\';b'; SELECT 2";
+        Assert.Equal(["SELECT 'a\\'", "b'; SELECT 2"], Texts(script));
+        Assert.Equal(["SELECT 'a\\';b'", "SELECT 2"], PostgresStatements.Split(script, standardConformingStrings: false).Select(s => s.Text));
+        Assert.Equal(["SELECT 'a\\';b'", "SELECT 2"], NpgsqlSplit(script, standardConformingStrings: false));
+    }
+
+    [Fact]
+    public void A_non_ascii_letter_continues_a_word_as_in_postgres()
+    {
+        // Postgres reads "aéE" as one name followed by a plain string. Npgsql's parser (ASCII names only) reads an
+        // escape string from the E; the splitter follows the server.
+        Assert.Equal(["SELECT 1 AS aéE'\\'", "SELECT 2"], Texts("SELECT 1 AS aéE'\\'; SELECT 2"));
+    }
+
+    /// <summary>
+    /// The statements Npgsql's own parser makes of a command's text, which it uses to send a multi-statement command.
+    /// The parser is internal, so this reaches it by reflection; a rename in an Npgsql upgrade fails here, not quietly.
+    /// </summary>
+    private static string[] NpgsqlSplit(string script, bool standardConformingStrings)
+    {
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        var parserType = typeof(NpgsqlCommand).Assembly.GetType("Npgsql.SqlQueryParser", throwOnError: true)!;
+        var parse = parserType.GetMethod("ParseRawQuery", flags, [typeof(NpgsqlCommand), typeof(bool), typeof(bool)])
+            ?? throw new MissingMethodException("Npgsql.SqlQueryParser", "ParseRawQuery");
+        var command = new NpgsqlCommand(script);
+        parse.Invoke(Activator.CreateInstance(parserType, nonPublic: true), [command, standardConformingStrings, false]);
+        var batch = (IEnumerable<NpgsqlBatchCommand>)typeof(NpgsqlCommand).GetProperty("InternalBatchCommands", flags)!.GetValue(command)!;
+        var text = typeof(NpgsqlBatchCommand).GetProperty("FinalCommandText", flags)!;
+        return batch.Select(b => ((string)text.GetValue(b)!).Trim()).Where(t => t.Length > 0).ToArray();
     }
 }
 

@@ -3,7 +3,8 @@ namespace Panoptic.Sidecar.Backends;
 /// <summary>
 /// Splits a Postgres script into statements on top-level semicolons, as psql does: not inside '...' or E'...' strings,
 /// "..." names, $tag$...$tag$ bodies, -- or nested /* */ comments, or the BEGIN ATOMIC ... END body of a CREATE
-/// FUNCTION or PROCEDURE. Each statement is sent on its own, so a server error position is an offset into one
+/// FUNCTION or PROCEDURE. With standard_conforming_strings off (on by default since Postgres 9.1) a backslash escapes
+/// the next character in a '...' string as well, as Npgsql's own parser has it. Each statement is sent on its own, so a server error position is an offset into one
 /// statement, which <see cref="Locate"/> turns back into a script line and column.
 /// </summary>
 public static class PostgresStatements
@@ -14,7 +15,7 @@ public static class PostgresStatements
     /// <param name="Atomic">It has semicolons of its own, in a BEGIN ATOMIC body.</param>
     public sealed record Statement(int Start, string Text, string FirstWord, bool Atomic = false);
 
-    public static List<Statement> Split(string script)
+    public static List<Statement> Split(string script, bool standardConformingStrings = true)
     {
         var statements = new List<Statement>();
         var start = -1; // first non-blank character of the current statement
@@ -60,7 +61,7 @@ public static class PostgresStatements
             }
             else if (c == '\'')
             {
-                i = SkipQuoted(script, i, '\'', backslashes: false);
+                i = SkipQuoted(script, i, '\'', backslashes: !standardConformingStrings);
             }
             else if (c == '"')
             {

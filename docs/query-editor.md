@@ -68,7 +68,7 @@ Connect, explorer refresh on that node, a DDL statement executed from any tab on
 
 ## Completion engine
 
-Runs in a web worker using Monaco's custom language worker plumbing. The worker holds its own copy of each loaded catalog. The main thread sends `(modelVersion, text, cursorOffset, languageId, databaseKey)` and receives a completion list. The provider is registered for `tsql`, `cosmos-sql` and `pgsql` (Postgres: docs/connectors/postgres.md, "IntelliSense"); trigger characters are `.`, `@`, and space after a keyword.
+Runs in a plain web worker (a Vite `?worker` import of `query/intellisense/worker-entry.ts`), not Monaco's language worker plumbing. The worker holds its own copy of each loaded catalog, sent once per version. The main thread (`intellisense/client.ts`) sends the editor text, cursor offset, language options and catalog keys, and receives a completion list; a newer request supersedes an older one. The provider is registered for `tsql`, `cosmos-sql` and `pgsql` (Postgres: docs/connectors/postgres.md, "IntelliSense"); trigger characters are `.`, `@`, and space after a keyword.
 
 ### Context resolution: a scanner, not a parser
 
