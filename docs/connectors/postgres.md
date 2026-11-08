@@ -1,6 +1,6 @@
 # PostgreSQL connector
 
-Status: shipped. The tree, sign-in and connection dialog (#116), queries with the read-only guard (#117), IntelliSense (#118) and the T-SQL habits warnings (#119) are all in. Client certificate sign-in (#120) is in too. AWS RDS IAM (#121) and Kerberos (#122) sign-in are still open. The design is in [docs/plans/2026-10-30-postgres-design.md](../plans/2026-10-30-postgres-design.md) (ADR 0015).
+Status: shipped. The tree, sign-in and connection dialog (#116), queries with the read-only guard (#117), IntelliSense (#118) and the T-SQL habits warnings (#119) are all in. Client certificate (#120) and AWS RDS IAM (#121) sign-in are in too. Kerberos (#122) sign-in is still open. The design is in [docs/plans/2026-10-30-postgres-design.md](../plans/2026-10-30-postgres-design.md) (ADR 0015).
 
 Covers PostgreSQL and Azure Database for PostgreSQL Flexible Server. Backend: `apps/sidecar/Panoptic.Sidecar/Backends/PostgresBackend.cs`, using Npgsql.
 
@@ -10,18 +10,31 @@ Covers PostgreSQL and Azure Database for PostgreSQL Flexible Server. Backend: `a
 | --- | --- |
 | Server | `host` or `host:port`; port 5432 by default. |
 | Database | The database to connect to first, `postgres` when empty. Every Postgres connection is bound to one database, so the tree opens each database on its own connection. When set, the tree shows only this database. |
-| Authentication | Microsoft Entra ID, username and password, or client certificate. AWS RDS IAM (#121) and Kerberos (#122) are planned. |
-| User | The login. For a client certificate, the role the certificate's name maps to (required). For Entra, optional: the Entra name of the Postgres role (a user principal name, or a group's name to sign in through the group). Left blank, it is the name of the account you sign in with. |
+| Authentication | Microsoft Entra ID, username and password, client certificate, or AWS IAM (RDS). Kerberos (#122) is planned. |
+| User | The login. For a client certificate, the role the certificate's name maps to (required). For AWS IAM, the database user the IAM policy allows (required). For Entra, optional: the Entra name of the Postgres role (a user principal name, or a group's name to sign in through the group). Left blank, it is the name of the account you sign in with. |
 | Password | Username and password only. Stored DPAPI-encrypted in the local store, never sent to the UI. |
 | Client certificate | Client certificate only. A full path to the certificate to sign in with: PEM (`.crt`, `.pem`, `.cer`) with a key file, or a `.pfx`/`.p12` that holds the key too. The server checks it against its CA and, with `clientcert=verify-full` or `cert` in `pg_hba.conf`, that its name is the user. |
 | Key file | Client certificate only, not needed for a `.pfx`. A full path to the certificate's private key. |
 | Key passphrase | Client certificate only, optional: the key's (or the `.pfx`'s) passphrase. Stored DPAPI-encrypted like a password, and dropped when the certificate or key file changes. A PEM certificate goes to Npgsql as `SSL Certificate`, `SSL Key` and `SSL Password`; a `.pfx` is loaded by the sidecar with its key and passphrase, since Npgsql would load it without the key. |
+| AWS profile | AWS IAM only, optional. A profile in the shared AWS config (`config` and `credentials` in the `.aws` folder of your user profile, or `AWS_CONFIG_FILE` and `AWS_SHARED_CREDENTIALS_FILE`). Blank uses the AWS SDK's default credentials: the `AWS_ACCESS_KEY_ID` environment variables, then `AWS_PROFILE` or the `default` profile. |
+| Region | AWS IAM only. Read from an RDS server name when blank; required for a tunnel, `localhost` or a custom DNS name. |
 | Tenant | Optional, Entra only. |
 | Trust server certificate | Encrypts without validating the certificate. For local and dev servers only. Otherwise the certificate and host name are verified. Connections are always encrypted, so a server without TLS cannot be reached. The explorer marks such connections **cert not checked**. |
 | Certificate host name | Optional. The name the server's certificate must match when it isn't the endpoint's (a private endpoint, an alias). Only the TLS target name changes; the chain and name are still verified. |
 | Certificate file | Optional. A CA (or the server's own certificate) trusted for this connection only, as Npgsql's `RootCertificate` with full verification. Can't be combined with Trust server certificate. |
 
 Client certificate sign-in is tested against a real server: `scripts/pg-client-cert.sh` starts a PostgreSQL 17 that accepts only certificates, with throwaway certificates, and the `sidecar-pg` CI job runs `ClientCertificateIntegrationTests` against it (PEM key, passphrase-protected key, `.pfx`, and the refusals).
+
+## AWS IAM (RDS)
+
+Amazon RDS and Aurora PostgreSQL accept a short-lived IAM authentication token as the password. Panoptic signs one with your AWS credentials each time it opens a connection; nothing is stored. A token is valid for 15 minutes and is checked only when a connection opens, so open connections are not dropped when it expires.
+
+- **Database user.** The user must be granted `rds_iam` on the server (`GRANT rds_iam TO reader;`), and IAM database authentication must be on for the instance or cluster.
+- **IAM policy.** The AWS identity needs `rds-db:connect` on the database user: `arn:aws:rds-db:eu-west-2:123456789012:dbuser:db-ABCDEFGHIJKLMNOP/reader` (the resource id of the instance, or of the cluster for Aurora, and the user name; `*` works for either part).
+- **Profile.** Any profile the AWS CLI can use: access keys, an assumed role, `credential_process`, or IAM Identity Center (SSO). Panoptic does not open the SSO sign-in itself: when the session has expired, the error says to run `aws sso login --profile <name>`, then retry.
+- **Region.** Read from the server name: `<name>.<id>.<region>.rds.amazonaws.com`, including cluster, reader and proxy endpoints, and `.rds.amazonaws.com.cn` in China. Set it for any other name.
+- **Certificate.** RDS certificates chain to the Amazon RDS certificate authorities, which Windows does not trust. Download the RDS certificate bundle for your region (`global-bundle.pem`, from the RDS documentation on SSL/TLS) and choose it as the **Certificate file**. Without it the connection fails with the `tls` error, which says so. Avoid Trust server certificate: the token is the password.
+- **Tunnels.** For an SSH tunnel or port forward to `localhost`, set **Certificate host name** to the real RDS host name: the token is signed for that name (and the server's certificate is checked against it), and the region is read from it. The token is signed for the endpoint's port, so forward to the same local port as the server's, usually 5432.
 
 Entra connections get tokens for `https://ossrdbms-aad.database.windows.net/.default` through the same credential as SQL and Cosmos (WAM first, then device code), with the same 3 minute allowance for a sign-in prompt. The token is sent as the password; every new physical connection asks the credential again, so an expired token is replaced from MSAL's cache.
 
@@ -56,7 +69,10 @@ Failures show on the node with the SQLSTATE as the code:
 | 42501 | Permission denied |
 | 57P03, 53300 | Starting up, or no free connections (retryable) |
 | `network` | Server not found or not reachable (retryable) |
-| `tls` | The server's certificate could not be verified |
+| `tls` | The server's certificate could not be verified (for an RDS host: choose the RDS certificate bundle as the certificate file) |
+| `aws-profile` | The AWS profile is not in the AWS config |
+| `aws-sso` | The AWS SSO session has expired: run `aws sso login --profile <name>` |
+| `aws-credentials`, `aws-sign-in` | No AWS credentials were found, or the profile's credentials could not be had |
 
 ## Queries
 

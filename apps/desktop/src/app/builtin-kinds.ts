@@ -52,6 +52,7 @@ export const BUILTIN_KINDS: KindDescription[] = [
       { id: "entra", label: "Microsoft Entra ID" },
       { id: "password", label: "Username and password" },
       { id: "certificate", label: "Client certificate" },
+      { id: "awsIam", label: "AWS IAM (RDS)" },
     ],
     badge: { letters: "PG", color: "#5f7a2e", name: "Postgres" },
     fields: { database: true, certificateOptions: true, entraUser: true, trustLocalOnly: false },

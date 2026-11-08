@@ -24,6 +24,9 @@ public static class PostgresErrors
 
     public const string Untrusted = "The server's certificate could not be verified. For a local or dev server, tick Trust server certificate.";
 
+    /// <summary>RDS certificates chain to the Amazon RDS CAs, which Windows does not trust (#121).</summary>
+    public const string UntrustedRds = "The server's certificate could not be verified. Download the Amazon RDS certificate bundle and choose it as the Certificate file.";
+
     public static NodeError Map(string? sqlState, string message, ConnectionConfig c, string? database)
     {
         var extra = NodeErrors.Lines(
@@ -48,7 +51,7 @@ public static class PostgresErrors
         var message = Innermost(ex).Message;
         var extra = NodeErrors.Lines(("Server", c.Endpoint), ("Database", database), ("Identity", NodeErrors.Identity(c)));
         var error = ex.InnerException is AuthenticationException
-            ? NodeErrors.Mapped((Untrusted, false), message, "tls", extra)
+            ? NodeErrors.Mapped((string.IsNullOrWhiteSpace(c.CertificateFile) && RdsIam.IsRdsServer(c) ? UntrustedRds : Untrusted, false), message, "tls", extra)
             : ex.InnerException is SocketException or TimeoutException || ex.IsTransient
                 ? Map(null, message, c, database)
                 : NodeErrors.Fallback(message, extra: extra);

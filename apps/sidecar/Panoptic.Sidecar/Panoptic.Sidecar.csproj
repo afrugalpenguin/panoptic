@@ -21,6 +21,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- RDS IAM sign-in for Postgres (#121): AWS profiles and credentials, and the SigV4 presigner that signs the
+         token. AWSSDK.SSO and AWSSDK.SSOOIDC are not used directly: the SDK loads them for IAM Identity Center (SSO)
+         profiles. AWSSDK.RDS is not needed: its token generator is a thin wrapper over the same presigner. -->
+    <PackageReference Include="AWSSDK.Core" Version="4.0.102.19" />
+    <PackageReference Include="AWSSDK.SSO" Version="4.0.100.26" />
+    <PackageReference Include="AWSSDK.SSOOIDC" Version="4.0.100.25" />
     <PackageReference Include="Azure.Identity" Version="1.21.0" />
     <PackageReference Include="Azure.Identity.Broker" Version="1.7.0" />
     <PackageReference Include="Microsoft.Azure.Cosmos" Version="3.64.0" />

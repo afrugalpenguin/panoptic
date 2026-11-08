@@ -48,6 +48,9 @@ public sealed class PostgresBackend(Credentials credentials) : IQueryBackend
 
     private readonly ConcurrentDictionary<(string ConnectionId, string Database, string Settings), NpgsqlDataSource> _sources = new();
 
+    /// <summary>AWS IAM signing per connection and its AWS settings (#121), so its credentials are looked up once.</summary>
+    private readonly ConcurrentDictionary<(string ConnectionId, string Settings), RdsIam.Signer> _signers = new();
+
     public async Task<TreeNode[]> ChildrenAsync(ConnectionConfig c, string? secret, NodePath path, int start, CancellationToken ct)
     {
         var rel = path.From(start);
@@ -117,7 +120,7 @@ public sealed class PostgresBackend(Credentials credentials) : IQueryBackend
     /// <summary>Entra users sign in under their Entra name, which the optional user overrides.</summary>
     public KindDescription Describe(string kind) => new(
         kind, "PostgreSQL / Azure Database for PostgreSQL", "Server", "myserver.postgres.database.azure.com or host:5432",
-        [AuthKinds.Option(AuthKinds.Entra), AuthKinds.Option(AuthKinds.Password), AuthKinds.Option(AuthKinds.Certificate)],
+        [AuthKinds.Option(AuthKinds.Entra), AuthKinds.Option(AuthKinds.Password), AuthKinds.Option(AuthKinds.Certificate), AuthKinds.Option(AuthKinds.AwsIam)],
         new KindBadge("PG", "#5f7a2e", "Postgres"),
         new ConnectionFields(Database: true, CertificateOptions: true, EntraUser: true, TrustLocalOnly: false));
 
@@ -125,6 +128,8 @@ public sealed class PostgresBackend(Credentials credentials) : IQueryBackend
     {
         foreach (var key in _sources.Keys.Where(k => k.ConnectionId == connectionId))
             if (_sources.TryRemove(key, out var source)) source.Dispose();
+        foreach (var key in _signers.Keys.Where(k => k.ConnectionId == connectionId))
+            _signers.TryRemove(key, out _);
     }
 
     // --- Queries ----------------------------------------------------------------------------------------
@@ -627,12 +632,19 @@ public sealed class PostgresBackend(Credentials credentials) : IQueryBackend
                     ?? throw new RpcException(RpcException.InvalidParams, "Enter the Entra user name (the role's name on the server): it could not be read from the sign-in.");
                 tokens = async (_, t) => (await credential.GetTokenAsync(new TokenRequestContext(EntraScope), t)).Token;
                 break;
+            case AuthKinds.AwsIam:
+                if (string.IsNullOrWhiteSpace(user)) throw new RpcException(RpcException.InvalidParams, "User is required");
+                // RDS IAM (#121): no secret. Each physical open signs a new token with the profile's credentials.
+                var signer = _signers.GetOrAdd((c.Id, $"profile={c.AwsProfile};region={c.AwsRegion};endpoint={c.Endpoint};certhost={c.CertificateHostName}"), _ => new RdsIam.Signer(c));
+                await signer.SignInAsync(SignInBudget, database, ct);
+                tokens = (b, _) => signer.TokenAsync(b.Username!, database);
+                break;
             default:
                 throw new RpcException(RpcException.InvalidParams, $"Postgres does not support auth '{c.Auth}'");
         }
 
         var settings = Settings(c, database, user);
-        var key = (c.Id, settings.Database!, $"{settings.ConnectionString};auth={c.Auth};tenant={c.TenantId};certhost={c.CertificateHostName};clientcert={c.ClientCertificateFile}");
+        var key = (c.Id, settings.Database!, $"{settings.ConnectionString};auth={c.Auth};tenant={c.TenantId};certhost={c.CertificateHostName};clientcert={c.ClientCertificateFile};aws={c.AwsProfile};region={c.AwsRegion}");
         var source = _sources.GetOrAdd(key, _ =>
         {
             var builder = new NpgsqlDataSourceBuilder(settings.ConnectionString);
@@ -659,8 +671,8 @@ public sealed class PostgresBackend(Credentials credentials) : IQueryBackend
     }
 
     /// <summary>
-    /// How long an Entra open waits for sign-in, as for SQL Server (<see cref="SqlBackend.SignInBudget"/>): the 15 s
-    /// connect timeout is too short to finish a WAM or device-code prompt.
+    /// How long an Entra or AWS IAM open waits for sign-in, as for SQL Server (<see cref="SqlBackend.SignInBudget"/>): the
+    /// 15 s connect timeout is too short to finish a WAM or device-code prompt, or an SSO credentials refresh.
     /// </summary>
     public static readonly TimeSpan SignInBudget = SqlBackend.SignInBudget;
 

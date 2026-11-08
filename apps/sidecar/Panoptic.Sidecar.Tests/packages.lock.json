@@ -35,6 +35,27 @@
         "resolved": "4.0.1",
         "contentHash": "8CoAaZkniVekR1ycJyxn+hOz+6ZQCDPcoIsIs6ujd4WyFcBMlxGNU15Qb8Uxd4iO4UmOuETb0M6vzBbwX/mfLA=="
       },
+      "AWSSDK.Core": {
+        "type": "Transitive",
+        "resolved": "4.0.102.19",
+        "contentHash": "Hb6P2ui6y0U+UNUjcC4ASFFoTLzCijhMzfOCXfoFTXq/o0YWQsO1oSH1NG2GQ9dlIT693xeeih0yAcfeL1dphg=="
+      },
+      "AWSSDK.SSO": {
+        "type": "Transitive",
+        "resolved": "4.0.100.26",
+        "contentHash": "ZFY+ijo5Uel3FnQcAkm9fAg+945HQrObdVwZJRaHgT/YTI2nRyrmPyDTHwN/+Oqh6I5kJE98nZYcvQ0fFzcfhQ==",
+        "dependencies": {
+          "AWSSDK.Core": "[4.0.102.19, 5.0.0)"
+        }
+      },
+      "AWSSDK.SSOOIDC": {
+        "type": "Transitive",
+        "resolved": "4.0.100.25",
+        "contentHash": "8S5FQw4kI91T7ApkIKLspRTRp5jUTamiu5sdYEM/o5CeoYALPg/4+TtbQTcfhn7mzTg5slptlLS/ivznHkn6zg==",
+        "dependencies": {
+          "AWSSDK.Core": "[4.0.102.19, 5.0.0)"
+        }
+      },
       "Azure.Core": {
         "type": "Transitive",
         "resolved": "1.57.0",
@@ -423,6 +444,9 @@
       "panoptic-sidecar": {
         "type": "Project",
         "dependencies": {
+          "AWSSDK.Core": "[4.0.102.19, )",
+          "AWSSDK.SSO": "[4.0.100.26, )",
+          "AWSSDK.SSOOIDC": "[4.0.100.25, )",
           "Azure.Identity": "[1.21.0, )",
           "Azure.Identity.Broker": "[1.7.0, )",
           "Microsoft.Azure.Cosmos": "[3.64.0, )",
