@@ -11,6 +11,8 @@ Connections must survive reinstalls and move between machines via a dotfiles rep
 
 Environments, connections, their secrets (SQL login passwords, Cosmos account keys) and app settings are stored together in one file, `%APPDATA%\Panoptic\store.bin`, encrypted as a single blob with DPAPI in CurrentUser scope (`apps/sidecar/Panoptic.Sidecar/ConfigStore.cs`). Every change rewrites the whole file through a temporary file that is then moved into place. Secrets never leave the sidecar: the config the UI receives carries none. A connection is in one environment or in none; since 31 Oct 2026 the config has a top-level `connections` list for the latter, which loads empty from older stores.
 
+Since 8 Nov 2026 (#241, #196) the temporary file is flushed to disk before the move, and the store it replaces is copied to `store.bin.bak` first. A store that cannot be read is moved aside as before and replaced by that backup when it reads. Settings are checked on load as on save: a stored value a save would refuse loads as its default. Only one Panoptic runs on the default store: a second launch brings the open window forward and exits (tauri-plugin-single-instance); a run with its own store (`PANOPTIC_STORE`) is not limited.
+
 Entra tokens are not in this file. MSAL caches them in the user profile, also DPAPI-encrypted (`Credentials.cs`, ADR 0007).
 
 ## Amendment

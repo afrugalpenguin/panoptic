@@ -1,0 +1,1 @@
+Fixed: Saved connections and settings are flushed to disk before they replace the old file, and the previous save is kept as `store.bin.bak`. If the saved file cannot be read, Panoptic restores that previous save instead of starting with no connections.

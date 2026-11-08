@@ -255,7 +255,20 @@ fn pump(app: &AppHandle, mut rx: Receiver<CommandEvent>, log: Option<&Log>) -> (
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     MAIN_START_EPOCH_MS.get_or_init(epoch_ms);
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+    // One Panoptic per store (#241): two sidecars rewriting the same store.bin lose each other's changes, so a second
+    // launch brings the open window forward and exits. A run on its own store (PANOPTIC_STORE: dev-seeded, bench) is
+    // left alone. Registered first, as the plugin requires.
+    if std::env::var_os("PANOPTIC_STORE").is_none() {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }));
+    }
+    builder
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
