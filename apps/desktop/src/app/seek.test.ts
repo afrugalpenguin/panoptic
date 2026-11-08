@@ -153,7 +153,8 @@ describe("seek: connections in no environment", () => {
   it("typed: a connection in no environment matches on its own name, never on an environment's", () => {
     expect(show(seek(mixed, "orders"))).toEqual(["env Prod", "host orders-sql", "recent dbo.Orders"]);
     expect(show(seek(mixed, "prod"))).not.toContain("host uk-sql");
-    expect(show(seek(mixed, "uk sql"))).toEqual(["env Prod", "env Dev", "host uk-prod-sql-01", "host uk-prod-sql-02", "host uk-sql", "recent dbo.Orders", "recent dbo.Lines"]);
+    // Dev and Prod match equally, so they keep the tree's order and Dev is the top environment.
+    expect(show(seek(mixed, "uk sql"))).toEqual(["env Dev", "env Prod", "host uk-prod-sql-01", "host uk-prod-sql-02", "host uk-sql"]);
   });
 
   it("typed with no environment matching still finds connections in none, and their recent objects", () => {
@@ -162,9 +163,48 @@ describe("seek: connections in no environment", () => {
   });
 
   it("connections only: a connection in none matches on its own name", () => {
-    expect(show(seek(mixed, "uk", "connections"))).toEqual(["host uk-prod-sql-01", "host uk-prod-sql-02", "host uk-dev-pg", "host uk-sql"]);
+    expect(show(seek(mixed, "uk", "connections"))).toEqual(["host uk-dev-pg", "host uk-prod-sql-01", "host uk-prod-sql-02", "host uk-sql"]);
     expect(show(seek(mixed, "prod", "connections"))).not.toContain("host uk-sql");
     expect(show(seek(flat, "", "connections"))[0]).toBe("host gamma-sql");
+  });
+});
+
+// index.envs comes in the tree's order (explorer.envOrder), here Prod, UAT, Test: not by name (#222).
+describe("seek: the tree's environment order", () => {
+  const tree: SeekIndex = {
+    envs: [env("prod", "Prod", ["prod-sql-01.example.test"]), env("uat", "UAT", ["uat-sql-01.example.test"]), env("test", "Test", ["test-sql-01.example.test"])],
+    hosts: [loose("lone-sql-01.example.test")],
+    usage: { envs: {}, recent: [] },
+  };
+
+  it("nothing typed and nothing used: environments as the tree shows them", () => {
+    expect(show(seek(tree, ""))).toEqual(["env Prod", "env UAT", "env Test", "host lone-sql-01.example.test"]);
+  });
+
+  it("typed: equal matches rank as the tree shows them, whatever was used last", () => {
+    const used: SeekIndex = { ...tree, usage: { envs: { "env:test": { last: 30, uses: 5 } }, recent: [] } };
+    expect(show(seek(used, "sql")).filter((r) => r.startsWith("env"))).toEqual(["env Prod", "env UAT", "env Test"]);
+  });
+
+  it("connections only: equal matches follow the tree, connections in no environment last", () => {
+    expect(show(seek(tree, "sql", "connections"))).toEqual([
+      "host prod-sql-01.example.test",
+      "host uat-sql-01.example.test",
+      "host test-sql-01.example.test",
+      "host lone-sql-01.example.test",
+    ]);
+  });
+
+  it("matching hosts come from every matching environment, grouped by environment (#228)", () => {
+    expect(show(seek(tree, "sql-01"))).toEqual([
+      "env Prod",
+      "env UAT",
+      "env Test",
+      "host prod-sql-01.example.test",
+      "host uat-sql-01.example.test",
+      "host test-sql-01.example.test",
+      "host lone-sql-01.example.test",
+    ]);
   });
 });
 

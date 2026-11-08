@@ -114,6 +114,12 @@
     scrollingTimer = setTimeout(() => (scrolling = false), SCROLLING_MS);
   }
 
+  /** Selects the row with this key and scrolls it into view (a new connection, #216); a key not in the tree is ignored. */
+  export function reveal(key: string) {
+    const index = rows.findIndex((r) => r.key === key);
+    if (index >= 0) select(index);
+  }
+
   /** Selects the row at index, or the nearest selectable one in direction dir (then the other way). */
   function select(index: number, dir: 1 | -1 = 1) {
     if (rows.length === 0) return;

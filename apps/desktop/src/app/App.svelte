@@ -124,10 +124,10 @@
   const selectedRow = $derived(rows.find((r) => r.key === selectedKey));
   const version = $derived(update?.current);
 
-  /** Loaded environments and their connections. Reads rows so it follows every tree change; preload loads all connections at start. */
+  /** Loaded environments, in the tree's order, and their connections. Reads rows so it follows every tree change; preload loads all connections at start. */
   function seekEnvs(): SeekEnv[] {
     void rows;
-    return model.envIds().flatMap((envId) => {
+    return model.treeEnvIds().flatMap((envId) => {
       const env = model.node(envId);
       if (!env) return [];
       const hosts: SeekHost[] = model
@@ -344,8 +344,10 @@
     if (unseen.length > 0) workspace.openWhatsNew(unseen, "launch");
     try {
       settings = await api!.saveSettings({ ...settings, lastSeenVersion: current });
-    } catch {
-      // Not recorded: the tab shows again next launch, which is better than failing start-up.
+    } catch (e) {
+      // Not recorded: the tab shows again next launch, which is better than failing start-up. Still reported, so a
+      // store that refuses every settings save is not hidden (#196).
+      reportProblem("Saving settings", e);
     }
   }
 
@@ -415,6 +417,17 @@
   /** New connection: always the connection dialog, its environment None unless one is given (docs/explorer-ux.md). */
   function addConnection(environmentId?: string) {
     dialog = { kind: "connection", environmentId: environmentId ?? null };
+  }
+
+  /** A connection was added: show it in the tree, selected, with focus on it (#216). */
+  async function showAddedConnection(connectionId: string, environmentId: string | null) {
+    await configChanged();
+    await model.reveal(environmentId);
+    await tick();
+    const row = rows.find((r) => r.type === "node" && r.node.meta?.connectionId === connectionId);
+    if (!row) return;
+    explorer?.reveal(row.key);
+    explorer?.focus();
   }
 
   /** Drag onto an environment, Move to environment... and Remove from environment (null): the connection keeps its id. */
@@ -638,7 +651,7 @@
   function onGlobalKeydown(e: KeyboardEvent) {
     const command = keyCommand(e, {
       seeking,
-      dialogOpen: !!dialog,
+      dialogOpen: !!dialog || !!confirming || !!menu,
       inEditor: !!(e.target as Element | null)?.closest?.(".monaco-editor"),
       selectedNode: selectedRow?.type === "node" ? selectedRow.node : undefined,
     });
@@ -847,7 +860,7 @@
     environments={config.environments}
     environmentId={dialog.environmentId}
     initial={dialog.initial}
-    onSaved={() => configChanged()}
+    onSaved={(saved, environmentId) => (dialog?.kind === "connection" && !dialog.initial ? showAddedConnection(saved.id, environmentId) : configChanged())}
     onEnvironmentCreated={configChanged}
     onClose={() => (dialog = undefined)}
   />

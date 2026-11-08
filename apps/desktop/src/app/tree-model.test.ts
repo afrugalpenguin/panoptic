@@ -614,6 +614,7 @@ describe("TreeModel", () => {
     model.setEnvOrder(["c", "missing", "a"]);
 
     expect(model.rows().map((r) => r.key)).toEqual(["env:c", "env:a", "env:b"]);
+    expect(model.treeEnvIds()).toEqual(["env:c", "env:a", "env:b"]);
     expect(onChange).toHaveBeenCalledTimes(1);
   });
 

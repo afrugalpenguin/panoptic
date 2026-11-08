@@ -204,6 +204,11 @@ export class TreeModel {
     return this.childIds("").filter((id) => this.nodes.get(id)?.kind !== "connection");
   }
 
+  /** The root's environment nodes in the order the tree shows them (explorer.envOrder). */
+  treeEnvIds(): string[] {
+    return this.orderedEnvs(this.envIds());
+  }
+
   /**
    * After a move, opens where the connection landed so it never seems to vanish: the environment with that config
    * id (an empty one could not be open before), or the Ungrouped group for null. An unknown id opens nothing.

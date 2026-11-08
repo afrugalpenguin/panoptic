@@ -1,11 +1,13 @@
 # 0012. Cross-environment diff is not core
 
-- Status: Accepted
+- Status: Accepted (amended by 0016; wording amended 2026-11-08)
 - Date: 2026-10-29
 
 ## Context
 
 The first plan gave "select the same object in two environments and diff it" a headline place and its own milestone. It was never a goal: Panoptic is a platform-agnostic SSMS replacement, and nothing in that needs a comparison tool. It crept in from an early brief, and this record strikes it out.
+
+Amended 2026-11-08: "platform-agnostic SSMS replacement" is the positioning as first recorded. Since #166 Panoptic is described as a cross-environment, cross-engine database tool (plan.md, README). The decision below is unchanged.
 
 ## Decision
 

@@ -18,7 +18,9 @@ public sealed class ConfigStore
     public ConfigStore(string path)
     {
         _path = path;
-        (_file, RecoveredFrom) = Load(path);
+        (_file, RecoveredFrom, RestoredFromBackup) = Load(path);
+        // Written back at once: the unreadable file was moved aside, so without this the next start would be empty.
+        if (RestoredFromBackup) Commit(_file);
         // A delete whose undo window was still open when Panoptic closed leaves its secrets behind; they go now.
         var orphans = Orphans(_file.Secrets.Keys);
         if (orphans.Count > 0) Commit(_file with { Secrets = Without(_file.Secrets, orphans) });
@@ -29,6 +31,9 @@ public sealed class ConfigStore
     /// ping reports this so the UI can say so.
     /// </summary>
     public string? RecoveredFrom { get; }
+
+    /// <summary>True when the unreadable store was replaced by its backup, the store as it was before the last save (#241).</summary>
+    public bool RestoredFromBackup { get; }
 
     public static string DefaultPath =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Panoptic", "store.bin");
@@ -259,21 +264,46 @@ public sealed class ConfigStore
         var encrypted = ProtectedData.Protect(json, Entropy, DataProtectionScope.CurrentUser);
         Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
         var temp = _path + ".tmp";
-        File.WriteAllBytes(temp, encrypted);
+        // On disk before the rename, so a crash or power cut cannot leave a renamed but empty file (#241).
+        using (var stream = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None))
+        {
+            stream.Write(encrypted);
+            stream.Flush(flushToDisk: true);
+        }
+        BackUp();
         File.Move(temp, _path, overwrite: true);
         _file = file;
+    }
+
+    /// <summary>
+    /// Copies the store about to be replaced to <c>store.bin.bak</c>, which <see cref="Load"/> falls back to (#241). Only
+    /// stores that loaded or were committed are ever in place, so the copy is always usable. Best effort: a backup that
+    /// cannot be written (a sync tool holding it) keeps the older one and must not fail the save.
+    /// </summary>
+    private void BackUp()
+    {
+        if (!File.Exists(_path)) return;
+        try
+        {
+            File.Copy(_path, _path + ".bak", overwrite: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine($"Store backup not written: {ex.Message}");
+        }
     }
 
     /// <summary>
     /// A file that cannot be decrypted (another Windows profile, a truncated write) or does not deserialise to a
     /// usable store is renamed aside, never deleted or overwritten, and the store starts empty. Read errors such as
     /// a locked file are not corruption: moving a good store aside would lose it, so they throw
-    /// <see cref="StoreUnavailableException"/>, which says what happened in plain words.
+    /// <see cref="StoreUnavailableException"/>, which says what happened in plain words. A moved-aside store is
+    /// replaced by its backup when that reads (#241).
     /// </summary>
-    private static (StoreFile File, string? RecoveredFrom) Load(string path)
+    private static (StoreFile File, string? RecoveredFrom, bool RestoredFromBackup) Load(string path)
     {
         var empty = new StoreFile(AppConfig.Empty, []);
-        if (!File.Exists(path)) return (empty, null);
+        if (!File.Exists(path)) return (empty, null, false);
         byte[] bytes;
         try
         {
@@ -283,19 +313,61 @@ public sealed class ConfigStore
         {
             throw new StoreUnavailableException(path, ex);
         }
-        try
-        {
-            var json = ProtectedData.Unprotect(bytes, Entropy, DataProtectionScope.CurrentUser);
-            var file = JsonSerializer.Deserialize(json, SidecarJson.Default.StoreFile);
-            if (IsUsable(file)) return (file!, null);
-        }
-        catch (Exception ex) when (ex is CryptographicException or JsonException or NotSupportedException) { }
+        if (Read(bytes) is { } file) return (file, null, false);
 
         // No overwrite: if the name is somehow taken, fail rather than lose either copy.
         var aside = $"{path}.corrupt-{DateTime.UtcNow:yyyyMMdd-HHmmss-fff}";
         File.Move(path, aside, overwrite: false);
+        try
+        {
+            if (File.Exists(path + ".bak") && Read(File.ReadAllBytes(path + ".bak")) is { } backup)
+            {
+                Console.Error.WriteLine($"Store could not be read; moved aside to {aside} and restored from its backup.");
+                return (backup, aside, true);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
         Console.Error.WriteLine($"Store could not be read; moved aside to {aside} and started empty.");
-        return (empty, aside);
+        return (empty, aside, false);
+    }
+
+    /// <summary>The decrypted, usable store with its settings repaired, or null if it is not one.</summary>
+    private static StoreFile? Read(byte[] bytes)
+    {
+        try
+        {
+            var json = ProtectedData.Unprotect(bytes, Entropy, DataProtectionScope.CurrentUser);
+            var file = JsonSerializer.Deserialize(json, SidecarJson.Default.StoreFile);
+            if (IsUsable(file)) return file! with { Settings = Repaired(file!.Settings) };
+        }
+        catch (Exception ex) when (ex is CryptographicException or JsonException or NotSupportedException) { }
+        return null;
+    }
+
+    /// <summary>
+    /// Stored settings with each value <see cref="SaveSettings"/> would refuse (from an older version, or a hand edit)
+    /// put back to its default, keeping the rest. Otherwise one bad value fails every later settings save (#196).
+    /// </summary>
+    private static AppSettings? Repaired(AppSettings? settings)
+    {
+        if (settings is null) return null;
+        var explorer = settings.Explorer ?? new ExplorerSettings();
+        var editor = settings.Editor ?? new EditorSettings();
+        var defaults = new EditorSettings();
+        var repaired = settings with
+        {
+            UpdateCheck = UpdateCheckModes.All.Contains(settings.UpdateCheck) ? settings.UpdateCheck : AppSettings.Default.UpdateCheck,
+            LastSeenVersion = settings.LastSeenVersion is null || System.Text.RegularExpressions.Regex.IsMatch(settings.LastSeenVersion, @"^\d+\.\d+\.\d+$") ? settings.LastSeenVersion : null,
+            Explorer = explorer with { RowFont = explorer.RowFont is RowFonts.Mono or RowFonts.Ui ? explorer.RowFont : RowFonts.Mono },
+            Editor = editor with
+            {
+                KeywordCase = editor.KeywordCase is null or KeywordCases.Lower or KeywordCases.Upper or KeywordCases.Preserve ? editor.KeywordCase : null,
+                CatalogSampleDocs = editor.CatalogSampleDocs is >= 10 and <= 500 ? editor.CatalogSampleDocs : defaults.CatalogSampleDocs,
+                MaxRows = editor.MaxRows is >= 1_000 and <= 1_000_000 ? editor.MaxRows : defaults.MaxRows,
+            },
+        };
+        if (repaired != settings) Console.Error.WriteLine("Stored settings had values this version does not accept; they were reset to their defaults.");
+        return repaired;
     }
 
     /// <summary>

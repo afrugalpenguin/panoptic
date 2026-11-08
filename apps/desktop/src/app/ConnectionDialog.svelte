@@ -24,7 +24,8 @@
     /** Preselected environment; null or absent preselects None. */
     environmentId?: string | null;
     initial?: ConnectionConfig;
-    onSaved: () => void;
+    /** The saved connection and its environment (null for none), so the tree can select a new one. */
+    onSaved: (connection: ConnectionConfig, environmentId: string | null) => void;
     /** New environment... saved one: the new config, so the picker lists it. */
     onEnvironmentCreated: (config: AppConfig) => void | Promise<void>;
     onClose: () => void;
@@ -199,8 +200,9 @@
     if (error) return;
     busy = "saving";
     try {
-      await api.saveConnection(toEnvironmentId(environment), config(), secretArg());
-      onSaved();
+      const saved = config();
+      await api.saveConnection(toEnvironmentId(environment), saved, secretArg());
+      onSaved(saved, toEnvironmentId(environment));
       onClose();
     } catch (e) {
       error = String(e instanceof Error ? e.message : e);
@@ -305,7 +307,8 @@
     {#if entra && busy === "testing"}<span class="muted">A Microsoft sign-in window may open.</span>{/if}
     <span style:flex="1"></span>
     <button type="button" onclick={onClose}>Cancel</button>
-    <button type="button" class="primary" disabled={busy !== ""} onclick={save}>Save</button>
+    <!-- The form's submit button, so Enter in a field saves (#217). -->
+    <button type="submit" class="primary" disabled={busy !== ""} onclick={save}>Save</button>
   {/snippet}
 </Dialog>
 

@@ -24,12 +24,12 @@ The word "sidecar" never appears in user-facing text, here or in the status bar.
 
 One index over the loaded environments, their connections, the connections in no environment and the recent objects in usage. A connection in no environment ranks on its own name only and is never shown as, or under, an environment row.
 
-**Nothing typed:** "Pick up where you left off" (the last place, pre-selected), then environments by last use (use count breaks ties, then name), capped at 5 with a muted "N more, type to find" hint, then connections in no environment (last used first, then by name), also capped at 5 with a hint, then up to 3 recent objects. At most 9 selectable rows; the hints are not rows. No environments and no connections, no rows.
+**Nothing typed:** "Pick up where you left off" (the last place, pre-selected), then environments by last use (use count breaks ties, then the tree's order), capped at 5 with a muted "N more, type to find" hint, then connections in no environment (last used first, then by name), also capped at 5 with a hint, then up to 3 recent objects. At most 9 selectable rows; the hints are not rows. No environments and no connections, no rows.
 
 **Typed:** the query splits into tokens, and every token must match (AND). Matching is case-insensitive substring; a prefix of the text scores 3, the start of a word 2, anywhere 1.
 
-1. Environments where every token is in the environment's name or id, one of its hosts' names, or one of its recent objects' labels. Ranked by how well the tokens match the environment's own name, capped at 5 with a "more" hint.
-2. The top environment's connections whose name (with the environment's name) holds every token, by name.
+1. Environments where every token is in the environment's name or id, one of its hosts' names, or one of its recent objects' labels. Ranked by how well the tokens match the environment's own name, equal matches in the tree's order (explorer.envOrder), capped at 5 with a "more" hint (#222).
+2. Every matching environment's connections whose name (with the environment's name) holds every token, grouped by environment in the order the environments rank, by name within each (#228).
 3. Connections in no environment whose own name holds every token, best match first, then by name.
 4. Recent objects, up to 3: the top environment's whose label or host name (with the environment's name) holds every token, then those on connections in no environment whose label or host name holds every token.
 
@@ -41,7 +41,7 @@ So "uk prod" ranks Prod first with only its `uk-` hosts under it: "uk" is in nei
 
 **A miss:** something typed and no rows says what Seek searched: "Nothing matches. Seek looks through environments, connections and objects you have opened; expand a connection in the explorer to find anything else." In the connection picker: "No connection matches." (#215)
 
-**Connections only** (the unconnected tab's picker): every connection, the last used one first when nothing is typed; typed, tokens AND across the host and environment names, the host name counting double. A connection in no environment matches on its own name only.
+**Connections only** (the unconnected tab's picker): every connection, the last used one first when nothing is typed; typed, tokens AND across the host and environment names, the host name counting double, equal matches in the tree's order with connections in no environment last. A connection in no environment matches on its own name only.
 
 **Stale usage:** usage outlives config. A remembered place whose connection has since been removed is never offered, in Seek. A place's environment is looked up from its connection, not remembered, so a connection that moved keeps its places under its new environment (or none).
 
@@ -59,7 +59,7 @@ Click is Enter, Ctrl+click is Ctrl+Enter.
 
 ## App shortcuts
 
-Ctrl+N is New query: with a node selected that offers it, on that node, as before; otherwise an unconnected tab. Ctrl+Shift+N is New connection (once the engine is ready), Ctrl+I is Import (left to the editor, where it opens suggestions), Ctrl+P clears the selection and focuses Seek on the landing; with query tabs open (so no landing), it opens the same Seek box in a modal over the workspace, with the same rows and keys. Enter or Ctrl+Enter acts and closes it; Esc with nothing typed, or a click outside, closes it and focus goes back where it was. None of them fire while a dialog or the Seek overlay is open.
+Ctrl+N is New query: with a node selected that offers it, on that node, as before; otherwise an unconnected tab. Ctrl+Shift+N is New connection (once the engine is ready), Ctrl+I is Import (left to the editor, where it opens suggestions), Ctrl+P clears the selection and focuses Seek on the landing; with query tabs open (so no landing), it opens the same Seek box in a modal over the workspace, with the same rows and keys. Enter or Ctrl+Enter acts and closes it; Esc with nothing typed, or a click outside, closes it and focus goes back where it was. None of them fire while a dialog, a confirmation, a context menu or the Seek overlay is open, not even a node's Ctrl+N (#212).
 
 ## Usage
 

@@ -43,8 +43,8 @@ export const PGSQL_FUNCTIONS = [
   "to_json", "to_jsonb", "to_number", "to_timestamp", "transaction_timestamp", "translate", "trim", "trunc", "unnest", "upper",
 ];
 
-// Every Postgres keyword that is not unreserved, the words quote_ident() quotes. A name that is one of these or one of
-// PGSQL_KEYWORDS is double-quoted when inserted (engine.ts quote()). A copy of PostgresKeywords.All in the sidecar, which a
+// Every Postgres keyword that is not unreserved, the words quote_ident() quotes. A name that is one of these is
+// double-quoted when inserted (engine.ts quote()). A copy of PostgresKeywords.All in the sidecar, which a
 // sidecar test checks against the server; another fails if this copy differs.
 export const PGSQL_RESERVED = [
   "all", "analyse", "analyze", "and", "any", "array", "as", "asc", "asymmetric", "authorization", "between", "bigint",

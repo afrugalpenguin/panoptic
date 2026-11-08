@@ -78,7 +78,7 @@ public sealed class DragTextTests
         return Regex.Matches(block.Groups[1].Value, "\"([^\"]*)\"").Select(m => m.Groups[1].Value).ToArray();
     }
 
-    private static string RepoRoot()
+    internal static string RepoRoot()
     {
         for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
             if (Directory.Exists(Path.Combine(dir.FullName, "apps", "desktop", "src"))) return dir.FullName;

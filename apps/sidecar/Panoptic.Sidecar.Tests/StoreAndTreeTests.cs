@@ -411,6 +411,49 @@ public sealed class ConfigStoreTests : IDisposable
     }
 
     [Fact]
+    public void Invalid_stored_settings_load_as_defaults_and_valid_ones_are_kept()
+    {
+        // #196: one bad stored value (an older version, a hand edit) used to make every later settings save fail.
+        WriteEncrypted("""
+            {"config":{"environments":[]},"secrets":{},"settings":{
+              "updateCheck":"every-five-seconds","lastSeenVersion":"v0.2",
+              "explorer":{"showKindBadge":false,"rowFont":"comic-sans","envOrder":["dev"]},
+              "editor":{"intellisense":false,"keywordCase":"shouty","catalogSampleDocs":5,"autoRefreshOnDdl":false,"warnUnknownNames":false,"maxRows":10}}}
+            """);
+
+        var store = new ConfigStore(_path);
+        var settings = store.Settings;
+
+        Assert.Null(store.RecoveredFrom);
+        Assert.Equal(UpdateCheckModes.Startup, settings.UpdateCheck);
+        Assert.Null(settings.LastSeenVersion);
+        Assert.Equal(RowFonts.Mono, settings.Explorer.RowFont);
+        Assert.False(settings.Explorer.ShowKindBadge);
+        Assert.Equal(["dev"], settings.Explorer.EnvOrder);
+        Assert.Null(settings.Editor.KeywordCase);
+        Assert.Equal(new EditorSettings().CatalogSampleDocs, settings.Editor.CatalogSampleDocs);
+        Assert.Equal(EditorSettings.DefaultMaxRows, settings.Editor.MaxRows);
+        Assert.False(settings.Editor.Intellisense);
+        Assert.False(settings.Editor.AutoRefreshOnDdl);
+        Assert.False(settings.Editor.WarnUnknownNames);
+
+        store.SaveSettings(settings with { UpdateCheck = UpdateCheckModes.Never });
+        Assert.Equal(UpdateCheckModes.Never, new ConfigStore(_path).Settings.UpdateCheck);
+    }
+
+    [Fact]
+    public void Null_stored_settings_members_load_as_defaults()
+    {
+        WriteEncrypted("""{"config":{"environments":[]},"secrets":{},"settings":{"updateCheck":null,"explorer":null,"editor":null}}""");
+
+        var store = new ConfigStore(_path);
+
+        Assert.Equal(AppSettings.Default.UpdateCheck, store.Settings.UpdateCheck);
+        Assert.Equal(RowFonts.Mono, store.Settings.Explorer.RowFont);
+        store.SaveSettings(store.Settings);
+    }
+
+    [Fact]
     public void Editing_connections_and_environments_keeps_settings()
     {
         var store = new ConfigStore(_path);
@@ -581,6 +624,63 @@ public sealed class ConfigStoreTests : IDisposable
         Assert.Empty(store.Config.Connections);
         Assert.Equal("s", store.GetSecret("c1"));
         Assert.Empty(CorruptCopies());
+    }
+
+    [Fact]
+    public void Each_save_keeps_the_previous_store_as_a_backup()
+    {
+        var store = new ConfigStore(_path);
+        store.SaveEnvironment(new EnvironmentConfig("dev", "Dev", "#000", false, []));
+        Assert.False(File.Exists(_path + ".bak"));
+
+        store.SaveEnvironment(new EnvironmentConfig("uat", "UAT", "#fff", false, []));
+
+        Assert.Equal(["Dev"], new ConfigStore(_path + ".bak").Config.Environments.Select(e => e.Name));
+        Assert.Equal(["Dev", "UAT"], new ConfigStore(_path).Config.Environments.Select(e => e.Name));
+        Assert.False(File.Exists(_path + ".tmp"));
+    }
+
+    [Fact]
+    public async Task An_unreadable_store_is_restored_from_its_backup()
+    {
+        // #241: the previous save is the better fallback than an empty store.
+        var store = new ConfigStore(_path);
+        store.SaveEnvironment(new EnvironmentConfig("dev", "Dev", "#000", false, []));
+        store.SaveConnection("dev", Sql("c1"), "pw");
+        store.SaveEnvironment(new EnvironmentConfig("uat", "UAT", "#fff", false, []));
+        File.WriteAllText(_path, "garbage");
+
+        var restored = new ConfigStore(_path);
+
+        // The store as it was before the last save.
+        Assert.Equal("Dev", restored.Config.Environments.Single().Name);
+        Assert.Equal("pw", restored.GetSecret("c1"));
+        Assert.True(restored.RestoredFromBackup);
+        Assert.Equal(Assert.Single(CorruptCopies()), restored.RecoveredFrom);
+        Assert.Equal("garbage", File.ReadAllText(restored.RecoveredFrom!));
+        // Written back at once, so the next start is clean even with no change in between.
+        var next = new ConfigStore(_path);
+        Assert.Null(next.RecoveredFrom);
+        Assert.Equal("Dev", next.Config.Environments.Single().Name);
+
+        var dispatcher = new JsonRpcDispatcher(Methods.Create(new SidecarInfo(1, "0.1.0", "test"), restored));
+        var response = await dispatcher.HandleAsync("""{"jsonrpc":"2.0","id":1,"method":"ping"}""");
+        Assert.True(System.Text.Json.JsonDocument.Parse(response!).RootElement.GetProperty("result").GetProperty("storeRestoredFromBackup").GetBoolean());
+    }
+
+    [Fact]
+    public void An_unreadable_store_and_backup_start_empty()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+        File.WriteAllText(_path, "garbage");
+        File.WriteAllText(_path + ".bak", "also garbage");
+
+        var store = new ConfigStore(_path);
+
+        Assert.Empty(store.Config.Environments);
+        Assert.False(store.RestoredFromBackup);
+        Assert.Equal(Assert.Single(CorruptCopies()), store.RecoveredFrom);
+        Assert.Equal("also garbage", File.ReadAllText(_path + ".bak"));
     }
 
     [Fact]

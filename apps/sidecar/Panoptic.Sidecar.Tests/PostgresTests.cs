@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using System.Text.Json;
 using Npgsql;
 using Panoptic.Sidecar.Backends;
 using Xunit.Abstractions;
@@ -26,6 +27,18 @@ public class PostgresNameTests
     [Fact]
     public void Qualified_names_quote_each_part_on_its_own() =>
         Assert.Equal("sales.\"Order Lines\"", PostgresBackend.QualifiedName("sales", "Order Lines"));
+
+    /// <summary>The cases the UI's quote() is tested with (engine.test.ts), so the two quote alike (#206).</summary>
+    internal static string[][] UiCases() =>
+        JsonSerializer.Deserialize<string[][]>(File.ReadAllText(Path.Combine(DragTextTests.RepoRoot(), "apps", "desktop", "src", "query", "intellisense", "pgsql-quote-cases.json")))!;
+
+    [Fact]
+    public void Names_are_quoted_as_the_ui_quotes_them()
+    {
+        var cases = UiCases();
+        Assert.NotEmpty(cases);
+        Assert.All(cases, c => Assert.Equal(c[1], PostgresBackend.QuoteIdentifier(c[0])));
+    }
 }
 
 public class PostgresConnectionTests
@@ -359,7 +372,7 @@ public class PostgresIntegrationTests(ITestOutputHelper output)
         await using var source = NpgsqlDataSource.Create(PostgresBackend.Settings(DevPg, null, "postgres").ConnectionString + $";Password={PgFactAttribute.Password}");
         await using var conn = await source.OpenConnectionAsync();
 
-        var all = names.Concat(PostgresKeywords.All).ToArray();
+        var all = names.Concat(PostgresNameTests.UiCases().Select(c => c[0])).Concat(PostgresKeywords.All).ToArray();
         await using var cmd = new NpgsqlCommand("SELECT quote_ident(n) FROM unnest($1::text[]) WITH ORDINALITY AS t(n, i) ORDER BY i", conn);
         cmd.Parameters.Add(new NpgsqlParameter { Value = all });
         var expected = new List<string>();

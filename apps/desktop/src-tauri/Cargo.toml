@@ -1,7 +1,7 @@
 [package]
 name = "panoptic"
 version = "0.2.0"
-description = "Native multi-environment object explorer for SQL Server and Cosmos DB"
+description = "Desktop database client for SQL Server, Azure Synapse, Cosmos DB and PostgreSQL"
 authors = ["afrugalpenguin"]
 license = "MIT"
 edition = "2024"
@@ -23,6 +23,7 @@ tauri-plugin-fs = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-process = "2"
 tauri-plugin-shell = "2"
+tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"
 
 # No LTO and default codegen units: the shell is a thin pipe, so whole-program optimisation buys

@@ -9,12 +9,15 @@ export type PingResult = {
   pid: number;
   /** Set when store.bin could not be read at start-up: where it was moved aside. The store started empty. */
   storeRecoveredFrom?: string;
+  /** Set with storeRecoveredFrom when the store was restored from its backup (the previous save) rather than started empty. */
+  storeRestoredFromBackup?: boolean;
 };
 
 /** Status bar text once the sidecar answers ping. */
 export function readyText(ping: PingResult): string {
   if (!ping.storeRecoveredFrom) return "Ready";
   const name = ping.storeRecoveredFrom.split(/[\\/]/).pop();
+  if (ping.storeRestoredFromBackup) return `Ready, but saved connections and settings could not be read and were restored from the previous save (old file kept as ${name})`;
   return `Ready, but saved connections and settings could not be read and were reset (old file kept as ${name})`;
 }
 

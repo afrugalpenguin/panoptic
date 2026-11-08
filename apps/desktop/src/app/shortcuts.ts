@@ -25,7 +25,7 @@ export type KeyCommand = { kind: "nodeQuery"; action: TabAction } | { kind: "glo
 export interface KeyState {
   /** The Seek overlay is modal: its box keeps every key. */
   seeking: boolean;
-  /** A dialog's fields keep their keys, but a node's New query still works under it. */
+  /** A dialog, confirm or context menu is open: it keeps every key, so nothing opens behind it (#212). */
   dialogOpen: boolean;
   /** Focus is in a Monaco editor, which has its own Ctrl+I. */
   inEditor: boolean;
@@ -38,10 +38,9 @@ export function keyCommand(
   e: { key: string; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; altKey: boolean },
   state: KeyState,
 ): KeyCommand | undefined {
-  if (state.seeking) return undefined;
+  if (state.seeking || state.dialogOpen) return undefined;
   const action = shortcutAction(e, state.selectedNode);
   if (action) return { kind: "nodeQuery", action };
-  if (state.dialogOpen) return undefined;
   const global = globalShortcut(e, state.inEditor);
   return global ? { kind: "global", action: global } : undefined;
 }
