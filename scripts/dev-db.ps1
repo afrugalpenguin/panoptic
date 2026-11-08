@@ -5,7 +5,7 @@
 .DESCRIPTION
     SQL Server:  127.0.0.1,14333  user sa, password in docker\.env (generated on first run)
     PostgreSQL:  127.0.0.1:15432  user postgres, password in docker\.env (generated on first run)
-    Cosmos:      https://localhost:8081  the emulator's well-known key (printed below)
+    Cosmos:      https://127.0.0.1:8081  the emulator's well-known key (printed below)
     All bind to 127.0.0.1 only. Re-running reseeds.
 
 .PARAMETER Down
@@ -99,7 +99,7 @@ Write-Host 'PostgreSQL seeded: orders, inventory'
 
 # --- Cosmos emulator (REST API with master-key auth) ---------------------------
 $cosmosKey = 'C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw=='
-$endpoint = 'https://localhost:8081'
+$endpoint = 'https://127.0.0.1:8081'
 
 Add-Type @'
 using System.Net.Http;
