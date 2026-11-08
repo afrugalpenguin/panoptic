@@ -15,6 +15,7 @@
     messages = [],
     reveal,
     warnUnknownNames = false,
+    autofocus = true,
   }: {
     /** Whose text the editor holds: the tab reads it from Monaco when it needs it, not on every keystroke (#201). */
     tab: Pick<QueryTab, "text" | "attach" | "edited">;
@@ -30,6 +31,8 @@
     reveal?: { id: number; seq: number };
     /** Only read to re-check when the setting changes; the check itself reads intellisense(). */
     warnUnknownNames?: boolean;
+    /** Focus the editor once it has loaded. An unconnected tab leaves focus in its connection picker (#218). */
+    autofocus?: boolean;
   } = $props();
 
   const MONACO_LANGUAGE: Record<QueryLanguage, string> = { sql: "tsql", cosmos: "cosmos-sql", pgsql: "pgsql" };
@@ -138,7 +141,7 @@
       // F5 and Ctrl+Enter, as in SSMS and Azure Data Studio.
       editor.addCommand(monaco.KeyCode.F5, run);
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, run);
-      editor.focus();
+      if (autofocus) editor.focus();
       loading = false;
       lintNow();
     });

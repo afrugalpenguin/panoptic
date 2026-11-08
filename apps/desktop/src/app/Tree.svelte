@@ -47,6 +47,8 @@
     footer?: Snippet;
   } = $props();
 
+  /** Prefixes the rows' ids, which aria-activedescendant names (#219): unique per tree. */
+  const uid = $props.id();
   let scroller: HTMLDivElement;
   let scrollTop = $state(0);
   let height = $state(0);
@@ -137,10 +139,36 @@
     else if (top + h > scroller.scrollTop + scroller.clientHeight - below) scroller.scrollTop = top + h - scroller.clientHeight + below;
   }
 
-  /** Seek's Esc (docs/landing.md) hands focus here. */
-  export function focus() {
+  /**
+   * Focus stays on the tree itself (#219); rows never take it, so a click leaves no focus ring behind. Set while focus
+   * arrives without a keyboard choice of row: a click selects its own row, and Seek's Esc keeps the landing.
+   */
+  let keepSelection = false;
+
+  /** Seek's Esc (docs/landing.md) passes pick false: nothing is selected, so the landing stays. */
+  export function focus(pick = true) {
+    keepSelection = !pick;
     scroller.focus();
+    keepSelection = false;
   }
+
+  /**
+   * Focus moved here from elsewhere on the page with nothing selected selects the first row in view, so the arrows
+   * start there. Not when the window regains focus (no previous element) or a closing dialog or menu hands it back
+   * (#216): nothing was chosen, so the landing stays.
+   */
+  function onFocus(e: FocusEvent) {
+    focused = true;
+    const keep = keepSelection;
+    keepSelection = false;
+    const from = e.relatedTarget instanceof Element ? e.relatedTarget : undefined;
+    if (keep || selectedKey !== undefined || !from || from.closest("dialog, [role='menu']")) return;
+    select(firstBelow(scroller.scrollTop));
+  }
+
+  /** The id aria-activedescendant names; keys may hold spaces, which an id cannot. */
+  const rowId = (key: string) => `${uid}-${encodeURIComponent(key)}`;
+  const activeId = $derived(selectedIndex >= start && selectedIndex < end ? rowId(rows[selectedIndex].key) : undefined);
 
   function pageRows(direction: 1 | -1): number {
     const target = (selectedIndex >= 0 ? rows[selectedIndex].top : 0) + direction * scroller.clientHeight;
@@ -292,14 +320,15 @@
 
 <!-- One row's markup, drawn by the virtualiser and again for the pinned header (the same row, not a copy). -->
 {#snippet treeRow(row: Row, pin: boolean)}
-  <!-- Keys are handled once on the tree (Enter on an error row opens Problems). -->
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- Keys are handled once on the tree (Enter on an error row opens Problems), which keeps focus and names the
+       selected row with aria-activedescendant, so rows are not focusable. -->
+  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_interactive_supports_focus -->
   <div
+    id={pin ? undefined : rowId(row.key)}
     class="tree-row {row.rowKind}"
     class:selected={row.key === selectedKey}
     class:drop-over={row.key === dropKey}
     role="treeitem"
-    tabindex="-1"
     aria-selected={row.key === selectedKey}
     aria-expanded={row.type === "group" || (row.type === "node" && row.node.hasChildren) ? row.expanded : undefined}
     style:height="{row.height}px"
@@ -342,12 +371,17 @@
   class:font-ui={rowFont === "ui"}
   role="tree"
   tabindex="0"
+  aria-activedescendant={activeId}
   bind:this={scroller}
   bind:clientHeight={height}
   onscroll={onScroll}
   onkeydown={onKeydown}
-  onfocus={() => (focused = true)}
-  onblur={() => (focused = false)}
+  onmousedown={(e) => (keepSelection = !(e.target as Element).closest(".tree-footer"))}
+  onfocus={onFocus}
+  onblur={() => {
+    focused = false;
+    keepSelection = false;
+  }}
 >
   {#if pinned}
     <!-- The real header row is still in the list below (scrolled up out of view), so this copy is hidden from

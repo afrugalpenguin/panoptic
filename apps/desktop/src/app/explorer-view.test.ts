@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { engineControl, summaryText, toggleNames } from "./explorer-view";
+import { engineControl, explorerWidth, splitterKey, summaryText, toggleNames } from "./explorer-view";
 
 describe("summaryText", () => {
   it("counts environments and connections when nothing is hidden", () => {
@@ -53,5 +53,37 @@ describe("toggleNames", () => {
 
   it("waits until the toggles have been measured", () => {
     expect(toggleNames(1000, 0)).toBe(false);
+  });
+});
+
+describe("explorer splitter", () => {
+  const key = (k: string, shiftKey = false) => ({ key: k, shiftKey });
+
+  it("keeps the explorer at 220px or wider and leaves the content 240px", () => {
+    expect(explorerWidth(100, 1200)).toBe(220);
+    expect(explorerWidth(1100, 1200)).toBe(960);
+    expect(explorerWidth(400, 1200)).toBe(400);
+  });
+
+  it("moves 10px per arrow, 50px with Shift", () => {
+    expect(splitterKey(key("ArrowRight"), 360, 1200)).toBe(370);
+    expect(splitterKey(key("ArrowLeft"), 360, 1200)).toBe(350);
+    expect(splitterKey(key("ArrowRight", true), 360, 1200)).toBe(410);
+    expect(splitterKey(key("ArrowLeft", true), 360, 1200)).toBe(310);
+  });
+
+  it("goes to the narrowest and widest with Home and End", () => {
+    expect(splitterKey(key("Home"), 360, 1200)).toBe(220);
+    expect(splitterKey(key("End"), 360, 1200)).toBe(960);
+  });
+
+  it("stops at the limits", () => {
+    expect(splitterKey(key("ArrowLeft"), 225, 1200)).toBe(220);
+    expect(splitterKey(key("ArrowRight"), 955, 1200)).toBe(960);
+  });
+
+  it("leaves other keys alone", () => {
+    expect(splitterKey(key("Enter"), 360, 1200)).toBeUndefined();
+    expect(splitterKey(key("ArrowUp"), 360, 1200)).toBeUndefined();
   });
 });

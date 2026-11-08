@@ -39,3 +39,31 @@ export function summaryText({ environments, connections, matching }: ExplorerSum
   if (environments === 0) return { long: plural(connections, "connection"), short: String(connections) };
   return { long: `${plural(environments, "environment")} · ${plural(connections, "connection")}`, short: `${environments} · ${connections}` };
 }
+
+/** The explorer is laid out down to 220px (docs/explorer-ux.md, "Principles"); the content beside it keeps 240px. */
+const EXPLORER_MIN = 220;
+const CONTENT_MIN = 240;
+/** The splitter's arrow-key steps, small and with Shift. */
+const SPLITTER_STEP = 10;
+const SPLITTER_STEP_SHIFT = 50;
+
+/** The explorer's width clamped to what the window allows. */
+export function explorerWidth(width: number, windowWidth: number): number {
+  return Math.max(EXPLORER_MIN, Math.min(windowWidth - CONTENT_MIN, width));
+}
+
+/** The explorer splitter's keys: Left and Right move it (further with Shift), Home and End go to the limits. */
+export function splitterKey(e: { key: string; shiftKey: boolean }, width: number, windowWidth: number): number | undefined {
+  const step = e.shiftKey ? SPLITTER_STEP_SHIFT : SPLITTER_STEP;
+  switch (e.key) {
+    case "ArrowLeft":
+      return explorerWidth(width - step, windowWidth);
+    case "ArrowRight":
+      return explorerWidth(width + step, windowWidth);
+    case "Home":
+      return explorerWidth(EXPLORER_MIN, windowWidth);
+    case "End":
+      return explorerWidth(Infinity, windowWidth);
+  }
+  return undefined;
+}

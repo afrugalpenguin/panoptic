@@ -23,6 +23,8 @@
   import type { BackupPreview } from "../sidecar-types.generated";
   import MoveDialog from "./MoveDialog.svelte";
   import Explorer from "./Explorer.svelte";
+  import { explorerWidth, splitterKey } from "./explorer-view";
+  import { innerWidth } from "svelte/reactivity/window";
   import Landing from "./Landing.svelte";
   import SeekOverlay from "./SeekOverlay.svelte";
   import { type SeekEnv, type SeekHost, type SeekIndex, type SeekRow } from "./seek";
@@ -705,19 +707,31 @@
     }
   }
 
+  function saveWidth() {
+    try {
+      localStorage.setItem("panoptic.treeWidth", String(treeWidth));
+    } catch {}
+  }
+
   function startResize(e: PointerEvent) {
     const target = e.currentTarget as HTMLElement;
     target.setPointerCapture(e.pointerId);
-    // 220px is the narrowest the explorer is laid out for (docs/explorer-ux.md, "Principles").
-    const move = (ev: PointerEvent) => (treeWidth = Math.max(220, Math.min(window.innerWidth - 240, ev.clientX)));
+    const move = (ev: PointerEvent) => (treeWidth = explorerWidth(ev.clientX, window.innerWidth));
     const up = () => {
       target.removeEventListener("pointermove", move);
-      try {
-        localStorage.setItem("panoptic.treeWidth", String(treeWidth));
-      } catch {}
+      saveWidth();
     };
     target.addEventListener("pointermove", move);
     target.addEventListener("pointerup", up, { once: true });
+  }
+
+  /** The splitter by keyboard (#226): the arrows, Home and End, saved like a drag. */
+  function onSplitterKeydown(e: KeyboardEvent) {
+    const next = splitterKey(e, treeWidth, window.innerWidth);
+    if (next === undefined) return;
+    e.preventDefault();
+    treeWidth = next;
+    saveWidth();
   }
 </script>
 
@@ -759,7 +773,20 @@
     />
   </aside>
 
-  <div class="splitter" role="separator" aria-orientation="vertical" onpointerdown={startResize}></div>
+  <!-- A focusable separator is a widget in ARIA (moved by keyboard), which the a11y check does not know; its value is the explorer's width in pixels. -->
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
+  <div
+    class="splitter"
+    role="separator"
+    tabindex="0"
+    aria-label="Resize explorer"
+    aria-orientation="vertical"
+    aria-valuenow={treeWidth}
+    aria-valuemin={explorerWidth(0, innerWidth.current ?? 0)}
+    aria-valuemax={explorerWidth(Infinity, innerWidth.current ?? 0)}
+    onpointerdown={startResize}
+    onkeydown={onSplitterKeydown}
+  ></div>
 
   <main class="content">
     {#if workspace.tabs.length > 0}
@@ -781,7 +808,7 @@
         firstRun={configLoaded && config.environments.length === 0 && config.connections.length === 0}
         onSeekOpen={seekOpen}
         onSeekQuery={seekQuery}
-        onSeekLeave={() => explorer?.focus()}
+        onSeekLeave={() => explorer?.focus(false)}
         onNewQuery={() => workspace.openUnconnected()}
         onNewConnection={() => sidecar === "connected" && addConnection()}
         onImport={() => sidecar === "connected" && (dialog = { kind: "import" })}
@@ -913,8 +940,10 @@
     background-clip: content-box;
     padding: 0 1.5px;
   }
-  .splitter:hover {
+  .splitter:hover,
+  .splitter:focus-visible {
     background-color: var(--accent);
+    outline: none;
   }
   .content {
     grid-area: content;
