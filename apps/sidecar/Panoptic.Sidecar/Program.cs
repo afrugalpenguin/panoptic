@@ -51,6 +51,8 @@ var catalog = new Panoptic.Sidecar.Catalog.CatalogService(
     new Panoptic.Sidecar.Catalog.CatalogSources(store, tree),
     (method, notice) => Notify(method, w => JsonSerializer.Serialize(w, notice, SidecarJson.Default.CatalogNotice)));
 var dispatcher = new JsonRpcDispatcher(Methods.Create(new SidecarInfo(Math.Round(startupMs, 1), version, mode), store, tree, query, catalog));
+// Compiles the UI's first requests while the shell is still creating its window.
+_ = Task.Run(() => StartupWarmUp.RunAsync(dispatcher, store.Config));
 
 // Requests run concurrently so a slow expand never blocks ping, another expand or a $/cancelRequest.
 // HandleAsync registers each request on this loop before yielding to the thread pool, so a cancel read
