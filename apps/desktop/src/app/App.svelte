@@ -159,7 +159,9 @@
     cancelQuery: (queryId) => api!.cancelQuery(queryId),
     catalogGet: (nodeId, database) => api!.catalogGet(nodeId, database),
     catalogRefresh: (nodeId, database) => api!.catalogRefresh(nodeId, database),
-    databases: async (connection) => (await api!.children(connection)).filter((n) => n.kind === "database").map((n) => n.label),
+    // The explorer's list when it is loaded and fresh, so opening a tab does not ask the server again (#244).
+    databases: async (connection) =>
+      (model.freshChildren(connection) ?? (await api!.children(connection))).filter((n) => n.kind === "database").map((n) => n.label),
     suggest: async (request, info) => {
       syncCatalogs(info);
       return (await intellisense.suggest(request, info.keys)).suggestion;

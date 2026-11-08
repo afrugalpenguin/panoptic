@@ -4,11 +4,11 @@
   import { cssToken, EDITOR_THEME, editorTheme } from "./editor-theme";
   import { mdText } from "./intellisense/markdown";
   import { models, quickFixes, type ModelInfo, type QuickFix } from "./intellisense/providers";
-  import type { QueryMessage } from "./store.svelte";
+  import type { QueryMessage, QueryTab } from "./store.svelte";
   import type { QueryLanguage } from "./types";
 
   let {
-    text = $bindable(),
+    tab,
     language,
     intellisense,
     onRun,
@@ -16,7 +16,8 @@
     reveal,
     warnUnknownNames = false,
   }: {
-    text: string;
+    /** Whose text the editor holds: the tab reads it from Monaco when it needs it, not on every keystroke (#201). */
+    tab: Pick<QueryTab, "text" | "attach" | "edited">;
     /** Undefined until an unconnected tab connects: plain text, then the connection's language. */
     language: QueryLanguage | undefined;
     /** What completions and hover read; called on every request, so it always sees current settings. */
@@ -78,7 +79,7 @@
       monaco = m.monaco;
       monaco.editor.defineTheme(EDITOR_THEME, editorTheme(cssToken, dark.matches));
       editor = monaco.editor.create(host, {
-        value: text,
+        value: tab.text,
         language: monacoLanguage(language),
         theme: EDITOR_THEME,
         automaticLayout: true,
@@ -95,6 +96,7 @@
         dropIntoEditor: { enabled: true, showDropSelector: "never" },
       });
       const model = editor.getModel();
+      if (model) tab.attach({ read: () => model.getValue(), write: (text) => model.setValue(text) });
       if (model && intellisense) models.set(model, intellisense);
       if (model) quickFixes.set(model, fixes);
 
@@ -127,7 +129,7 @@
         }, LINT_DELAY_MS);
       };
       editor.onDidChangeModelContent(() => {
-        text = editor!.getValue();
+        tab.edited();
         pruneMarks();
         lintNow?.();
       });
@@ -146,6 +148,7 @@
       disposed = true;
       clearTimeout(timer);
       dark.removeEventListener("change", applyTheme);
+      if (editor) tab.attach(undefined);
       editor?.dispose();
     };
   });
@@ -232,11 +235,6 @@
   $effect(() => {
     void warnUnknownNames;
     lintNow?.();
-  });
-
-  /** Keeps the editor in step when the text is replaced from outside (e.g. a template). */
-  $effect(() => {
-    if (editor && text !== editor.getValue()) editor.setValue(text);
   });
 </script>
 

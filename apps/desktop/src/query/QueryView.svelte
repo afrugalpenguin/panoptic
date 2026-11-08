@@ -183,7 +183,7 @@
   <div class="editor-host" bind:this={editorHost}>
     <QueryEditor
       bind:this={queryEditor}
-      bind:text={tab.text}
+      {tab}
       language={tab.target?.language}
       {intellisense}
       onRun={(selection, offset) => workspace.run(tab, selection, offset)}

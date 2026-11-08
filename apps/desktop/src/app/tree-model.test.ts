@@ -199,6 +199,20 @@ describe("TreeModel", () => {
     vi.useRealTimers();
   });
 
+  it("serves a node's loaded children without loading again, and nothing once they are stale (#244)", async () => {
+    vi.useFakeTimers();
+    const load = vi.fn(async (id: string) => (id === "" ? [node("a")] : [node("a/x", false), node("a/y", false)]));
+    const model = new TreeModel(load, () => {}, 1000);
+    await model.loadRoot();
+    expect(model.freshChildren("a")).toBeUndefined();
+    await model.toggle("a");
+    expect(model.freshChildren("a")?.map((n) => n.id)).toEqual(["a/x", "a/y"]);
+    expect(load).toHaveBeenCalledTimes(2);
+    vi.advanceTimersByTime(1001);
+    expect(model.freshChildren("a")).toBeUndefined();
+    vi.useRealTimers();
+  });
+
   it("reports load time and item count for the status bar", async () => {
     const onLoaded = vi.fn();
     const model = new TreeModel(async (id) => (id === "" ? [node("a")] : [node("a/x", false)]), () => {}, undefined, onLoaded);
