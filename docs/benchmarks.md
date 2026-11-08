@@ -140,9 +140,11 @@ every change paid about 100 ms of proxy reads the app never pays. Fixed on 2026-
 Every tree change rebuilds the whole row list: `TreeModel.rows()` from `onChange` in App.svelte. Timed
 on main at 3233552 in the vitest projects (not a release build), over the same 50,228-node tree with
 every node open, medians of 15 to 21 changes after a warm-up; the range is across runs (five in
-Node, three in Chromium, one with the proxy). Guarded by `src/app/tree-model.perf.test.ts` and `src/app/tree-scale.browser.test.ts`, which
-fail when the fastest round is over one 60 Hz frame (16 ms) locally or three frames on CI (the
-median, with the other test files running beside them, went past 16 ms locally).
+Node, three in Chromium, one with the proxy). Guarded by `src/app/tree-model.perf.test.ts`, which
+fails when the fastest round is over one 60 Hz frame (16 ms) locally or three on CI, and
+`src/app/tree-scale.browser.test.ts`, which fails over three frames everywhere (the browser cannot
+see the CI variable; a CI runner took 22 ms). They assert the fastest round because the median,
+with the other test files running beside them, went past 16 ms locally.
 
 | Step | Where | Median (ms) |
 | --- | --- | --- |

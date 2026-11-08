@@ -5,10 +5,11 @@ import { createTree, type BenchTree } from "../bench/shipped.svelte";
 import { openAll, treeSource } from "../bench/tree-source";
 
 // #195: every model change re-reads the whole row list and re-renders the shipped Tree. This times one expand or
-// collapse in an open 50k-node tree, from the model change to the DOM updated, against one 60 Hz frame (16 ms). The
-// fastest round is asserted, as in tree-model.perf.test.ts, so other test files running beside it do not fail it; one
-// frame locally, three on CI. The median is logged (docs/benchmarks.md, "Tree row rebuild").
-const FRAME_MS = 16 * (import.meta.env.CI ? 3 : 1);
+// collapse in an open 50k-node tree, from the model change to the DOM updated. The fastest round is asserted, as in
+// tree-model.perf.test.ts, so other test files running beside it do not fail it. The browser cannot see the CI
+// variable, so the limit is three 60 Hz frames everywhere: about 10 ms here, 22 ms on a CI runner, and about 100 ms
+// with the deep row proxy this guards against. The median is logged (docs/benchmarks.md, "Tree row rebuild").
+const FRAME_MS = 16 * 3;
 // Wall-clock cap for the whole test, not a budget (see engine.perf.test.ts, #260). Only the timing assertion decides.
 const TEST_TIMEOUT_MS = 60_000;
 
