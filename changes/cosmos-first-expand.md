@@ -1,0 +1,1 @@
+Fixed: the first expand of a Cosmos DB emulator connection at `https://localhost:8081` no longer takes over 2 seconds when the emulator only listens on IPv4, and the first expand of any connection is quicker because Panoptic now loads the database drivers in the background at start-up.

@@ -38,7 +38,8 @@ catch (StoreUnavailableException ex)
     Console.Error.WriteLine(ex.Message);
     return 3;
 }
-var tree = new TreeService(store, BackendRegistry.Create(credentials));
+var backends = BackendRegistry.Create(credentials);
+var tree = new TreeService(store, backends);
 
 var startupMs = (DateTime.Now - Process.GetCurrentProcess().StartTime).TotalMilliseconds;
 var query = new Panoptic.Sidecar.Query.QueryService(store, tree, Notify);
@@ -51,6 +52,15 @@ var catalog = new Panoptic.Sidecar.Catalog.CatalogService(
     new Panoptic.Sidecar.Catalog.CatalogSources(store, tree),
     (method, notice) => Notify(method, w => JsonSerializer.Serialize(w, notice, SidecarJson.Default.CatalogNotice)));
 var dispatcher = new JsonRpcDispatcher(Methods.Create(new SidecarInfo(Math.Round(startupMs, 1), version, mode), store, tree, query, catalog));
+
+// Engine warm-up (#185), off the request path: a request that needs the same code meanwhile just finds it ready sooner.
+// A failure only costs the first expand its head start, so it is not reported (stderr's last line is for real failures,
+// #191); the backend tests run each warm-up.
+_ = Task.Run(() => Task.WhenAll(backends.Values.Distinct().Select(async b =>
+{
+    try { await b.WarmUpAsync(CancellationToken.None); }
+    catch (Exception) { }
+})));
 
 // Requests run concurrently so a slow expand never blocks ping, another expand or a $/cancelRequest.
 // HandleAsync registers each request on this loop before yielding to the thread pool, so a cancel read
