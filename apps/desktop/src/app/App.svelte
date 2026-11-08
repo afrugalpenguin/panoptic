@@ -124,10 +124,10 @@
   const selectedRow = $derived(rows.find((r) => r.key === selectedKey));
   const version = $derived(update?.current);
 
-  /** Loaded environments and their connections. Reads rows so it follows every tree change; preload loads all connections at start. */
+  /** Loaded environments, in the tree's order, and their connections. Reads rows so it follows every tree change; preload loads all connections at start. */
   function seekEnvs(): SeekEnv[] {
     void rows;
-    return model.envIds().flatMap((envId) => {
+    return model.treeEnvIds().flatMap((envId) => {
       const env = model.node(envId);
       if (!env) return [];
       const hosts: SeekHost[] = model
