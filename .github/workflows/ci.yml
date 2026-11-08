@@ -17,12 +17,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Docs-only pull requests (every changed file under docs/ or a .md file) skip the four build jobs:
-  # a skipped required check counts as passing, so they merge without a full run. Fails closed: the
-  # build jobs run unless this job positively says "false", so a failure here runs everything. Pushes
-  # to main always run everything. Nothing in the build reads docs/ or .md files (the What's new
-  # changelog is generated from changes/*.md by the ui job's own steps, and fragment.yml still checks
-  # every PR).
+  # Docs-only pull requests (every changed file under docs/ or a .md file outside changes/) skip the
+  # four build jobs: a skipped required check counts as passing, so they merge without a full run.
+  # Fails closed: the build jobs run unless this job positively says "false", so a failure here runs
+  # everything. Pushes to main always run everything. Change fragments (changes/*.md) count as code:
+  # the ui job's changelog smoke run turns them into the What's new changelog, so a fragment-only PR
+  # must run it. Nothing else in the build reads docs/ or .md files.
   changes:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -41,6 +41,7 @@ jobs:
           [ -z "$files" ] && code=true
           while IFS= read -r f; do
             case "$f" in
+              changes/*) code=true ;;
               docs/*|*.md) ;;
               *) code=true ;;
             esac
