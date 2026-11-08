@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, type Snippet } from "svelte";
+  import { restoreFocus } from "./focus";
 
   let {
     title,
@@ -19,11 +20,14 @@
   } = $props();
 
   let dialog: HTMLDialogElement;
+  /** What had focus when the dialog opened: focus goes back there when it closes, not to the page (#216). */
+  const opener = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
 
   onMount(() => {
     dialog.showModal();
     // A dialog can name the field to start on (data-autofocus); otherwise its first field.
     (dialog.querySelector<HTMLElement>("[data-autofocus]") ?? dialog.querySelector<HTMLElement>("input, select"))?.focus();
+    return () => restoreFocus(opener, dialog);
   });
 </script>
 

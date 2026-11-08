@@ -24,6 +24,12 @@
     },
   );
   const noop = () => {};
+  let explorer = $state<Explorer>();
+
+  /** What App does after Add connection. */
+  export function reveal(key: string) {
+    explorer?.reveal(key);
+  }
 
   onMount(async () => {
     await model.loadRoot();
@@ -34,6 +40,7 @@
 
 <div class="panel" style:width="{width}px">
   <Explorer
+    bind:this={explorer}
     {model}
     {rows}
     {engines}

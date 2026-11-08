@@ -36,8 +36,9 @@ describe("keyCommand", () => {
     expect(keyCommand(ctrl("p"), { ...idle, seeking: true })).toBeUndefined();
   });
 
-  it("a node's New query still works with a dialog open, but global shortcuts wait for it to close", () => {
-    expect(keyCommand(ctrl("n"), { ...idle, dialogOpen: true, selectedNode: table })).toEqual({ kind: "nodeQuery", action: "newQuery" });
+  it("leaves every key to an open dialog, confirm or menu, even a node's New query (#212)", () => {
+    expect(keyCommand(ctrl("n"), { ...idle, dialogOpen: true, selectedNode: table })).toBeUndefined();
+    expect(keyCommand(ctrl("n"), { ...idle, dialogOpen: true })).toBeUndefined();
     expect(keyCommand(ctrl("p"), { ...idle, dialogOpen: true })).toBeUndefined();
   });
 

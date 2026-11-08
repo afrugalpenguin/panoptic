@@ -415,6 +415,17 @@
     dialog = { kind: "connection", environmentId: environmentId ?? null };
   }
 
+  /** A connection was added: show it in the tree, selected, with focus on it (#216). */
+  async function showAddedConnection(connectionId: string, environmentId: string | null) {
+    await configChanged();
+    await model.reveal(environmentId);
+    await tick();
+    const row = rows.find((r) => r.type === "node" && r.node.meta?.connectionId === connectionId);
+    if (!row) return;
+    explorer?.reveal(row.key);
+    explorer?.focus();
+  }
+
   /** Drag onto an environment, Move to environment... and Remove from environment (null): the connection keeps its id. */
   async function moveConnection(connectionId: string, environmentId: string | null) {
     const found = connectionOf(connectionId);
@@ -636,7 +647,7 @@
   function onGlobalKeydown(e: KeyboardEvent) {
     const command = keyCommand(e, {
       seeking,
-      dialogOpen: !!dialog,
+      dialogOpen: !!dialog || !!confirming || !!menu,
       inEditor: !!(e.target as Element | null)?.closest?.(".monaco-editor"),
       selectedNode: selectedRow?.type === "node" ? selectedRow.node : undefined,
     });
@@ -845,7 +856,7 @@
     environments={config.environments}
     environmentId={dialog.environmentId}
     initial={dialog.initial}
-    onSaved={() => configChanged()}
+    onSaved={(saved, environmentId) => (dialog?.kind === "connection" && !dialog.initial ? showAddedConnection(saved.id, environmentId) : configChanged())}
     onEnvironmentCreated={configChanged}
     onClose={() => (dialog = undefined)}
   />

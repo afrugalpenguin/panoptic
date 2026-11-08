@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from "svelte";
   import Spinner from "../app/Spinner.svelte";
   import logo from "../../src-tauri/icons/icon.svg";
   import ProblemsView from "./ProblemsView.svelte";
@@ -20,10 +21,19 @@
     /** A What's new link failed to open; the message goes to the status bar. */
     onLinkError: (message: string) => void;
   } = $props();
+
+  let strip = $state<HTMLDivElement>();
+
+  /** Closing the focused tab's x removes the button: focus moves to the tab now shown, not to the page (#216). */
+  async function close(id: string) {
+    workspace.close(id);
+    await tick();
+    if (!document.activeElement || document.activeElement === document.body) strip?.querySelector<HTMLElement>('[aria-selected="true"]')?.focus();
+  }
 </script>
 
 <div class="workspace">
-  <div class="tabs" role="tablist">
+  <div class="tabs" role="tablist" bind:this={strip}>
     {#each workspace.tabs as tab (tab.id)}
       <div
         class="tab"
@@ -34,13 +44,13 @@
         style:--band={tab.kind === "query" ? (tab.target?.envColor ?? "transparent") : "transparent"}
         onclick={() => (workspace.activeId = tab.id)}
         onkeydown={(e) => e.key === "Enter" && (workspace.activeId = tab.id)}
-        onauxclick={(e) => e.button === 1 && workspace.close(tab.id)}
+        onauxclick={(e) => e.button === 1 && close(tab.id)}
         title={tab.kind === "query" && tab.target ? `${tab.target.connection} / ${tab.target.label}` : tab.title}
       >
         {#if tab.kind === "query" && tab.running}<Spinner size={9} />{/if}
         {#if tab.kind === "whats-new"}<img class="icon" src={logo} alt="" />{/if}
         <span class="title">{tab.title}</span>
-        <button class="close ghost" aria-label="Close {tab.title}" onclick={(e) => (e.stopPropagation(), workspace.close(tab.id))}>x</button>
+        <button class="close ghost" aria-label="Close {tab.title}" onclick={(e) => (e.stopPropagation(), close(tab.id))}>x</button>
       </div>
     {/each}
   </div>

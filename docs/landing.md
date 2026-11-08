@@ -59,7 +59,7 @@ Click is Enter, Ctrl+click is Ctrl+Enter.
 
 ## App shortcuts
 
-Ctrl+N is New query: with a node selected that offers it, on that node, as before; otherwise an unconnected tab. Ctrl+Shift+N is New connection (once the engine is ready), Ctrl+I is Import (left to the editor, where it opens suggestions), Ctrl+P clears the selection and focuses Seek on the landing; with query tabs open (so no landing), it opens the same Seek box in a modal over the workspace, with the same rows and keys. Enter or Ctrl+Enter acts and closes it; Esc with nothing typed, or a click outside, closes it and focus goes back where it was. None of them fire while a dialog or the Seek overlay is open.
+Ctrl+N is New query: with a node selected that offers it, on that node, as before; otherwise an unconnected tab. Ctrl+Shift+N is New connection (once the engine is ready), Ctrl+I is Import (left to the editor, where it opens suggestions), Ctrl+P clears the selection and focuses Seek on the landing; with query tabs open (so no landing), it opens the same Seek box in a modal over the workspace, with the same rows and keys. Enter or Ctrl+Enter acts and closes it; Esc with nothing typed, or a click outside, closes it and focus goes back where it was. None of them fire while a dialog, a confirmation, a context menu or the Seek overlay is open, not even a node's Ctrl+N (#212).
 
 ## Usage
 
