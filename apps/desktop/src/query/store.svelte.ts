@@ -68,7 +68,11 @@ export class QueryTab {
   /** Undefined for an unconnected "Query N" tab until its picker connects it (docs/query-editor.md). */
   target = $state<QueryTarget>();
   title = $state("");
-  text = $state("");
+  #text = $state("");
+  /** The editor showing the tab, if any: its text is read from Monaco when needed, never copied per keystroke (#201). */
+  #editor: EditorText | undefined;
+  /** Bumped on every edit, so anything derived from text still follows typing. */
+  #edits = $state(0);
   running = $state(false);
   /** Save all rows is running again for this tab (#287); saveId cancels it. */
   saving = $state(false);
@@ -101,6 +105,34 @@ export class QueryTab {
     this.text = text;
     this.title = title;
   }
+
+  /** The tab's script: the editor's current text while one shows the tab. */
+  get text(): string {
+    void this.#edits;
+    return this.#editor?.read() ?? this.#text;
+  }
+
+  set text(value: string) {
+    if (this.#editor) this.#editor.write(value);
+    else this.#text = value;
+  }
+
+  /** An editor shows the tab, or (undefined) no longer does: the tab keeps its last text. */
+  attach(editor: EditorText | undefined): void {
+    if (!editor && this.#editor) this.#text = this.#editor.read();
+    this.#editor = editor;
+  }
+
+  /** The editor's text changed. */
+  edited(): void {
+    this.#edits++;
+  }
+}
+
+/** How a tab reaches the text of the editor showing it. */
+export interface EditorText {
+  read(): string;
+  write(text: string): void;
 }
 
 /** The release notes tab (ADR 0013). A singleton: there is only ever one, with this id. */

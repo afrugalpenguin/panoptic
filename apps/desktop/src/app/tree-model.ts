@@ -229,6 +229,13 @@ export class TreeModel {
     return state?.status === "loaded" && Date.now() - state.loadedAt > this.staleMs;
   }
 
+  /** A node's loaded children, or undefined while they are not loaded or are stale: the caller loads them itself. */
+  freshChildren(id: string): TreeNode[] | undefined {
+    const state = this.children.get(id);
+    if (state?.status !== "loaded" || this.isStale(id)) return undefined;
+    return state.ids.flatMap((c) => this.nodes.get(c) ?? []);
+  }
+
   /** Ids currently loading, with when they started, for the status bar's elapsed timer. */
   inFlight(): { id: string; startedAt: number }[] {
     return [...this.children].flatMap(([id, s]) => (s.status === "loading" ? [{ id, startedAt: s.startedAt }] : []));

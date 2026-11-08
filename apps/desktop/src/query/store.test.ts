@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { QuerySummary, UnknownName } from "./types";
 import type { Suggestion } from "./intellisense/suggest";
 import type { SuggestRequest } from "./intellisense/worker";
+import { RpcClient } from "../rpc";
 import { QueryWorkspace } from "./store.svelte";
 
 const target = {
@@ -658,5 +659,47 @@ describe("QueryWorkspace: save all rows (#287)", () => {
     await ws.saveAll(tab, "C:\\out\\t.csv", "csv");
 
     expect(tab.messages.at(-1)).toMatchObject({ kind: "info", text: "Save cancelled; no file was written." });
+  });
+});
+
+describe("QueryTab text while an editor shows it (#201)", () => {
+  it("reads the editor's text on demand, writes replacements to it and keeps its last text when it goes", () => {
+    const { ws } = setup();
+    const tab = ws.open(target, "select 1");
+    let value = tab.text;
+    const read = vi.fn(() => value);
+    tab.attach({ read, write: (text) => (value = text) });
+    expect(read).not.toHaveBeenCalled();
+
+    value = "select 2";
+    expect(tab.text).toBe("select 2");
+    tab.text = "select 3";
+    expect(value).toBe("select 3");
+
+    tab.attach(undefined);
+    value = "gone";
+    expect(tab.text).toBe("select 3");
+  });
+});
+
+describe("QueryWorkspace over the RPC client (#240)", () => {
+  it("keeps a final query.message that arrives just before the response", async () => {
+    const lines: string[] = [];
+    let ws!: QueryWorkspace;
+    const rpc = new RpcClient(async (line) => void lines.push(line), (method, params) => ws.handle(method, params));
+    ws = new QueryWorkspace({
+      executeQuery: (request) => rpc.request<QuerySummary>("query.execute", request),
+      cancelQuery: async () => true,
+    });
+    const tab = ws.open(target, "UPDATE t SET a = 1");
+    const done = ws.run(tab);
+    const { id, params } = JSON.parse(lines[0]) as { id: number; params: { queryId: string } };
+
+    // The sidecar writes both lines to one stdout in this order, and the shell forwards its lines in order.
+    rpc.receive(JSON.stringify({ jsonrpc: "2.0", method: "query.message", params: { queryId: params.queryId, kind: "info", text: "(1 row affected)", elapsedMs: 3 } }));
+    rpc.receive(JSON.stringify({ jsonrpc: "2.0", id, result: { queryId: params.queryId, resultSets: [], elapsedMs: 3, rolledBack: true, committed: false, cancelled: false } }));
+    await done;
+
+    expect(tab.messages.map((m) => m.text)).toEqual(["(1 row affected)"]);
   });
 });

@@ -21,6 +21,8 @@ async Task WriteLine(string line)
     finally { writeLock.Release(); }
 }
 
+// Not awaited, but still ordered: WriteLine queues on writeLock before Notify returns, and SemaphoreSlim lets async
+// waiters in first come, first served. A request's last notification is therefore written before its response (#240).
 void Notify(string method, Action<Utf8JsonWriter> parameters) => _ = WriteLine(JsonRpcDispatcher.Notification(method, parameters));
 
 var credentials = new Credentials(prompt =>
