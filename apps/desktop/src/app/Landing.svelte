@@ -147,6 +147,8 @@
     overflow: hidden;
     height: 100%;
     background: var(--landing-bg);
+    /* For the wordmark's cqi size. */
+    container-type: inline-size;
   }
   .column {
     position: relative;
@@ -246,13 +248,15 @@
     border-radius: 50%;
     background: var(--ok);
   }
+  /* 300px where the page is wide enough, else scaled to the page so it still starts with "Pan" (#221). The offsets
+     are the 300px design's -28px and -58px, in em so they scale with it. */
   .wordmark {
     position: absolute;
-    right: -28px;
-    bottom: -58px;
+    right: -0.093em;
+    bottom: -0.193em;
     z-index: 0;
     color: var(--wordmark-faded);
-    font: 700 300px/1 var(--font-ui);
+    font: 700 min(300px, 20cqi)/1 var(--font-ui);
     pointer-events: none;
     user-select: none;
     white-space: nowrap;

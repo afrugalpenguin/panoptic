@@ -57,4 +57,17 @@ describe("Landing", () => {
     expect(document.querySelector("[role=option]")?.textContent).toContain("Pick up where you left off");
     expect(actions()).not.toContain("Reopen last session");
   });
+
+  // At 1280x800 the workspace beside the explorer is about 990px wide, and a 300px wordmark read "noptic" (#221).
+  for (const width of [600, 990, 1600])
+    it(`keeps the whole wordmark's start in view at ${width}px wide`, () => {
+      show(used, false);
+      const host = document.body.firstElementChild as HTMLElement;
+      host.style.width = `${width}px`;
+      host.style.height = "760px";
+      const landing = document.querySelector(".landing")!.getBoundingClientRect();
+      const mark = document.querySelector(".wordmark")!.getBoundingClientRect();
+      expect(mark.left).toBeGreaterThanOrEqual(landing.left);
+      expect(mark.right).toBeGreaterThan(landing.right);
+    });
 });
