@@ -28,6 +28,13 @@ public interface IBackend
     /// </summary>
     KindDescription Describe(string kind);
 
+    /// <summary>
+    /// Pays the driver's one-time start-up (type loading, JIT) so the first expand does not (#185). Run once in the
+    /// background after start-up and never awaited by a request; failures are ignored. It must not contact any
+    /// server: nothing tells it which servers the user means to use.
+    /// </summary>
+    Task WarmUpAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
     // --- Node actions (optional) ---------------------------------------------------------------------
     // A node's action ids come with it from ChildrenAsync. Labels for the shared ones are in Nodes.ActionLabels.
     // Node meta may carry ready-made text for the UI: "dragText", what dragging the node into an editor inserts, and

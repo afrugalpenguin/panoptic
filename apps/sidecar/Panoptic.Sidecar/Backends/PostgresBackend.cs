@@ -590,6 +590,18 @@ public sealed class PostgresBackend(Credentials credentials) : IQueryBackend
     /// <summary>A .pfx or .p12: a client certificate bundled with its key.</summary>
     public static bool IsBundle(string? file) => Path.GetExtension(file?.Trim() ?? "").ToLowerInvariant() is ".pfx" or ".p12";
 
+    /// <summary>
+    /// Loads Npgsql and builds a data source, connection and command without opening them: about 30 ms off the
+    /// first expand (#185). Opening one would mean contacting a server.
+    /// </summary>
+    public async Task WarmUpAsync(CancellationToken ct)
+    {
+        var settings = Settings(new ConnectionConfig("warm-up", "warm-up", ConnectionKinds.Postgres, "warm-up.invalid", AuthKinds.Password), null, "warm-up");
+        await using var source = new NpgsqlDataSourceBuilder(settings.ConnectionString).Build();
+        await using var conn = source.CreateConnection();
+        await using var command = new NpgsqlCommand("SELECT 1", conn);
+    }
+
     /// <summary>The connection string for one database. The password or token is supplied separately.</summary>
     public static NpgsqlConnectionStringBuilder Settings(ConnectionConfig c, string? database, string? user)
     {
