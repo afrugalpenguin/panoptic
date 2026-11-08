@@ -218,6 +218,40 @@ jobs:
           if grep -q 'Set PANOPTIC_TEST_PG_PASSWORD' test.log; then echo "::error::Postgres tests were skipped for lack of a password"; exit 1; fi
           if grep -q 'Set PANOPTIC_TEST_PG_CERT_DIR' test.log; then echo "::error::Client certificate tests were skipped"; exit 1; fi
 
+  # Builds the sidecar as releases do and the frontend, and writes their sizes and the sidecar's start-up time to the
+  # job summary (scripts/check-sizes.ps1). Fails only when a size is over its budget (docs/benchmarks.md, Budgets):
+  # sizes are the same on every runner, timings on shared runners are too noisy to gate on, so they are information.
+  sizes:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('apps/sidecar/**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The same script and mode as a release (pnpm sidecar, from tauri.conf.json's beforeBuildCommand).
+      - name: Build sidecar (jit)
+        shell: pwsh
+        run: ./scripts/build-sidecar.ps1 -Mode jit
+      - name: Build frontend
+        run: pnpm --filter @panoptic/desktop build
+      - name: Sizes against budgets
+        shell: pwsh
+        run: ./scripts/check-sizes.ps1
+
   shell:
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}

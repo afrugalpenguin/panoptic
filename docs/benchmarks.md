@@ -1,10 +1,92 @@
 # Benchmarks
 
-Budgets from the plan: window open under 500 ms, any node expanded under 300 ms, 100k-row grid
-scrolling at 60 fps. Every number records the machine and date. Reproduce with
-`scripts\bench.ps1` (see its help); it defaults to the installed copy, so the same script works on
-the work laptop. Its suites: `startup` (window open), `expand` (the 300 ms budget, against the local
-Docker databases) and `ui` (the shipped tree and grid at scale).
+Every number records the machine and date. Reproduce with `scripts\bench.ps1` (see its help); it
+defaults to the installed copy, so the same script works on the work laptop. Its suites: `startup`
+(window open and idle memory), `expand` (the 300 ms budget, against the local Docker databases) and
+`ui` (the shipped tree and grid at scale). `scripts\check-sizes.ps1` measures the build sizes.
+
+## Budgets
+
+Timings and memory are on Home with a release build; the work laptop is slower, so a number close
+to its budget here is a warning there. Only the sizes are checked automatically: the `sizes` CI job
+runs `scripts\check-sizes.ps1` on every pull request that changes code, and fails when one is over.
+Sizes are the same on any machine for the same commit; timings on shared runners are too noisy to
+gate on, so the job reports the sidecar's start-up time for information only.
+
+| Budget | Limit | Home, 2026-11-08 | How it is measured |
+| --- | --- | --- | --- |
+| Window open: launch to first paint | 500 ms | 390 ms median, 734 ms run 1 | `bench.ps1 -Suite startup` |
+| First launch on a fresh WebView2 profile, to first paint | 500 ms | 875 ms (2026-10-31), over | `startup` run 1 after deleting the bench profile |
+| Node expanded, cold or warm, every engine | 300 ms | SQL 161, Postgres 158, Cosmos 2,250 ms (cold medians), Cosmos over (#185) | `bench.ps1 -Suite expand` |
+| Ctrl+N to an editor with focus | 50 ms | 55 ms (2026-10-31), over | By hand for now; no suite yet |
+| Tree (50k nodes) and grid (100k rows) scrolling | 60 fps: no frame over 25 ms | 120 fps, no frame over 25 ms | `bench.ps1 -Suite ui` |
+| Idle memory, whole process tree, sum of working sets | 450 MB | 416 MB median | `bench.ps1 -Suite startup`, 5 s after the tree rendered |
+| Sidecar idle working set | 60 MB | 39 MB median | The same run, Sidecar row |
+| Sidecar on disk (jit, self-contained single file) | 112 MB | 101.4 MB | `check-sizes.ps1`, CI |
+| Frontend JS, all chunks and workers | 4,250 KB raw, 1,125 KB gzipped | 3,855 KB raw, 1,019 KB gzipped | `check-sizes.ps1`, CI |
+| Frontend JS loaded at start (index.html's entry and preloads) | 300 KB | 249 KB | `check-sizes.ps1`, CI |
+| Frontend CSS | 210 KB raw, 40 KB gzipped | 183 KB raw, 31 KB gzipped | `check-sizes.ps1`, CI |
+
+Why these limits:
+
+- **500 ms, 300 ms and 60 fps** are the M0 plan's budgets. Ctrl+N's 50 ms is from the 2026-10-31
+  review: a new tab should feel instant, and 50 ms is about where a delay after a key press becomes
+  noticeable.
+- **Idle memory, 450 MB:** today plus about 10%. WebView2 is about four fifths of it (browser,
+  renderer, GPU and utility processes) and the shell and sidecar the rest, so the budget mostly
+  guards against the UI keeping more alive at start (eagerly loaded editors, caches) and the
+  sidecar loading what it does not need yet. The sum of working sets counts pages shared between
+  processes once per process, so it is above what the system loses; it is the number Task Manager
+  users see, and it is stable from run to run (about 2%). The idle bench stops before the settings,
+  update check and What's new load (as every bench does), so the app's own idle is a few MB above it.
+- **Sidecar idle, 60 MB:** today plus about 50%, because engine drivers load on first use: after the
+  first expands the sidecar grows to about 81 MB (#190). That growth is not budgeted until the
+  memory work has explained it.
+- **Sizes:** today plus about 10% (20% for the small start-up JS), so a dependency bump passes and a
+  new runtime, SDK or bundled library has to raise its budget on purpose, in the same pull request,
+  here and in `scripts\check-sizes.ps1`. A ReadyToRun sidecar (+36 MB) or a second copy of Monaco
+  would fail. The start-up JS is what the webview parses before first paint, so it matters most.
+
+### Baseline: Home, 2026-11-08
+
+Release build of main at 63665cc, Ryzen 9 7900X, 120 Hz display (so frame-bound numbers resolve to
+8.3 ms, not 16.7), dev-seeded store, Docker dev databases. The starting point for the performance
+round (#190, docs/plans/2026-11-08-performance.md).
+
+| Metric | Value | Budget |
+| --- | --- | --- |
+| Launch to first paint, median of 10 / run 1 | 390 / 734 ms | 500 |
+| Launch to sidecar ready, median / run 1 | 367.5 / 962 ms | |
+| Launch to tree rendered, median / run 1 | 398 / 990 ms | |
+| Sidecar process start to ready (JIT) | 96 ms | |
+| First launch on a fresh WebView2 profile | 875 ms (2026-10-31) | 500, over |
+| First expand: SQL / Postgres / Cosmos (cold median) | 161 / 158 / 2,250 ms | 300; Cosmos 7.5x over (#185) |
+| Later expands | 16 to 75 ms | 300 |
+| Ctrl+N to editor | 55 ms (2026-10-31) | 50, over |
+| Idle memory, whole process tree | 420 MB (2026-10-31) | 450 |
+| Tree and grid scrolling, 50k nodes / 100k rows | 120 fps, no frame over 25 ms | 60 fps |
+
+Idle memory by process, from the first run with the memory measurement: Home, 2026-11-08, repo
+release build of 76a9430 plus this tooling, a copy of the dev-seeded store, `-Suite startup -Runs 10`,
+5 s after the tree rendered. Same run: first paint 413.5 ms median (431 run 1), tree rendered 422
+ms, with other builds running on the machine. The whole tree ranged from 414 to 422 MB over the 10
+runs.
+
+| Process | Count | Working set, run 1 (MB) | Working set, median (MB) | Private bytes, median (MB) |
+| --- | --- | --- | --- | --- |
+| Shell | 1 | 27.9 | 28.0 | 7.3 |
+| Sidecar | 1 | 38.9 | 38.8 | 10.6 |
+| WebView2 browser | 1 | 114.9 | 115.4 | 32.9 |
+| WebView2 renderer | 1 | 78.8 | 76.2 | 33.3 |
+| WebView2 GPU | 1 | 76.7 | 77.0 | 93.6 |
+| WebView2 utility | 2 | 59.1 | 59.1 | 18.6 |
+| conhost.exe (console host) | 1 | 7.5 | 7.5 | 1.2 |
+| WebView2 crashpad-handler | 1 | 12.9 | 12.9 | 2.6 |
+| Total | 9 | 416.7 | 416.1 | 200.7 |
+
+Build sizes the same day (`check-sizes.ps1`): sidecar 101.4 MB; frontend JS 3,855 KB (1,019 KB
+gzipped), of which 249 KB loads at start; CSS 183 KB (31 KB gzipped). Sidecar process start to ping
+response, 10 starts: 66.7 ms median (52 ms by the sidecar's own clock).
 
 ## Machines
 
@@ -18,7 +100,16 @@ Docker databases) and `ui` (the shipped tree and grid at scale).
 `.\scripts\bench.ps1 -Suite startup -Runs 10`. "Launch" is when the script calls Start-Process;
 "first paint" is the webview's first contentful paint; "sidecar ready" is when the UI gets its
 first `ping` response; "tree rendered" is when the explorer has painted the environments and
-connections it loaded after that (config only, no server calls).
+connections it loaded after that (config only, no server calls). Since 2026-11-08 each run then
+stays open for `-IdleSec` (5 s), the script measures the memory of the whole process tree (shell,
+sidecar and the app's WebView2 processes), and closes the window.
+
+Every run reads a temp copy of its store (`-Store`, by default the user's own) and uses its own
+WebView2 profile, kept between benches. So a bench never writes to a real store, never meets the
+single-instance lock (the shell skips it for a run on its own store, #241), and never shares the
+browser process of a Panoptic that is already open: before 2026-11-08 a bench on the user's own store
+focused the open app and exited. Run 1 on a new bench profile pays for creating it, as a first launch
+after install does.
 
 ### JIT sidecar, both machines
 
