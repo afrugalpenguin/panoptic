@@ -13,4 +13,11 @@ describe("readyText", () => {
     expect(text).toContain("store.bin.corrupt-20261030-120000-000");
     expect(text).not.toContain("AppData");
   });
+
+  it("says the previous save was restored when the store came back from its backup", () => {
+    const text = readyText({ ...ping, storeRecoveredFrom: "C:\\Users\\me\\store.bin.corrupt-20261030-120000-000", storeRestoredFromBackup: true });
+    expect(text).toContain("restored from the previous save");
+    expect(text).toContain("store.bin.corrupt-20261030-120000-000");
+    expect(text).not.toContain("were reset");
+  });
 });

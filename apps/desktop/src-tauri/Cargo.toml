@@ -23,6 +23,7 @@ tauri-plugin-fs = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-process = "2"
 tauri-plugin-shell = "2"
+tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"
 
 # No LTO and default codegen units: the shell is a thin pipe, so whole-program optimisation buys

@@ -342,8 +342,10 @@
     if (unseen.length > 0) workspace.openWhatsNew(unseen, "launch");
     try {
       settings = await api!.saveSettings({ ...settings, lastSeenVersion: current });
-    } catch {
-      // Not recorded: the tab shows again next launch, which is better than failing start-up.
+    } catch (e) {
+      // Not recorded: the tab shows again next launch, which is better than failing start-up. Still reported, so a
+      // store that refuses every settings save is not hidden (#196).
+      reportProblem("Saving settings", e);
     }
   }
 
