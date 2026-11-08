@@ -57,12 +57,15 @@ fn changelog_markdown(app: AppHandle) -> Result<String, String> {
     }
 }
 
-/// Bench mode only: writes results to the path the launcher chose, then exits.
+/// Bench mode only: writes results to the path the launcher chose, then exits. With PANOPTIC_BENCH_STAY_OPEN set
+/// it stays open instead, so the launcher can measure the idle process tree before closing the window.
 #[tauri::command]
 fn bench_finish(app: AppHandle, results: String) -> Result<(), String> {
     let path = std::env::var("PANOPTIC_BENCH_OUT").map_err(|_| "not in bench mode")?;
     std::fs::write(path, results).map_err(|e| e.to_string())?;
-    app.exit(0);
+    if std::env::var_os("PANOPTIC_BENCH_STAY_OPEN").is_none() {
+        app.exit(0);
+    }
     Ok(())
 }
 
