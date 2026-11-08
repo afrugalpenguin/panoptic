@@ -1,7 +1,18 @@
-# Weekly dependency updates, one grouped PR per ecosystem: every merge to main releases, so a week's
-# updates are one merge and one release rather than one per package. Security updates are raised as
-# soon as an advisory lands, independent of this schedule (repo setting: Dependabot alerts).
+# Weekly dependency updates, one grouped PR per ecosystem (npm and cargo share one, below): every
+# merge to main releases, so a week's updates are one merge and one release rather than one per
+# package. Security updates are raised as soon as an advisory lands, independent of this schedule
+# (repo setting: Dependabot alerts).
 version: 2
+
+# npm and cargo share one PR, so the Tauri JS packages (@tauri-apps/*) and Rust crates (tauri,
+# tauri-plugin-*) always move together. It takes every dependency of both ("*") rather than only the
+# Tauri ones: what Dependabot does with a member's dependencies outside its patterns is undocumented.
+multi-ecosystem-groups:
+  app:
+    schedule:
+      interval: weekly
+      day: monday
+
 updates:
   - package-ecosystem: nuget
     directory: /apps/sidecar
@@ -18,12 +29,8 @@ updates:
 
   - package-ecosystem: npm
     directory: /
-    schedule:
-      interval: weekly
-      day: monday
-    groups:
-      npm:
-        patterns: ["*"]
+    multi-ecosystem-group: app
+    patterns: ["*"]
     # svelte-check does not run on TypeScript 7 alone (it needs 6 alongside and --tsgo). Drop this
     # once svelte-check supports 7.
     ignore:
@@ -36,12 +43,8 @@ updates:
 
   - package-ecosystem: cargo
     directory: /apps/desktop/src-tauri
-    schedule:
-      interval: weekly
-      day: monday
-    groups:
-      cargo:
-        patterns: ["*"]
+    multi-ecosystem-group: app
+    patterns: ["*"]
     commit-message:
       prefix: build
       include: scope

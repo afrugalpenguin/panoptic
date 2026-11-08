@@ -212,13 +212,13 @@ importers:
         specifier: ^4.7.7
         version: 4.7.7(picomatch@4.0.7)(svelte@5.57.3)(typescript@6.0.3)
       typescript:
-        specifier: ~6.0.3
+        specifier: ^6.0.3
         version: 6.0.3
       vite:
         specifier: ^8.0.16
         version: 8.3.5
       vitest:
-        specifier: ^5
+        specifier: 5.0.5
         version: 5.0.5(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(vite@8.3.5)
 
 packages:

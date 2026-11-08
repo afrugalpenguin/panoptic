@@ -83,7 +83,7 @@ $connections = @(
     # Test: 6, the first three on the local Docker databases (scripts\dev-db.ps1)
     (New-SeedConnection 'seed-test' 'local-sql' 'sql' '127.0.0.1,14333' 'sql' 'sa' $sa $true),
     (New-SeedConnection 'seed-test' 'local-pg' 'postgres' '127.0.0.1:15432' 'password' 'postgres' $pg $true),
-    (New-SeedConnection 'seed-test' 'local-cosmos' 'cosmos' 'https://localhost:8081' 'key' $null $cosmosKey $true),
+    (New-SeedConnection 'seed-test' 'local-cosmos' 'cosmos' 'https://127.0.0.1:8081' 'key' $null $cosmosKey $true),
     (New-SeedConnection 'seed-test' 'test-sql-01' 'sql' 'test-sql-01.example.test' 'sql' 'panoptic_reader'),
     (New-SeedConnection 'seed-test' 'test-sql-02' 'sql' 'test-sql-02.example.test' 'sql' 'panoptic_reader'),
     (New-SeedConnection 'seed-test' 'test-pg-01' 'postgres' 'test-pg-01.example.test' 'password' 'panoptic_reader')
