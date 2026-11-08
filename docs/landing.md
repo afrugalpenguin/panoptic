@@ -16,7 +16,7 @@ A centred column, at most 460px wide:
 - Actions, 44px rows with dividers: New query `Ctrl N`, New connection `Ctrl Shift N` (New environment stays in the explorer footer), Import `Ctrl I` (dimmed). The last place is not repeated here: it is Seek's first row, "Pick up where you left off" (#223).
 - **First run** (config loaded, no environments and no connections): Import comes first, then New connection, both undimmed with one muted line each ("Bring in saved connections from SSMS, Azure Data Studio or VS Code.", "Add a server or account by hand."), then New query. Import has focus instead of Seek, which has nothing to find yet (#220).
 - Bottom left, mono 11px: a green dot (`--ok`, as in the status bar), "Ready" and "opened in NNN ms" when the engine is up; "Starting database engine..."; or "Database engine stopped" and Restart.
-- Bottom right: a faded 300px "Panoptic" wordmark overflowing the corner, `aria-hidden`, behind everything.
+- Bottom right: a faded 300px "Panoptic" wordmark overflowing the corner, `aria-hidden`, behind everything. On a page too narrow for it, it scales with the page width (`20cqi`) so it still reads from "Pan".
 
 The word "sidecar" never appears in user-facing text, here or in the status bar.
 

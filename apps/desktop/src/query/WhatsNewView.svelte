@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getVersion } from "@tauri-apps/api/app";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import logo from "../../src-tauri/icons/icon.svg";
   import { onMount } from "svelte";
@@ -13,6 +14,11 @@
   // Focus starts on the heading, so a screen reader announces the tab and keys scroll it (#230).
   let heading = $state<HTMLHeadingElement>();
   onMount(() => heading?.focus());
+
+  // The section marked current is the running version's, not the newest: a dev build or an outdated install runs
+  // an older one (#246). None is marked when no section matches, or outside the shell.
+  let running = $state<string>();
+  onMount(() => void getVersion().then((v) => (running = v), () => {}));
 </script>
 
 {#snippet inline(text: string)}
@@ -40,11 +46,11 @@
   <div class="timeline">
     {#each tab.sections as section, i (section.version)}
       {@const items = bullets(section.body)}
-      <section class:current={i === 0}>
+      <section class:current={section.version === running}>
         <div class="gutter">
           <div class="number">{section.version}</div>
           {#if section.date}<div class="date">{shortDate(section.date)}</div>{/if}
-          {#if i === 0}<span class="pill">current</span>{/if}
+          {#if section.version === running}<span class="pill">current</span>{/if}
         </div>
         <div class="notes">
           {#each items as item}

@@ -96,3 +96,18 @@ describe("database picker", () => {
     expect(note.title).toBe("Could not list databases: permission denied to list databases");
   });
 });
+
+// The toolbar names the tab's target once on a connection, not "pg-dev / pg-dev" (#229).
+describe("toolbar target", () => {
+  const target = () => document.querySelector(".toolbar .target")!.textContent!.replace(/\s+/g, " ").trim();
+
+  it("names a tab opened on a connection once", async () => {
+    await show(onConnection);
+    expect(target()).toBe("pg-dev");
+  });
+
+  it("names the connection and the database on a tab opened on a database", async () => {
+    await show(onDatabase);
+    expect(target()).toBe("pg-dev / orders");
+  });
+});

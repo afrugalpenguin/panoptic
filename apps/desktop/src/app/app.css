@@ -64,15 +64,16 @@
   --explorer-sticky-shadow: rgba(0, 0, 0, 0.15);
   --scrollbar-thumb: rgba(0, 0, 0, 0.3);
 
-  /* Object kinds in the explorer and detail pane: a letter on a tint of its colour (Icon.svelte). Both themes. */
-  --glyph-database: #2f9e44;
+  /* Object kinds in the explorer and detail pane: a letter on a tint of its colour (Icon.svelte). Each is at
+     least 3:1 on its tint, so darker here than on the dark theme (#239). */
+  --glyph-database: #2b8a3e;
   --glyph-table: #0c8599;
   --glyph-view: #6741d9;
-  --glyph-proc: #e8590c;
+  --glyph-proc: #d9480f;
   --glyph-function: #d6336c;
-  --glyph-key: #f59f00;
+  --glyph-key: #9c6500;
   --glyph-policy: #7048e8;
-  --glyph-neutral: #868e96;
+  --glyph-neutral: #6c757d;
   /* Connection kind badges come from the sidecar (backends.describe); this is one it did not describe. */
   --kind-unknown: #6a6a6a;
   /* Letters on a filled badge. */
@@ -120,6 +121,15 @@
     --wordmark-faded: #1f2126;
     --kbd-bg: #24262b;
     --kbd-border: #33363d;
+
+    --glyph-database: #2f9e44;
+    --glyph-table: #15aabf;
+    --glyph-view: #9775fa;
+    --glyph-proc: #e8590c;
+    --glyph-function: #f06595;
+    --glyph-key: #f59f00;
+    --glyph-policy: #a78bfa;
+    --glyph-neutral: #868e96;
   }
 }
 
@@ -179,6 +189,10 @@ select {
   border-radius: 4px;
   padding: 4px 6px;
   user-select: text;
+}
+/* WebView2's own placeholder grey is below AA on the dark theme's inputs (#239). */
+::placeholder {
+  color: var(--text-muted);
 }
 /* A button with no border or background of its own: components add only their layout (docs/design-tokens.md). */
 button.ghost {

@@ -127,7 +127,7 @@
       >
     {/if}
     {#if tab.target}<span class="target" style:--band={tab.target.envColor ?? "transparent"}>
-      {tab.target.connection} / {tab.target.label}
+      {tab.target.connection}{#if tab.target.scope?.database || tab.target.scope?.container || tab.target.label !== tab.target.connection}{` / ${tab.target.label}`}{/if}
       {#if tab.target.readOnly}<span
           class="ro"
           title="SQL runs in a transaction that is rolled back at the end. A COMMIT in the script ends it early (the remaining batches are then skipped), and side effects outside the database transaction (xp_cmdshell, sp_send_dbmail, linked servers) are not rolled back. A read-only login is the real protection."
