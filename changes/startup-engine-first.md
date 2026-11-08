@@ -1,0 +1,1 @@
+Changed: Panoptic shows your environments and connections sooner after it opens, most of all on the first start after an install or update: the database engine now starts while the window is being created, instead of after it.

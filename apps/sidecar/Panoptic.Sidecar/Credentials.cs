@@ -56,9 +56,24 @@ public sealed class Credentials(Action<DeviceCodePrompt> onDeviceCode, Func<Cred
         return new FallbackCredential(broker, deviceCode);
     }
 
-    /// <summary>The Tauri window handle, passed by the shell so WAM dialogs parent to it.</summary>
-    private static IntPtr ParentWindow() =>
-        long.TryParse(Environment.GetEnvironmentVariable("PANOPTIC_PARENT_HWND"), out var hwnd) ? new IntPtr(hwnd) : IntPtr.Zero;
+    /// <summary>
+    /// The Tauri window handle, so WAM dialogs parent to it. The shell passes it when its window exists; at launch
+    /// the sidecar starts first, so it is looked up then from the shell's process id, when the first sign-in needs it.
+    /// </summary>
+    private static IntPtr ParentWindow()
+    {
+        if (long.TryParse(Environment.GetEnvironmentVariable("PANOPTIC_PARENT_HWND"), out var hwnd)) return new IntPtr(hwnd);
+        if (!int.TryParse(Environment.GetEnvironmentVariable("PANOPTIC_PARENT_PID"), out var pid)) return IntPtr.Zero;
+        try
+        {
+            using var shell = System.Diagnostics.Process.GetProcessById(pid);
+            return shell.MainWindowHandle;
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            return IntPtr.Zero;
+        }
+    }
 
     /// <summary>
     /// Uses the primary (broker) credential until it reports the broker cannot run in this process, then

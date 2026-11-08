@@ -52,6 +52,8 @@ var catalog = new Panoptic.Sidecar.Catalog.CatalogService(
     new Panoptic.Sidecar.Catalog.CatalogSources(store, tree),
     (method, notice) => Notify(method, w => JsonSerializer.Serialize(w, notice, SidecarJson.Default.CatalogNotice)));
 var dispatcher = new JsonRpcDispatcher(Methods.Create(new SidecarInfo(Math.Round(startupMs, 1), version, mode), store, tree, query, catalog));
+// Compiles the UI's first requests while the shell is still creating its window.
+_ = Task.Run(() => StartupWarmUp.RunAsync(dispatcher, store.Config));
 
 // Engine warm-up (#185), off the request path: a request that needs the same code meanwhile just finds it ready sooner.
 // A failure only costs the first expand its head start, so it is not reported (stderr's last line is for real failures,
