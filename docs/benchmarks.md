@@ -130,10 +130,61 @@ tree.
 | Grid scroll frame ms p50/p95/p99/max | 16.7 / 16.9 / 16.9 / 16.9 |
 | Grid scroll frames >25 / >33 ms | 0 / 0 of 300 |
 
-Scrolling holds 60 fps in both. Expanding one folder costs more than opening the whole tree: the
-model rebuilds every row on each change (#195), and an expand changes twice (the loading row, then
-the children), so in a 50k-row tree one click spends 134 ms of the 300 ms budget before any server
-time.
+Scrolling holds 60 fps in both. The expand-one-folder number is the bench, not the app: the suite
+held the rows in a deep `$state` proxy, which App.svelte does not (its rows are `$state.raw`), so
+every change paid about 100 ms of proxy reads the app never pays. Fixed on 2026-11-08 (#195; see
+"Tree row rebuild" below); the `ui` suite has not been re-run since, so this row is not current.
+
+### Tree row rebuild: Home, 2026-11-08 (#195)
+
+Every tree change rebuilds the whole row list: `TreeModel.rows()` from `onChange` in App.svelte. Timed
+on main at 3233552 in the vitest projects (not a release build), over the same 50,228-node tree with
+every node open, medians of 15 to 21 changes after a warm-up; the range is across runs (five in
+Node, three in Chromium, one with the proxy). Guarded by `src/app/tree-model.perf.test.ts`, which
+fails when the fastest round is over one 60 Hz frame (16 ms) locally or three on CI, and
+`src/app/tree-scale.browser.test.ts`, which fails over three frames everywhere (the browser cannot
+see the CI variable; a CI runner took 22 ms). They assert the fastest round because the median,
+with the other test files running beside them, went past 16 ms locally.
+
+| Step | Where | Median (ms) |
+| --- | --- | --- |
+| `rows()` after expanding or collapsing one folder | Node 24 (unit project) | 8.9 to 10.3 |
+| `rows()` after setting the text filter | Node 24 (unit project) | 6.1 to 8.1 |
+| `rows()` after hiding an engine | Node 24 (unit project) | 6.2 to 7.9 |
+| Expand or collapse one folder, model change to the shipped `Tree` updated in the DOM | Headless Chromium (browser project) | 10.1 to 10.3 |
+| The same, with the rows in a deep `$state` proxy as the `ui` suite had them | Headless Chromium (browser project) | 103.2 |
+
+A change at 50k open rows fits in one frame, with about 6 ms to spare, so the rebuild stays a full
+rebuild: incremental row updates would add state to keep in step for a tree that is rarely this
+large. Two cheaper rebuilds were tried (no copy of each row, one `Date.now()` per rebuild) and were
+inside the run-to-run noise, so they were not kept. The tests above are the guard; the work laptop
+is slower, so re-check there before relying on the margin.
+
+### Result grid height: Home, 2026-11-08 (#243)
+
+The grid's scroll space is 26 + 22 px a row. Chromium clamps an element at 33,554,428 px, so in the
+browser project at 1,600,000 and 2,000,000 rows the grid scrolls only to row 1,525,212 and the rest
+cannot be reached. The row limit stops a set at 1,000,000 rows (22,000,026 px), and it cannot be
+raised past that: the Settings field's maximum is 1,000,000, the sidecar refuses a higher value
+when saved (ConfigStore) and resets one read from the store to the default. So no result can reach
+the clamp, and the grid keeps its unscaled scroll space. `src/query/grid-scale.browser.test.ts` scrolls to the last row of a
+1,000,000-row set; it fails (stops at 1,525,212) if fed 2,000,000.
+
+### Sidecar line decoding: Home, 2026-11-08 (#200)
+
+Each sidecar stdout line reaches the webview as a JSON string inside the event, then `rpc.ts` parses
+it. Headless Chromium, 2,000 result batches as the sidecar sends them (500 rows x 12 columns of the
+bench grid, 85.7 KB a line, 97.5 KB with the event around it), three runs:
+
+| Step | Per batch (ms) | 1M rows (ms) |
+| --- | --- | --- |
+| Outer decode, event to the line string (the cost of encoding twice) | 0.09 | 175 to 181 |
+| Inner parse, line to rows | 2.4 to 2.6 | 4,813 to 5,129 |
+
+The probe keeps all 170 MB of lines alive, so its parse times are above the app's (1M rows stream
+in 2.35 s end to end); the ratio is the finding. The second encoding adds under 4% to the parse, a tenth of a millisecond per batch, never close to
+a frame. Not worth a Tauri `Channel` with raw payloads yet; the rows parse is the cost to look at
+first.
 
 ### ADR 0004 prototypes: Home, 2026-10-29, v0.1.0 (60 Hz, DPR 1, 1280x800)
 
