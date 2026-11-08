@@ -57,13 +57,13 @@ Sources: [DBeaver Cosmos NoSQL driver](https://dbeaver.com/docs/dbeaver/Database
 
 ## The tree
 
-The tree is environment-first, and every backend presents the same node contract, so the UI never knows whether it is drawing SQL Server or Cosmos. A node is `{ id, kind, label, icon, hasChildren, actions[], meta }`; a backend provides `children(nodeId)`, `actions(nodeId)` and `invoke(nodeId, actionId)`.
+The tree is environment-first, and every backend presents the same node contract, so the UI never knows whether it is drawing SQL Server or Cosmos. A node is `{ id, kind, label, icon, hasChildren, actions[], meta }`; a backend provides `children(nodeId)` and `invoke(nodeId, actionId)`, and a node's actions come with it from `children`.
 
 **Hierarchy**
 
 1. Environment (dev, UAT, prod, a client sandbox): a colour band and a name, user-defined, with an optional read-only flag that guards against writes beneath it (queries rolled back and transaction control refused on SQL Server, enforced by the server on PostgreSQL; a read-only login is the real boundary).
 2. Connection: a SQL Server instance, a Cosmos account or a Synapse SQL endpoint (dedicated or serverless). Several per environment.
-3. SQL Server: Databases, then per database Tables, Views, Programmability (procs, functions, types), Synonyms, Security (read-only listing only). Synapse: as SQL Server, plus External tables. Cosmos: Databases, then per database Containers, then per container Items (sampled), Indexing policy, Stored procedures, Triggers, UDFs, Partition key and throughput as leaf properties.
+3. SQL Server: Databases, then per database Tables, Views, Programmability (procs, functions), Synonyms. Synapse: as SQL Server, plus External tables, without Synonyms. Cosmos: Databases, then per database Containers, then per container Items (sampled), Indexing policy, Stored procedures, Triggers, UDFs, Partition key and throughput as leaf properties.
 4. Leaf objects: Table has Columns, Keys, Indexes, Constraints, Triggers; Proc and View have a Definition leaf that opens in Monaco read-only.
 
 **Behaviours that make it fast**
@@ -105,15 +105,15 @@ Each milestone has one definition of done, and the next one does not start until
 | Tauri webview on Windows is slow or inconsistent | WebView2 is Chromium, so this is the Electron question again | Render a 50k-row virtualised tree and a 100k-row grid in a bare Tauri window and measure frame times with the devtools profiler. |
 | Entra auth from a sidecar on an Intune-managed laptop | Broker-based sign-in may need WAM, which may be blocked or need elevation | Run MSAL.NET with the WAM broker from a console app on the work laptop. If it fails, device-code flow is the fallback and is still fine for a dev tool. |
 | Cosmos object listing is slower than SQL | Each container needs separate calls for policy, procs, triggers | Time `GetContainerQueryIterator` plus per-container reads on a real account; cache aggressively and expand lazily. |
-| Scope creep toward rebuilding SSMS | Every right-click menu item is a day | Every action must come from the backend's `actions()` list and have a deep link fallback. Anything admin-shaped is refused by the non-goals. |
+| Scope creep toward rebuilding SSMS | Every right-click menu item is a day | Every action must come from the node's `actions[]` list, set by the backend, and have a deep link fallback. Anything admin-shaped is refused by the non-goals. |
 | It joins the pile of unfinished tools | Honest risk given the project count | M1 is a tree that shows two SQL servers and one Cosmos account and expands in under a second, nothing else. If that milestone is not fun to use, stop. |
 | Corporate install | Can't run on the work laptop, so never gets daily use | Tauri builds a per-user NSIS installer with no elevation (its MSI is per-machine only). Verify on the current laptop in M0; if blocked, ask for an Intune EPM rule early. |
 
 ## Repo setup and conventions
 
 - `afrugalpenguin/panoptic`, MIT, public from the first commit. Personal git identity, global commit-msg hook stays on, no attribution trailers.
-- Monorepo: `apps/desktop` (Tauri + Svelte) and `apps/sidecar` (.NET). The pnpm workspace holds only `apps/desktop`; there is no `packages/` folder. Both backends live in the sidecar project (`Backends/SqlBackend.cs`, `Backends/CosmosBackend.cs`), next to its test project.
-- Conventional commits, `type(scope): description`, 72-char subject. Scopes: `tree`, `grid`, `editor`, `sidecar`, `sql`, `cosmos`, `auth`, `build`.
+- Monorepo: `apps/desktop` (Tauri + Svelte) and `apps/sidecar` (.NET). The pnpm workspace holds only `apps/desktop`; there is no `packages/` folder. The backends live in the sidecar project (`Backends/SqlBackend.cs`, which also serves Synapse, `Backends/CosmosBackend.cs` and `Backends/PostgresBackend.cs`), registered in `Backends/BackendRegistry.cs`, next to its test project.
+- Conventional commits, `type(scope): description`, 72-char subject. Scopes name the area touched, for example `explorer`, `tree`, `query`, `editor`, `connections`, `sidecar`, `ui`, `sql`, `cosmos`, `postgres`, `auth`, `build`, `adr`.
 - Feature branches and PRs from day one, even solo. CI on GitHub Actions (ci.yml) is the only test gate: UI type-check, unit tests and build, a changelog generator run, sidecar tests on Windows, `cargo clippy` of the shell, with warnings failing svelte-check, the sidecar build and clippy alike, and npm, NuGet and Rust dependency audits. fragment.yml checks that feat and fix PRs add a change fragment. A Playwright smoke test that opens the window and expands a fixture tree is open M3 work.
 - Fail closed: every write action is off until the connection is marked writable; every network call has a timeout; the sidecar dying puts the UI into an obvious disconnected state rather than hanging.
 - Observable progress: every long operation reports through the status bar with an elapsed timer and a cancel.
