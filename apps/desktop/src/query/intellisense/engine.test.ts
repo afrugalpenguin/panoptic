@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DatabaseCatalog } from "../catalog.svelte";
 import { complete, hover, Index, quote, type Lookup, type Options } from "./engine";
+import pgQuoteCases from "./pgsql-quote-cases.json";
 import { contextAt } from "./scanner";
 
 const orders: DatabaseCatalog = {
@@ -249,5 +250,10 @@ describe("quote", () => {
     expect(quote("position", "pgsql")).toBe('"position"');
     expect(quote("timestamp", "pgsql")).toBe('"timestamp"');
     expect(quote("customer", "pgsql")).toBe("customer");
+  });
+
+  it("quotes Postgres names as the sidecar and quote_ident() do (#206)", () => {
+    // The sidecar's PostgresNameTests reads the same cases.
+    for (const [name, expected] of pgQuoteCases) expect(quote(name, "pgsql"), name).toBe(expected);
   });
 });
