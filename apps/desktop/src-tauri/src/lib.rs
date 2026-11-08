@@ -257,6 +257,34 @@ fn pump(app: &AppHandle, mut rx: Receiver<CommandEvent>, log: Option<&Log>) -> (
     (None, tail)
 }
 
+/// While the window is minimised, WebView2 is asked to use less memory (#190): it drops caches and lets Windows trim
+/// the renderer and GPU processes. Back to normal when the window is restored. Minimising and restoring both arrive as
+/// a resize.
+#[cfg(windows)]
+fn follow_minimised(window: &tauri::Window, event: &tauri::WindowEvent) {
+    use webview2_com::Microsoft::Web::WebView2::Win32::{
+        ICoreWebView2_19, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL,
+    };
+    use windows_core::Interface;
+
+    static LOW: AtomicBool = AtomicBool::new(false);
+    if !matches!(event, tauri::WindowEvent::Resized(_)) {
+        return;
+    }
+    let low = window.is_minimized().unwrap_or(false);
+    if LOW.swap(low, Ordering::SeqCst) == low {
+        return;
+    }
+    let Some(webview) = window.app_handle().get_webview_window(window.label()) else { return };
+    let level = if low { COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW } else { COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL };
+    // An older WebView2 runtime without the setting (before 1.0.2210) just keeps its normal level.
+    let _ = webview.with_webview(move |platform| unsafe {
+        if let Ok(core) = platform.controller().CoreWebView2().and_then(|c| c.cast::<ICoreWebView2_19>()) {
+            let _ = core.SetMemoryUsageTargetLevel(level);
+        }
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     MAIN_START_EPOCH_MS.get_or_init(epoch_ms);
@@ -283,6 +311,10 @@ pub fn run() {
         // What's new: https links in release notes open in the browser.
         .plugin(tauri_plugin_opener::init())
         .manage(Sidecar::default())
+        .on_window_event(|_window, _event| {
+            #[cfg(windows)]
+            follow_minimised(_window, _event);
+        })
         .setup(|app| {
             let handle = app.handle().clone();
             std::thread::Builder::new().name("sidecar-supervisor".into()).spawn(move || supervise(handle, 0))?;

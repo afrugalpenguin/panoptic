@@ -26,6 +26,11 @@ tauri-plugin-shell = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"
 
+# The WebView2 memory target while minimised (lib.rs). The versions Tauri's wry already uses, so nothing new is built.
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.39"
+windows-core = "0.62"
+
 # No LTO and default codegen units: the shell is a thin pipe, so whole-program optimisation buys
 # nothing visible but costs minutes on every release build.
 [profile.release]
