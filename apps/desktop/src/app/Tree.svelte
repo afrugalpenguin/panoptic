@@ -1,6 +1,17 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import { dropTarget, ROW_HEIGHT, selectableRow, UNGROUPED, type Row, type TreeModel } from "./tree-model";
+  import {
+    connectionDrop,
+    environmentDrop,
+    moveEnvironment,
+    ROW_HEIGHT,
+    selectableRow,
+    stepConnection,
+    UNGROUPED,
+    type DropAt,
+    type Row,
+    type TreeModel,
+  } from "./tree-model";
   import ConnectionRow from "./rows/ConnectionRow.svelte";
   import EnvHeaderRow from "./rows/EnvHeaderRow.svelte";
   import GroupHeaderRow from "./rows/GroupHeaderRow.svelte";
@@ -8,8 +19,10 @@
   import LeafRow from "./rows/LeafRow.svelte";
 
   const OVERSCAN_PX = 240;
-  /** A connection being dragged onto an environment (docs/explorer-ux.md, "Grouping"). Carries the connection id. */
+  /** A connection being dragged to move or reorder it (docs/explorer-ux.md, "Grouping"). Carries the connection id. */
   const CONNECTION_MIME = "application/x-panoptic-connection";
+  /** An environment header being dragged to reorder the environments (#63). Carries the environment id. */
+  const ENVIRONMENT_MIME = "application/x-panoptic-environment";
   const TYPE_TO_JUMP_MS = 700;
   /** The explorer footer sits over the bottom of the tree (docs/explorer-ux.md, "Footer"). */
   const FOOTER_HEIGHT = 30;
@@ -24,6 +37,7 @@
     onActivate,
     onOpenProblem,
     onMoveConnection = () => {},
+    onReorderEnvironments = () => {},
     disconnected = false,
     showKindBadge = true,
     rowFont = "mono",
@@ -36,8 +50,13 @@
     onActivate: (row: Row) => void;
     /** Click on an error row: show its entry in the Problems tab. */
     onOpenProblem: (parentId: string) => void;
-    /** A connection was dropped on an environment (its id) or on the Ungrouped header (null). */
-    onMoveConnection?: (connectionId: string, environmentId: string | null) => void;
+    /**
+     * A connection was dropped on an environment (its id) or on the Ungrouped header (null), or before another
+     * connection there (beforeId; null for last), by drag or Alt+Up/Down. No beforeId: a header or empty row.
+     */
+    onMoveConnection?: (connectionId: string, environmentId: string | null, beforeId?: string | null) => void;
+    /** An environment was dragged, or moved with Alt+Up/Down: explorer.envOrder as it should now be. */
+    onReorderEnvironments?: (envOrder: string[]) => void;
     /** The sidecar is down (ADR 0005): every connection row says so until it answers ping again. */
     disconnected?: boolean;
     /** explorer.showKindBadge and explorer.rowFont: CSS switches on the tree, no row recomputation. */
@@ -55,8 +74,10 @@
   let focused = $state(false);
   let typed = "";
   let typedAt = 0;
-  /** The row a connection is being dragged over, highlighted as the drop target. */
-  let dropKey = $state<string>();
+  /** What is being dragged to move it, set on dragstart: a connection's or an environment's config id. */
+  let dragging: { kind: "connection" | "environment"; id: string } | undefined;
+  /** The row being dragged over and how it shows the drop: outlined, or a line above or below it. */
+  let dropOn = $state<{ key: string; at: DropAt }>();
   /** Shows the scrollbar thumb while scrolling. */
   let scrolling = $state(false);
   let scrollingTimer: ReturnType<typeof setTimeout> | undefined;
@@ -184,6 +205,11 @@
     // The footer's buttons sit inside the tree's focus container; their keys (Enter, Space) are theirs.
     if ((e.target as Element | null)?.closest?.(".tree-footer")) return;
     const row = rows[selectedIndex];
+    if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      if (row) moveRow(row, e.key === "ArrowUp" ? -1 : 1);
+      e.preventDefault();
+      return;
+    }
     switch (e.key) {
       case "ArrowDown":
         select(selectedIndex + 1);
@@ -255,6 +281,21 @@
     e.preventDefault();
   }
 
+  /** Alt+Up and Alt+Down: an environment among the environments, a connection within its group (#63). */
+  function moveRow(row: Row, by: -1 | 1) {
+    if (row.type !== "node") return;
+    if (row.node.kind === "environment") {
+      const order = model.treeEnvironmentIds();
+      const next = moveEnvironment(order, order, row.node.meta?.environmentId ?? "", by);
+      if (next.join("\n") !== order.join("\n")) onReorderEnvironments(next);
+      return;
+    }
+    const group = model.connectionGroup(row.node.id);
+    const connectionId = row.node.meta?.connectionId;
+    const beforeId = group && connectionId ? stepConnection(group.connectionIds, connectionId, by) : undefined;
+    if (group && connectionId && beforeId !== undefined) onMoveConnection(connectionId, group.environmentId, beforeId);
+  }
+
   /** Jumps to the next row whose shown text starts with what has been typed in quick succession. */
   function typeToJump(ch: string) {
     const now = performance.now();
@@ -274,11 +315,14 @@
 
   /** Dragging a row into the query editor inserts the text its backend gave it (meta.dragText); Monaco's drop handler places it. */
   function onRowDragStart(e: DragEvent, row: Row) {
-    // A connection drags to regroup it; anything else drags its text into the editor.
+    // Connections and environment headers drag to move them; anything else drags its text into the editor.
+    dragging = undefined;
     const connectionId = row.type === "node" && row.node.kind === "connection" ? row.node.meta?.connectionId : undefined;
-    if (connectionId && e.dataTransfer) {
-      e.dataTransfer.setData(CONNECTION_MIME, connectionId);
+    const environmentId = row.type === "node" && row.node.kind === "environment" ? row.node.meta?.environmentId : undefined;
+    if ((connectionId || environmentId) && e.dataTransfer) {
+      e.dataTransfer.setData(connectionId ? CONNECTION_MIME : ENVIRONMENT_MIME, (connectionId ?? environmentId)!);
       e.dataTransfer.effectAllowed = "move";
+      dragging = connectionId ? { kind: "connection", id: connectionId } : { kind: "environment", id: environmentId! };
       return;
     }
     const text = row.type === "node" ? row.node.meta?.dragText : undefined;
@@ -287,28 +331,59 @@
     e.dataTransfer.effectAllowed = "copy";
   }
 
-  /** Only connection drags over environment headers, their empty rows and the Ungrouped header are accepted. */
+  /**
+   * What dropping here would do, or undefined where the row is not a target. A connection goes into an environment
+   * (its header or empty row, or the Ungrouped header) or before or after another connection; an environment before
+   * or after another environment. Which, by the half of the row the pointer is in (#63).
+   */
+  function dropHere(e: DragEvent, row: Row): { at: DropAt; run: () => void } | undefined {
+    // The source row can scroll out of the virtualiser mid-drag and miss its dragend, so the drag itself must say so.
+    if (!dragging || !e.dataTransfer?.types.includes(dragging.kind === "connection" ? CONNECTION_MIME : ENVIRONMENT_MIME)) return undefined;
+    const box = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const upper = e.clientY < box.top + box.height / 2;
+    if (dragging?.kind === "connection") {
+      const id = dragging.id;
+      const target = connectionDrop(row, upper, id, row.type === "node" ? model.connectionGroup(row.node.id) : undefined);
+      return target && { at: target.at, run: () => onMoveConnection(id, target.drop.environmentId, target.drop.beforeId) };
+    }
+    if (dragging?.kind === "environment") {
+      const target = environmentDrop(row, upper, dragging.id, model.treeEnvironmentIds());
+      return target && { at: target.at, run: () => onReorderEnvironments(target.order) };
+    }
+    return undefined;
+  }
+
   function onRowDragOver(e: DragEvent, row: Row) {
-    if (!e.dataTransfer?.types.includes(CONNECTION_MIME) || dropTarget(row) === undefined) return;
+    const target = dropHere(e, row);
+    if (!target) {
+      // Not a target, or the half of the row that would leave it where it is.
+      if (dropOn?.key === row.key) dropOn = undefined;
+      return;
+    }
     e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    dropKey = row.key;
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+    if (dropOn?.key !== row.key || dropOn.at !== target.at) dropOn = { key: row.key, at: target.at };
   }
 
   /** Crossing onto the row's own chevron, name or count also fires dragleave: only leaving the row clears it. */
   function onRowDragLeave(e: DragEvent, row: Row) {
     const to = e.relatedTarget;
     if (to instanceof Node && (e.currentTarget as HTMLElement).contains(to)) return;
-    if (dropKey === row.key) dropKey = undefined;
+    if (dropOn?.key === row.key) dropOn = undefined;
   }
 
   function onRowDrop(e: DragEvent, row: Row) {
-    const connectionId = e.dataTransfer?.getData(CONNECTION_MIME);
-    const target = dropTarget(row);
-    dropKey = undefined;
-    if (!connectionId || target === undefined) return;
+    const target = dropHere(e, row);
+    onDragEnd();
+    if (!target) return;
     e.preventDefault();
-    onMoveConnection(connectionId, target);
+    target.run();
+  }
+
+  /** Every drag ends here, dropped or not (Escape cancels a drag natively): nothing stays marked. */
+  function onDragEnd() {
+    dragging = undefined;
+    dropOn = undefined;
   }
 
   function onRowMouseDown(e: MouseEvent, row: Row) {
@@ -327,13 +402,16 @@
     id={pin ? undefined : rowId(row.key)}
     class="tree-row {row.rowKind}"
     class:selected={row.key === selectedKey}
-    class:drop-over={row.key === dropKey}
+    class:drop-over={row.key === dropOn?.key && dropOn.at === "over"}
+    class:drop-before={row.key === dropOn?.key && dropOn.at === "before"}
+    class:drop-after={row.key === dropOn?.key && dropOn.at === "after"}
     role="treeitem"
     aria-selected={row.key === selectedKey}
     aria-expanded={row.type === "group" || (row.type === "node" && row.node.hasChildren) ? row.expanded : undefined}
     style:height="{row.height}px"
     style:margin-top="{pin ? 0 : row.gapBefore}px"
     style:padding-left="{row.indent + 4 + (row.rowKind === "header" ? 6 : 0)}px"
+    style:--drop-indent="{row.indent + 4}px"
     draggable={row.type === "node"}
     ondragstart={(e) => onRowDragStart(e, row)}
     ondragover={(e) => onRowDragOver(e, row)}
@@ -376,6 +454,7 @@
   bind:clientHeight={height}
   onscroll={onScroll}
   onkeydown={onKeydown}
+  ondragend={onDragEnd}
   onmousedown={(e) => (keepSelection = !(e.target as Element).closest(".tree-footer"))}
   onfocus={onFocus}
   onblur={() => {
@@ -524,6 +603,27 @@
   .tree-row.drop-over {
     outline: 1px dashed var(--brand-primary);
     outline-offset: -1px;
+  }
+  /* Where a dragged connection or environment will land: a 2px line at the row's indent, above or below it (#63). */
+  .tree-row.drop-before,
+  .tree-row.drop-after {
+    position: relative;
+  }
+  .tree-row.drop-before::after,
+  .tree-row.drop-after::after {
+    content: "";
+    position: absolute;
+    left: var(--drop-indent);
+    right: 0;
+    height: 2px;
+    background: var(--accent);
+    pointer-events: none;
+  }
+  .tree-row.drop-before::after {
+    top: 0;
+  }
+  .tree-row.drop-after::after {
+    bottom: 0;
   }
   .tree-row:hover {
     --wash: var(--wash-hover);

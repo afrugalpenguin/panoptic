@@ -171,6 +171,99 @@ public sealed class ConfigStoreTests : IDisposable
         Assert.Equal(["a"], store.Config.Environments[1].Connections.Select(c => c.Id));
     }
 
+    /// <summary>Dev holds a, b, c; UAT holds d; e and f are in no environment. Each has a secret.</summary>
+    private ConfigStore Ordered()
+    {
+        var store = new ConfigStore(_path);
+        store.SaveEnvironment(new EnvironmentConfig("dev", "Dev", "#000", false, []));
+        store.SaveEnvironment(new EnvironmentConfig("uat", "UAT", "#000", false, []));
+        foreach (var id in new[] { "a", "b", "c" }) store.SaveConnection("dev", Sql(id), $"pw-{id}");
+        store.SaveConnection("uat", Sql("d"), "pw-d");
+        foreach (var id in new[] { "e", "f" }) store.SaveConnection(null, Sql(id), $"pw-{id}");
+        return store;
+    }
+
+    private static string[] Ids(List<ConnectionConfig> connections) => connections.Select(c => c.Id).ToArray();
+
+    [Fact]
+    public void Moving_a_connection_before_a_sibling_reorders_its_environment()
+    {
+        var store = Ordered();
+
+        store.MoveConnection("c", "dev", "a");
+        Assert.Equal(["c", "a", "b"], Ids(store.Config.Environments[0].Connections));
+
+        store.MoveConnection("c", "dev", "b");
+        Assert.Equal(["a", "c", "b"], Ids(store.Config.Environments[0].Connections));
+
+        var reloaded = new ConfigStore(_path);
+        Assert.Equal(["a", "c", "b"], Ids(reloaded.Config.Environments[0].Connections));
+    }
+
+    [Fact]
+    public void Moving_with_no_sibling_or_one_not_in_the_list_appends()
+    {
+        var store = Ordered();
+
+        store.MoveConnection("a", "dev", null);
+        Assert.Equal(["b", "c", "a"], Ids(store.Config.Environments[0].Connections));
+
+        store.MoveConnection("b", "dev", "d");
+        Assert.Equal(["c", "a", "b"], Ids(store.Config.Environments[0].Connections));
+    }
+
+    [Fact]
+    public void Moving_across_environments_and_to_and_from_none_keeps_one_copy()
+    {
+        var store = Ordered();
+
+        store.MoveConnection("a", "uat", "d");
+        Assert.Equal(["b", "c"], Ids(store.Config.Environments[0].Connections));
+        Assert.Equal(["a", "d"], Ids(store.Config.Environments[1].Connections));
+
+        store.MoveConnection("d", null, "f");
+        Assert.Equal(["a"], Ids(store.Config.Environments[1].Connections));
+        Assert.Equal(["e", "d", "f"], Ids(store.Config.Connections));
+
+        store.MoveConnection("e", "dev", "c");
+        Assert.Equal(["b", "e", "c"], Ids(store.Config.Environments[0].Connections));
+        Assert.Equal(["d", "f"], Ids(store.Config.Connections));
+    }
+
+    [Fact]
+    public void Moving_a_connection_before_itself_changes_nothing()
+    {
+        var store = Ordered();
+
+        store.MoveConnection("b", "dev", "b");
+
+        Assert.Equal(["a", "b", "c"], Ids(store.Config.Environments[0].Connections));
+    }
+
+    [Fact]
+    public void Moving_an_unknown_connection_or_to_an_unknown_environment_is_rejected()
+    {
+        var store = Ordered();
+
+        Assert.Equal(RpcException.InvalidParams, Assert.Throws<RpcException>(() => store.MoveConnection("nope", "dev", null)).Code);
+        Assert.Equal(RpcException.InvalidParams, Assert.Throws<RpcException>(() => store.MoveConnection("a", "nope", null)).Code);
+        Assert.Equal(["a", "b", "c"], Ids(store.Config.Environments[0].Connections));
+    }
+
+    [Fact]
+    public void Moving_a_connection_keeps_its_secret_and_its_settings()
+    {
+        var store = Ordered();
+        var before = store.FindConnection("a")!.Value.Connection;
+
+        store.MoveConnection("a", null, "e");
+        store.MoveConnection("a", "uat", null);
+
+        Assert.Equal("pw-a", store.GetSecret("a"));
+        Assert.Equal(before, store.FindConnection("a")!.Value.Connection);
+        Assert.Equal("pw-e", store.GetSecret("e"));
+    }
+
     [Fact]
     public void Connections_can_be_saved_without_an_environment_and_reload()
     {

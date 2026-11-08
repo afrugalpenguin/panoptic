@@ -211,6 +211,12 @@ export interface KindDescription {
   fields: ConnectionFields;
 }
 
+export interface MoveConnectionParams {
+  connectionId: string;
+  environmentId?: string | null;
+  beforeId?: string | null;
+}
+
 export interface NodeError {
   summary: string;
   detail: string;

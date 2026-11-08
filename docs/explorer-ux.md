@@ -68,7 +68,11 @@ A connection may be in one environment or in none, and an environment may have n
 
 Moving a connection:
 
-- Drag a connection row onto an environment header or its empty row to move it there, or onto the Ungrouped header to take it out of its environment. The target is outlined while a drop is possible.
+- Drag a connection row onto an environment header or its empty row to move it there (last), or onto the Ungrouped header to take it out of its environment. The target is outlined while a drop is possible.
+- Drag a connection row onto another connection row to place it before that row (the upper half of the row) or after it (the lower half), in the same environment, another one or Ungrouped (#63). A 2px accent line at the row's indent shows where it will land. A drop that would leave it where it is shows no line and does nothing.
+- Drag an environment header onto another environment header to place it before or after that one, by the same half-row rule; this saves `explorer.envOrder`. Ungrouped is always last and is not a target for environments.
+- Escape cancels a drag, and a drop anywhere else does nothing; the line or outline clears either way.
+- Alt+Up and Alt+Down move the selected environment, or the selected connection within its group, one place. A connection's menu also has **Move up** and **Move down**, as an environment's does, off at either end of its group. The moved row stays selected and in view.
 - A connection's menu has **Move to environment...** (the environments other than its own, or New environment..., which creates one) and, for a connection in an environment, **Remove from environment**.
 - New connection and Import ask for an environment with a picker whose default is None (docs/landing.md).
 - Saving a new connection selects it in the tree, expanding its environment and scrolling it into view, with focus on the tree (#216). Enter in a field of the connection dialog saves it, as Save does (#217).
@@ -124,7 +128,7 @@ explorer.rowFont         enum   mono | ui   default mono (connection and leaf ro
 explorer.envOrder        string[] manual order of env ids, default order added
 ```
 
-`explorer.envOrder` is set in the tree, with Move up and Move down on an environment's context menu, not in the Settings dialog. Drag and drop is issue #31.
+`explorer.envOrder` is set in the tree, by dragging an environment header, with Alt+Up and Alt+Down, or with Move up and Move down on an environment's context menu, not in the Settings dialog (#63).
 
 No layout mode setting. L2 (engine tabs) and L3 (stacked sections) are rejected. The old toolbar + chip-row layout is superseded by the filter bar + footer above.
 
@@ -136,7 +140,7 @@ Moving a connection out of a read-only environment, into a writable one or none,
 
 ## Keys
 
-Up/Down, Page Up/Down, Home/End move. Right expands (or steps into), Left collapses (or steps to the parent). Enter toggles, F5 refreshes, typing jumps to a matching row, the context-menu key or right-click opens actions. Esc clears the selection, which brings back the landing when no tab is open (docs/landing.md).
+Up/Down, Page Up/Down, Home/End move. Right expands (or steps into), Left collapses (or steps to the parent). Alt+Up and Alt+Down move the selected environment or connection (see "Grouping"). Enter toggles, F5 refreshes, typing jumps to a matching row, the context-menu key or right-click opens actions. Esc clears the selection, which brings back the landing when no tab is open (docs/landing.md).
 
 Closing a dialog, a confirmation or a context menu puts focus back where it was when it opened (the tree, or the button that opened it), not on the page (#216). An item of a context menu that opens a dialog hands focus back to the tree first, so the dialog returns it there. Closing a tab from its x focuses the tab shown next.
 

@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import type { TreeNode } from "./api";
 import { AbortError, RpcError } from "../rpc";
-import { dropTarget, ENV_GAP, moveEnvironment, ROW_HEIGHT, selectableRow, TreeModel, UNGROUPED, type Row } from "./tree-model";
+import {
+  connectionDrop, dropTarget, ENV_GAP, environmentDrop, moveEnvironment, ROW_HEIGHT, selectableRow, stepConnection, TreeModel, UNGROUPED, type Row,
+} from "./tree-model";
 import { BUILTIN_KINDS } from "./builtin-kinds";
 import { registerKinds } from "./kinds";
 
@@ -844,6 +846,107 @@ describe("connections without an environment", () => {
     expect(dropTarget(k[UNGROUPED])).toBeNull();
     expect(dropTarget(k["conn:a"])).toBeUndefined();
     expect(dropTarget(k["conn:c"])).toBeUndefined();
+  });
+
+  it("connectionGroup: a connection's environment (null for none) and its group's connection ids in order", async () => {
+    const { model } = await mixed();
+    expect(model.connectionGroup("conn:c")).toEqual({ environmentId: "dev", connectionIds: ["c"] });
+    expect(model.connectionGroup("conn:b")).toEqual({ environmentId: null, connectionIds: ["a", "b"] });
+    expect(model.connectionGroup("env:dev")).toBeUndefined();
+    expect(model.connectionGroup("conn:a/db:x")).toBeUndefined();
+  });
+
+  it("treeEnvironmentIds: config ids in the order the tree shows them", async () => {
+    const { model } = await mixed();
+    expect(model.treeEnvironmentIds()).toEqual(["dev", "empty"]);
+    model.setEnvOrder(["empty"]);
+    expect(model.treeEnvironmentIds()).toEqual(["empty", "dev"]);
+  });
+
+  describe("connectionDrop", () => {
+    const group = { environmentId: "dev", connectionIds: ["a", "b", "c"] };
+    const connRow = (id: string) => ({ type: "node", key: `conn:${id}`, node: conn(`conn:${id}`) }) as unknown as Row;
+
+    it("on a connection row, the upper half places before it and the lower half after it", () => {
+      expect(connectionDrop(connRow("b"), true, "x", group)).toEqual({ at: "before", drop: { environmentId: "dev", beforeId: "b" } });
+      expect(connectionDrop(connRow("b"), false, "x", group)).toEqual({ at: "after", drop: { environmentId: "dev", beforeId: "c" } });
+      expect(connectionDrop(connRow("c"), false, "x", group)).toEqual({ at: "after", drop: { environmentId: "dev", beforeId: null } });
+    });
+
+    it("in no environment, the target environment is null", () => {
+      const loose = { environmentId: null, connectionIds: ["a", "b"] };
+      expect(connectionDrop(connRow("a"), true, "x", loose)).toEqual({ at: "before", drop: { environmentId: null, beforeId: "a" } });
+    });
+
+    it("is not a drop on itself, or anywhere that leaves it where it is", () => {
+      expect(connectionDrop(connRow("b"), true, "b", group)).toBeUndefined();
+      expect(connectionDrop(connRow("b"), false, "b", group)).toBeUndefined();
+      // Just after a, or just before c: already there.
+      expect(connectionDrop(connRow("a"), false, "b", group)).toBeUndefined();
+      expect(connectionDrop(connRow("c"), true, "b", group)).toBeUndefined();
+      expect(connectionDrop(connRow("a"), true, "b", group)).toEqual({ at: "before", drop: { environmentId: "dev", beforeId: "a" } });
+      expect(connectionDrop(connRow("c"), false, "b", group)).toEqual({ at: "after", drop: { environmentId: "dev", beforeId: null } });
+    });
+
+    it("a header, an empty environment's row or the Ungrouped header takes it in, without a position", async () => {
+      const { model } = await mixed();
+      await model.expand("env:dev");
+      const k = byKey(model.rows());
+      expect(connectionDrop(k["env:dev"], true, "a")).toEqual({ at: "over", drop: { environmentId: "dev" } });
+      expect(connectionDrop(k["env:empty#empty"], false, "a")).toEqual({ at: "over", drop: { environmentId: "empty" } });
+      expect(connectionDrop(k[UNGROUPED], true, "c")).toEqual({ at: "over", drop: { environmentId: null } });
+    });
+
+    it("anything else is not a target", async () => {
+      const { model } = await mixed();
+      await model.expand("conn:a");
+      const k = byKey(model.rows());
+      expect(connectionDrop(k["conn:a/db:x"], true, "b")).toBeUndefined();
+      // A connection row with no group to place it in.
+      expect(connectionDrop(k["conn:a"], true, "b")).toBeUndefined();
+    });
+  });
+
+  describe("environmentDrop", () => {
+    const order = ["dev", "uat", "prod"];
+    const envRow = (id: string) => ({ type: "node", key: `env:${id}`, node: env(`env:${id}`, 1) }) as unknown as Row;
+
+    it("on another environment's header, the upper half places before it and the lower half after it", () => {
+      expect(environmentDrop(envRow("dev"), true, "prod", order)).toEqual({ at: "before", order: ["prod", "dev", "uat"] });
+      expect(environmentDrop(envRow("dev"), false, "prod", order)).toEqual({ at: "after", order: ["dev", "prod", "uat"] });
+      expect(environmentDrop(envRow("prod"), false, "dev", order)).toEqual({ at: "after", order: ["uat", "prod", "dev"] });
+    });
+
+    it("is not a drop on itself or where it already is", () => {
+      expect(environmentDrop(envRow("uat"), true, "uat", order)).toBeUndefined();
+      expect(environmentDrop(envRow("dev"), false, "uat", order)).toBeUndefined();
+      expect(environmentDrop(envRow("prod"), true, "uat", order)).toBeUndefined();
+    });
+
+    it("the Ungrouped header, connections and the empty row are not targets", async () => {
+      const { model } = await mixed();
+      await model.expand("env:dev");
+      const k = byKey(model.rows());
+      expect(environmentDrop(k[UNGROUPED], true, "dev", ["dev", "empty"])).toBeUndefined();
+      expect(environmentDrop(k["conn:c"], true, "empty", ["dev", "empty"])).toBeUndefined();
+      expect(environmentDrop(k["env:empty#empty"], true, "dev", ["dev", "empty"])).toBeUndefined();
+    });
+  });
+});
+
+describe("stepConnection", () => {
+  const ids = ["a", "b", "c"];
+
+  it("up places it before the one above; down before the one after the next, or last", () => {
+    expect(stepConnection(ids, "b", -1)).toBe("a");
+    expect(stepConnection(ids, "a", 1)).toBe("c");
+    expect(stepConnection(ids, "b", 1)).toBeNull();
+  });
+
+  it("cannot move past either end, or move an id not in the list", () => {
+    expect(stepConnection(ids, "a", -1)).toBeUndefined();
+    expect(stepConnection(ids, "c", 1)).toBeUndefined();
+    expect(stepConnection(ids, "zz", 1)).toBeUndefined();
   });
 });
 

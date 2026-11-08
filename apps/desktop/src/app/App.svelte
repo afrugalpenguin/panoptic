@@ -37,7 +37,7 @@
   import { QueryWorkspace, type QueryTab } from "../query/store.svelte";
   import SettingsDialog from "./SettingsDialog.svelte";
   import StatusBar from "./StatusBar.svelte";
-  import { environmentOrder, moveEnvironment, TreeModel, UNGROUPED, type EngineSummary, type ExplorerSummary, type LoadReport, type Row } from "./tree-model";
+  import { environmentOrder, moveEnvironment, stepConnection, TreeModel, UNGROUPED, type EngineSummary, type ExplorerSummary, type LoadReport, type Row } from "./tree-model";
   import { appProblem, type Problem } from "./problems";
   import { isAbortError } from "../rpc";
   import { UndoDelete } from "./undo-delete";
@@ -354,8 +354,23 @@
   }
 
   async function moveEnv(id: string, by: -1 | 1) {
-    const envOrder = moveEnvironment(settings.explorer.envOrder, config.environments.map((e) => e.id), id, by);
-    await saveSettings({ ...settings, explorer: { ...settings.explorer, envOrder } });
+    await reorderEnvironments(moveEnvironment(settings.explorer.envOrder, config.environments.map((e) => e.id), id, by));
+  }
+
+  /** Move up, Move down, Alt+Up/Down and drag on an environment header (#63): saves the order, keeps the row in view. */
+  async function reorderEnvironments(envOrder: string[]) {
+    try {
+      await saveSettings({ ...settings, explorer: { ...settings.explorer, envOrder } });
+      await revealSelected();
+    } catch (e) {
+      reportProblem("Saving settings", e);
+    }
+  }
+
+  /** After a move the moved row is the selected one (a drag, a key or a menu selects it first): scrolls it into view. */
+  async function revealSelected() {
+    await tick();
+    if (selectedKey !== undefined) explorer?.reveal(selectedKey);
   }
 
   async function saveSettings(next: AppSettings) {
@@ -432,15 +447,21 @@
     explorer?.focus();
   }
 
-  /** Drag onto an environment, Move to environment... and Remove from environment (null): the connection keeps its id. */
-  async function moveConnection(connectionId: string, environmentId: string | null) {
+  /**
+   * Drag onto an environment, Move to environment... and Remove from environment (null): the connection keeps its id.
+   * With beforeId (a drag onto another connection, Alt+Up/Down, Move up or Move down) it goes before that connection,
+   * or last for null, in its own environment or another (#63); without, it is appended, and its own environment is no
+   * move. Only leaving a read-only environment asks.
+   */
+  async function moveConnection(connectionId: string, environmentId: string | null, beforeId?: string | null) {
     const found = connectionOf(connectionId);
-    if (!found || (found.env?.id ?? null) === environmentId) return;
+    if (!found || ((found.env?.id ?? null) === environmentId && beforeId === undefined)) return;
     const leaving = readOnlyMoveText(found.connection.name, found.env, environmentId ? envOf(environmentId) : undefined);
     if (leaving && !(await ask(leaving))) return;
     try {
-      await configChanged(await api!.saveConnection(environmentId, found.connection));
+      await configChanged(await api!.moveConnection(connectionId, environmentId, beforeId ?? null));
       await model.reveal(environmentId);
+      await revealSelected();
     } catch (e) {
       lastLoad = { id: "", label: found.connection.name, count: 0, ms: 0, error: e instanceof Error ? e.message : String(e) };
     }
@@ -491,6 +512,7 @@
     return {
       labels: actionLabels,
       envOrder: environmentOrder(settings.explorer.envOrder, config.environments.map((e) => e.id)),
+      looseConnections: config.connections,
       environment: envOf,
       connection: connectionOf,
       copy: (text) => navigator.clipboard.writeText(text).catch(() => {}),
@@ -512,6 +534,12 @@
         ),
       editConnection: (found) => (dialog = { kind: "connection", environmentId: found.env?.id ?? null, initial: found.connection }),
       moveConnection: (found) => (dialog = { kind: "move", connection: found.connection, from: found.env?.id }),
+      stepConnection: (connectionId, by) => {
+        const found = connectionOf(connectionId);
+        const ids = (found?.env?.connections ?? config.connections).map((c) => c.id);
+        const beforeId = stepConnection(ids, connectionId, by);
+        if (found && beforeId !== undefined) moveConnection(connectionId, found.env?.id ?? null, beforeId);
+      },
       removeFromEnvironment: (connectionId) => moveConnection(connectionId, null),
       removeConnection: (found) =>
         deleteConfig(
@@ -759,6 +787,7 @@
       onActivate={activate}
       onOpenProblem={openProblems}
       onMoveConnection={moveConnection}
+      onReorderEnvironments={reorderEnvironments}
       disconnected={sidecar === "disconnected"}
       showKindBadge={settings.explorer.showKindBadge}
       rowFont={settings.explorer.rowFont}

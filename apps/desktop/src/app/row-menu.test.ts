@@ -24,6 +24,7 @@ function context(over: Partial<RowMenuContext> = {}) {
   const ctx: RowMenuContext = {
     labels: { selectTop: "Select top 1000", newQuery: "New query", refresh: "Refresh" },
     envOrder: ["prod", "uat"],
+    looseConnections: [],
     environment: (id) => [prod, uat].find((e) => e.id === id),
     connection: (id) => (id === conn.id ? { env: prod, connection: conn } : undefined),
     copy: record("copy"),
@@ -39,6 +40,7 @@ function context(over: Partial<RowMenuContext> = {}) {
     deleteEnvironment: record("deleteEnvironment"),
     editConnection: record("editConnection"),
     moveConnection: record("moveConnection"),
+    stepConnection: record("stepConnection"),
     removeFromEnvironment: record("removeFromEnvironment"),
     removeConnection: record("removeConnection"),
     ...over,
@@ -95,13 +97,40 @@ describe("rowMenu", () => {
     const n = node({ id: "conn:c1", kind: "connection", actions: ["newQuery", "refresh"], meta: { connectionId: "c1", copyText: "orders" } });
     const items = rowMenu(nodeRow(n), ctx);
     expect(labels(items)).toEqual([
-      "New query (Ctrl+N)", "---", "Edit connection...", "Refresh", "Copy name", "Move to environment...", "Remove from environment", "---", "Remove connection [danger]",
+      "New query (Ctrl+N)", "---", "Edit connection...", "Refresh", "Copy name", "Move to environment...", "Move up [disabled]", "Move down [disabled]",
+      "Remove from environment", "---", "Remove connection [danger]",
     ]);
     for (const label of ["New query (Ctrl+N)", "Edit connection...", "Refresh", "Copy name", "Move to environment...", "Remove from environment", "Remove connection"]) run(items, label);
     expect(calls).toEqual([
       "openQuery(conn:c1,newQuery)", "editConnection(c1)", "refresh(conn:c1)", "refreshQueryTabs(conn:c1)", "copy(orders)",
       "moveConnection(c1)", "removeFromEnvironment(c1)", "removeConnection(c1)",
     ]);
+  });
+
+  it("a connection moves up and down within its group, off at either end", () => {
+    const second = { ...conn, id: "c2", name: "billing" };
+    const third = { ...conn, id: "c3", name: "stock" };
+    const env = { ...prod, connections: [conn, second, third] };
+    const at = (c: ConnectionConfig) => {
+      const { ctx, calls } = context({ connection: (id) => ({ env, connection: [conn, second, third].find((x) => x.id === id)! }) });
+      const items = rowMenu(nodeRow(node({ id: `conn:${c.id}`, kind: "connection", meta: { connectionId: c.id } })), ctx);
+      return { items, calls, moves: labels(items).filter((l) => l.startsWith("Move up") || l.startsWith("Move down")) };
+    };
+    expect(at(conn).moves).toEqual(["Move up [disabled]", "Move down"]);
+    expect(at(second).moves).toEqual(["Move up", "Move down"]);
+    expect(at(third).moves).toEqual(["Move up", "Move down [disabled]"]);
+    const { items, calls } = at(second);
+    run(items, "Move up");
+    run(items, "Move down");
+    expect(calls).toEqual(["stepConnection(c2,-1)", "stepConnection(c2,1)"]);
+  });
+
+  it("a connection in no environment moves within the other connections in none", () => {
+    const second = { ...conn, id: "c2" };
+    const { ctx } = context({ looseConnections: [conn, second], connection: (id) => ({ connection: id === "c2" ? second : conn }) });
+    const items = rowMenu(nodeRow(node({ id: "conn:c2", kind: "connection", meta: { connectionId: "c2" } })), ctx);
+    expect(labels(items)).toContain("Move up");
+    expect(labels(items)).toContain("Move down [disabled]");
   });
 
   it("a connection in no environment has nothing to be removed from", () => {

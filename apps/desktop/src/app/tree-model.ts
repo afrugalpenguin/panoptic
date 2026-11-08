@@ -99,6 +99,65 @@ export function dropTarget(row: Row): string | null | undefined {
   return undefined;
 }
 
+/** A connection's environment (null for none) and the connection ids in it, in config order (#63). */
+export interface ConnectionGroup {
+  environmentId: string | null;
+  connectionIds: string[];
+}
+
+/**
+ * Where a dropped connection goes: an environment (null for none), and the connection to place it before there. A
+ * null beforeId puts it last; no beforeId (a header or empty row) appends, and does nothing in its own environment.
+ */
+export interface ConnectionDrop {
+  environmentId: string | null;
+  beforeId?: string | null;
+}
+
+/** How a drop target is drawn: outlined, or a line above or below it. */
+export type DropAt = "over" | "before" | "after";
+
+/**
+ * A connection (`dragged`, its connection id) dragged over the row, the pointer in its upper half or not. On another
+ * connection it lands before or after that one, in `group`, the hovered connection's group; a header or an empty row
+ * takes it in (dropTarget). Undefined where the row is not a target, or the drop would leave it where it is.
+ */
+export function connectionDrop(row: Row, upper: boolean, dragged: string, group?: ConnectionGroup): { at: DropAt; drop: ConnectionDrop } | undefined {
+  const environmentId = dropTarget(row);
+  if (environmentId !== undefined) return { at: "over", drop: { environmentId } };
+  const target = row.type === "node" && row.node.kind === "connection" ? row.node.meta?.connectionId : undefined;
+  if (!target || !group || target === dragged) return undefined;
+  const ids = group.connectionIds;
+  const beforeId = upper ? target : (ids[ids.indexOf(target) + 1] ?? null);
+  const at = ids.indexOf(dragged);
+  if (at >= 0 && (beforeId === dragged || beforeId === (ids[at + 1] ?? null))) return undefined;
+  return { at: upper ? "before" : "after", drop: { environmentId: group.environmentId, beforeId } };
+}
+
+/**
+ * An environment header (`dragged`, its environment id) dragged over the row: on another environment's header it lands
+ * before or after it. Returns explorer.envOrder after the drop, from `order`, the tree's order; undefined where the row
+ * is not a target (Ungrouped stays last) or the drop would leave it where it is.
+ */
+export function environmentDrop(row: Row, upper: boolean, dragged: string, order: string[]): { at: DropAt; order: string[] } | undefined {
+  const target = row.type === "node" && row.node.kind === "environment" ? row.node.meta?.environmentId : undefined;
+  if (!target || target === dragged) return undefined;
+  const next = order.filter((id) => id !== dragged);
+  next.splice(next.indexOf(target) + (upper ? 0 : 1), 0, dragged);
+  if (next.join("\n") === order.join("\n")) return undefined;
+  return { at: upper ? "before" : "after", order: next };
+}
+
+/**
+ * Move up (-1) or down (1) within a connection's group, as the connection to place it before (null: last), or
+ * undefined at either end.
+ */
+export function stepConnection(ids: string[], id: string, by: -1 | 1): string | null | undefined {
+  const i = ids.indexOf(id);
+  if (i < 0 || i + by < 0 || i + by >= ids.length) return undefined;
+  return by < 0 ? ids[i - 1] : (ids[i + 2] ?? null);
+}
+
 /**
  * One entry in the explorer's engine filter: an engine present in the loaded connections and how many.
  *
@@ -207,6 +266,20 @@ export class TreeModel {
   /** The root's environment nodes in the order the tree shows them (explorer.envOrder). */
   treeEnvIds(): string[] {
     return this.orderedEnvs(this.envIds());
+  }
+
+  /** Config ids of the environments, in the order the tree shows them. */
+  treeEnvironmentIds(): string[] {
+    return this.treeEnvIds().map((id) => this.nodes.get(id)?.meta?.environmentId ?? "");
+  }
+
+  /** A connection node's group, unfiltered, for placing a drop; undefined for any other node. */
+  connectionGroup(id: string): ConnectionGroup | undefined {
+    if (this.nodes.get(id)?.kind !== "connection") return undefined;
+    const parent = this.parents.get(id);
+    if (parent === undefined) return undefined;
+    const connectionIds = this.childIds(parent).map((c) => this.nodes.get(c)!).filter((n) => n.kind === "connection").map((n) => n.meta?.connectionId ?? "");
+    return { environmentId: parent === "" ? null : (this.nodes.get(parent)?.meta?.environmentId ?? null), connectionIds };
   }
 
   /**

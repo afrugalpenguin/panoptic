@@ -61,6 +61,14 @@ public static class Methods
             return Task.FromResult(Rpc.Result(store.Config, SidecarJson.Default.AppConfig));
         };
 
+        // Drag and drop in the tree (#63): the connection itself is unchanged, so nothing about it is forgotten.
+        methods["config.moveConnection"] = (p, _) =>
+        {
+            var args = Rpc.Params(p, SidecarJson.Default.MoveConnectionParams);
+            store.MoveConnection(args.ConnectionId, args.EnvironmentId, args.BeforeId);
+            return Task.FromResult(Rpc.Result(store.Config, SidecarJson.Default.AppConfig));
+        };
+
         methods["config.deleteConnection"] = (p, _) =>
         {
             var id = Rpc.Params(p, SidecarJson.Default.IdParams).Id;
