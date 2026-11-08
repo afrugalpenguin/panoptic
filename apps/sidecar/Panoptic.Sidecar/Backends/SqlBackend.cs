@@ -42,6 +42,19 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
         }
     }
 
+    /// <summary>
+    /// Loads SqlClient and builds a connection and command without opening them: about 30 ms off the first expand
+    /// (#185). Opening one would mean contacting a server.
+    /// </summary>
+    public Task WarmUpAsync(CancellationToken ct)
+    {
+        var builder = Settings(new ConnectionConfig("warm-up", "warm-up", ConnectionKinds.Sql, "warm-up.invalid", AuthKinds.Sql), null);
+        builder.UserID = "warm-up";
+        using var conn = new SqlConnection(builder.ConnectionString);
+        using var command = new SqlCommand("SELECT 1", conn);
+        return Task.CompletedTask;
+    }
+
     private async Task<TreeNode[]> Children(ConnectionConfig c, string? secret, NodePath path, IReadOnlyList<NodePath.Segment> rel, CancellationToken ct)
     {
         var shape = Nodes.Shape(rel);

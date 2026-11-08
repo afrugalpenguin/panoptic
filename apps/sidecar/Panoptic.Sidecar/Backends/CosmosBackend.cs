@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -410,15 +411,20 @@ public sealed class CosmosBackend(Credentials credentials, CosmosAccountKeys? ac
             ConnectionMode = ConnectionMode.Gateway,
         };
 
+        var uri = new Uri(c.Endpoint);
         if (c.TrustServerCertificate)
         {
             // Only for the local emulator's self-signed certificate; never for a real account.
-            var uri = new Uri(c.Endpoint);
             if (!uri.IsLoopback) throw new RpcException(RpcException.InvalidParams, "Skipping certificate validation is only allowed for a localhost emulator");
             options.LimitToEndpoint = true;
-            options.HttpClientFactory = () => new HttpClient(new HttpClientHandler
+        }
+        if (uri.IsLoopback)
+        {
+            var trustAny = c.TrustServerCertificate;
+            options.HttpClientFactory = () => new HttpClient(new SocketsHttpHandler
             {
-                ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
+                ConnectCallback = (context, ct) => ConnectLoopbackAsync(context.DnsEndPoint, ct),
+                SslOptions = trustAny ? new() { RemoteCertificateValidationCallback = (_, _, _, _) => true } : new(),
             });
         }
 
@@ -428,5 +434,106 @@ public sealed class CosmosBackend(Credentials credentials, CosmosAccountKeys? ac
             AuthKinds.Entra => new CosmosClient(c.Endpoint, credentials.For(c.TenantId, c.ClientId), options),
             _ => throw new RpcException(RpcException.InvalidParams, $"Cosmos does not support auth '{c.Auth}'"),
         };
+    }
+
+    /// <summary>
+    /// Connects to every address a loopback host resolves to at once and keeps the first that answers. "localhost"
+    /// resolves to ::1 before 127.0.0.1, and Windows retries a refused connection for about 2 s, so with the addresses
+    /// tried in turn an emulator listening on 127.0.0.1 only (the Docker image, as dev-db.ps1 runs it) cost 2 s on
+    /// every new connection (#185).
+    /// </summary>
+    internal static async ValueTask<Stream> ConnectLoopbackAsync(DnsEndPoint endpoint, CancellationToken ct)
+    {
+        var addresses = await Dns.GetHostAddressesAsync(endpoint.Host, ct);
+        using var losers = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var won = 0;
+        var attempts = addresses.Select(Connect).ToList();
+        while (true)
+        {
+            var done = await Task.WhenAny(attempts);
+            attempts.Remove(done);
+            try
+            {
+                var socket = await done;
+                losers.Cancel();
+                return new NetworkStream(socket, ownsSocket: true);
+            }
+            catch when (attempts.Count > 0)
+            {
+                // Refused or unreachable on this address: wait for the others. The last failure is the one thrown.
+            }
+        }
+
+        async Task<Socket> Connect(IPAddress address)
+        {
+            var socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+            try
+            {
+                await socket.ConnectAsync(address, endpoint.Port, losers.Token);
+                // Only the first to connect is used; one that connects just after it closes again.
+                if (Interlocked.Exchange(ref won, 1) == 0) return socket;
+                throw new OperationCanceledException();
+            }
+            catch
+            {
+                socket.Dispose();
+                throw;
+            }
+        }
+    }
+
+    // --- Warm-up ----------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Takes the SDK through client start-up and a database read against canned replies in memory: about 190 ms
+    /// of type loading and JIT that the first expand otherwise pays (#185). Nothing leaves the process, so no
+    /// account is contacted; that includes the SDK's Azure VM metadata probe, which goes through the same handler
+    /// and gets a 404.
+    /// </summary>
+    public async Task WarmUpAsync(CancellationToken ct)
+    {
+        var options = new CosmosClientOptions
+        {
+            ApplicationName = "Panoptic",
+            ConnectionMode = ConnectionMode.Gateway,
+            LimitToEndpoint = true,
+            HttpClientFactory = () => new HttpClient(new CannedGateway()),
+        };
+        using var client = new CosmosClient(CannedGateway.Endpoint, Convert.ToBase64String(new byte[64]), options);
+        await Databases(client, NodePath.Root, ct);
+    }
+
+    /// <summary>Answers the account read and the database feed with empty results, and anything else with a 404.</summary>
+    private sealed class CannedGateway : HttpMessageHandler
+    {
+        public const string Endpoint = "https://warm-up.invalid/";
+
+        private const string Account = """
+            {"id":"warm-up","_rid":"warm-up","_self":"","_dbs":"//dbs/","media":"//media/","addresses":"//addresses/",
+            "writableLocations":[{"name":"local","databaseAccountEndpoint":"https://warm-up.invalid/"}],
+            "readableLocations":[{"name":"local","databaseAccountEndpoint":"https://warm-up.invalid/"}],
+            "enableMultipleWriteLocations":false,"userConsistencyPolicy":{"defaultConsistencyLevel":"Session"},
+            "userReplicationPolicy":{"minReplicaSetSize":1,"maxReplicasetSize":4},
+            "systemReplicationPolicy":{"minReplicaSetSize":1,"maxReplicasetSize":4},
+            "readPolicy":{"primaryReadCoefficient":1,"secondaryReadCoefficient":1},"queryEngineConfiguration":"{}"}
+            """;
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            var body = request.RequestUri switch
+            {
+                { Host: "warm-up.invalid", AbsolutePath: "/" } => Account,
+                { Host: "warm-up.invalid", AbsolutePath: "/dbs" } => """{"_rid":"","Databases":[],"_count":0}""",
+                _ => null,
+            };
+            var response = new HttpResponseMessage(body is null ? HttpStatusCode.NotFound : HttpStatusCode.OK)
+            {
+                Content = new StringContent(body ?? "", Encoding.UTF8, "application/json"),
+                RequestMessage = request,
+            };
+            response.Headers.Add("x-ms-activity-id", Guid.NewGuid().ToString());
+            response.Headers.Add("x-ms-request-charge", "0");
+            return Task.FromResult(response);
+        }
     }
 }
