@@ -214,11 +214,13 @@ fn supervise(app: AppHandle, generation: u32) {
 
 fn spawn_sidecar(app: &AppHandle) -> Result<(Receiver<CommandEvent>, u32), Box<dyn std::error::Error>> {
     let mut command = app.shell().sidecar("panoptic-sidecar")?;
-    // WAM (Entra sign-in) dialogs need a parent window, which only the shell can provide.
+    // WAM (Entra sign-in) dialogs need a parent window, which only the shell can provide. At launch the sidecar
+    // starts before the window exists, so it also gets this process's id and finds the window when it needs it.
     #[cfg(windows)]
     if let Some(hwnd) = app.get_webview_window("main").and_then(|w| w.hwnd().ok()) {
         command = command.env("PANOPTIC_PARENT_HWND", (hwnd.0 as isize).to_string());
     }
+    command = command.env("PANOPTIC_PARENT_PID", std::process::id().to_string());
     let (rx, child) = command.spawn()?;
     let pid = child.pid();
     *app.state::<Sidecar>().child.lock().map_err(|e| e.to_string())? = Some(child);
@@ -281,6 +283,11 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
             std::thread::Builder::new().name("sidecar-supervisor".into()).spawn(move || supervise(handle, 0))?;
+            // The window is created here, after the sidecar has started, rather than by Tauri before setup
+            // ("create": false in tauri.conf.json): creating the webview blocks this thread for over 200 ms,
+            // and the sidecar's own start-up now runs alongside it instead of after it.
+            let config = app.config().app.windows.first().ok_or("tauri.conf.json has no window")?;
+            tauri::WebviewWindowBuilder::from_config(app.handle(), config)?.build()?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![sidecar_send, sidecar_stop, sidecar_start, sidecar_status, startup_info, bench_finish, is_installed, changelog_markdown])
