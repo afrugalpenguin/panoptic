@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import type * as Monaco from "monaco-editor/editor/editor.api";
   import { cssToken, EDITOR_THEME, editorTheme } from "./editor-theme";
+  import { createOptions } from "./preload";
   import { mdText } from "./intellisense/markdown";
   import { models, quickFixes, type ModelInfo, type QuickFix } from "./intellisense/providers";
   import type { QueryMessage, QueryTab } from "./store.svelte";
@@ -81,23 +82,7 @@
       if (disposed) return;
       monaco = m.monaco;
       monaco.editor.defineTheme(EDITOR_THEME, editorTheme(cssToken, dark.matches));
-      editor = monaco.editor.create(host, {
-        value: tab.text,
-        language: monacoLanguage(language),
-        theme: EDITOR_THEME,
-        automaticLayout: true,
-        minimap: { enabled: false },
-        fontFamily: cssToken("--font-mono").trim() || "Cascadia Mono, Consolas, monospace",
-        fontSize: 13,
-        scrollBeyondLastLine: false,
-        renderLineHighlight: "line",
-        tabSize: 4,
-        wordWrap: "off",
-        // Run errors get an icon in the gutter.
-        glyphMargin: true,
-        // Explorer rows drop their name as plain text; there is nothing else to offer, so no "drop as" picker.
-        dropIntoEditor: { enabled: true, showDropSelector: "never" },
-      });
+      editor = monaco.editor.create(host, { ...createOptions(), value: tab.text, language: monacoLanguage(language) });
       const model = editor.getModel();
       if (model) tab.attach({ read: () => model.getValue(), write: (text) => model.setValue(text) });
       if (model && intellisense) models.set(model, intellisense);
