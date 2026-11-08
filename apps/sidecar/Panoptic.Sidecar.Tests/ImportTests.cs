@@ -485,4 +485,46 @@ public sealed class ImportTests : IDisposable
         foreach (var value in new[] { "secret-host", "ads-host", "someone@example.com", "Payroll", "app-uat", "WINBOX", "UAT", "windows.net", "example" })
             Assert.DoesNotContain(value, report);
     }
+
+    // --- Per-version layouts shaped from diagnostics reports (#316) ------------------------------------------
+
+    /// <summary>Copies Fixtures/&lt;name&gt; (a Roaming and a Local AppData tree) under the test root.</summary>
+    private void CopyFixture(string name)
+    {
+        var from = Path.Combine(AppContext.BaseDirectory, "Fixtures", name);
+        foreach (var file in Directory.EnumerateFiles(from, "*", SearchOption.AllDirectories))
+        {
+            var to = Path.Combine(_root, Path.GetRelativePath(from, file));
+            Directory.CreateDirectory(Path.GetDirectoryName(to)!);
+            File.Copy(file, to);
+        }
+    }
+
+    // SSMS 22 as a report showed it: 22.0\UserSettings.xml with the same elements and counts, its ServerTypes empty,
+    // no RegSrvr*.xml, and the shell's per-install folders (22.0_<id>) under Microsoft\SSMS. Values are invented.
+    [Fact]
+    public void Ssms22_layout_reports_its_settings_file_with_no_history_and_no_error()
+    {
+        CopyFixture("Ssms22");
+        foreach (var folder in new[] { "Roaming/Microsoft/SSMS/22.0_0a1b2c3d", "Local/Microsoft/SSMS/22.0_0a1b2c3d", "Local/Microsoft/SSMS/SSMS_18__settings" })
+            Directory.CreateDirectory(Path.Combine(_root, folder));
+        var roaming = Path.Combine(_root, "Roaming");
+        var local = Path.Combine(_root, "Local");
+
+        var sources = ConnectionImporter.Scan(roaming, local);
+
+        var history = Assert.Single(sources, s => s.Source.StartsWith("ssms"));
+        Assert.Equal("ssms-recent", history.Source);
+        Assert.EndsWith(@"SQL Server Management Studio\22.0\UserSettings.xml", history.Path);
+        Assert.Null(history.Error);
+        Assert.Empty(history.Groups);
+
+        var report = ConnectionImporter.Diagnostics(roaming, local);
+        Assert.Contains(@"%APPDATA%\Microsoft\SSMS: folders 22.0_0a1b2c3d", report);
+        Assert.Contains(@"%APPDATA%\Microsoft\SQL Server Management Studio\22.0\UserSettings.xml", report);
+        Assert.Contains("ConnectionOptions 1", report);
+        Assert.Contains("ServerTypes 1", report);
+        Assert.DoesNotContain("ServerConnectionItem", report);
+        Assert.DoesNotContain("someone", report);
+    }
 }

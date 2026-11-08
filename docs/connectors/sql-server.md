@@ -144,7 +144,10 @@ are de-duplicated by server, auth, user and database.
 
 SSMS 22's own `22.0\UserSettings.xml` holds no connection history; SSMS 22 keeps it in
 `RegSrvr17.xml`. SSMS also writes `UserSettings-<date>Backup.xml` copies, which can be truncated
-and are not read.
+and are not read. SSMS 22's Connect dialog recent list is elsewhere again: a `ConnectionMruList` key in the shell's
+private registry hive (`%LOCALAPPDATA%\Microsoft\SSMS\22.0_<id>\privateregistry.bin`), each entry encrypted for the
+Windows user (DPAPI). The importer does not read it; a test fixture shaped from an SSMS 22 diagnostics report
+(`Fixtures/Ssms22`, #316) pins the layout it does read.
 
 ### When SSMS moves its files: choose a file, and diagnostics (#25)
 
