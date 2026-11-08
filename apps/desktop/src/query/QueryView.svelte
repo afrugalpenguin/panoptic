@@ -190,6 +190,7 @@
       messages={tab.messages}
       reveal={tab.reveal}
       warnUnknownNames={workspace.editor.intellisense && workspace.editor.warnUnknownNames}
+      autofocus={tab.target !== undefined}
     />
   </div>
 

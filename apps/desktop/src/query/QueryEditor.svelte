@@ -15,6 +15,7 @@
     messages = [],
     reveal,
     warnUnknownNames = false,
+    autofocus = true,
   }: {
     text: string;
     /** Undefined until an unconnected tab connects: plain text, then the connection's language. */
@@ -29,6 +30,8 @@
     reveal?: { id: number; seq: number };
     /** Only read to re-check when the setting changes; the check itself reads intellisense(). */
     warnUnknownNames?: boolean;
+    /** Focus the editor once it has loaded. An unconnected tab leaves focus in its connection picker (#218). */
+    autofocus?: boolean;
   } = $props();
 
   const MONACO_LANGUAGE: Record<QueryLanguage, string> = { sql: "tsql", cosmos: "cosmos-sql", pgsql: "pgsql" };
@@ -136,7 +139,7 @@
       // F5 and Ctrl+Enter, as in SSMS and Azure Data Studio.
       editor.addCommand(monaco.KeyCode.F5, run);
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, run);
-      editor.focus();
+      if (autofocus) editor.focus();
       loading = false;
       lintNow();
     });

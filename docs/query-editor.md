@@ -117,6 +117,8 @@ SQL Server reports 208 (invalid object name), 4104 (multi-part identifier could 
 
 New query with nothing selected (Ctrl+N, or the landing's New query) opens "Query N" with no connection (docs/landing.md). The editor is plain text, Run is disabled, and the IntelliSense status reads "IntelliSense: off until connected": no catalog or database list loads. Above the editor, "Not connected - choose a connection" shows Seek scoped to connections, the last used one pre-selected but never connected automatically. Choosing one connects the tab in place: title and text stay, the editor switches to the connection's language, and the catalog and database list load as for a tab opened on a node.
 
+An unconnected tab opens with focus in the picker, not the editor (#218): in Monaco, Tab and Shift+Tab indent rather than move focus, so a keyboard user could not get back to the picker. Esc in the picker, with nothing typed, moves to the editor. Monaco's own Ctrl+M toggles its Tab key between indenting and moving focus, for leaving the editor by keyboard.
+
 ## Settings
 
 ```

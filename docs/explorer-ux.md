@@ -140,6 +140,10 @@ Up/Down, Page Up/Down, Home/End move. Right expands (or steps into), Left collap
 
 Closing a dialog, a confirmation or a context menu puts focus back where it was when it opened (the tree, or the button that opened it), not on the page (#216). An item of a context menu that opens a dialog hands focus back to the tree first, so the dialog returns it there. Closing a tab from its x focuses the tab shown next.
 
+Focus stays on the tree itself; `aria-activedescendant` names the selected row, so rows never take focus and a click leaves no focus ring behind (#219). Arriving by keyboard (Tab, or Down from the filter) with nothing selected selects the first row in view. A click selects only its own row; Seek's Esc, a closing dialog or menu, and the window regaining focus focus the tree without selecting anything, so the landing stays.
+
+The splitter between the explorer and the content is a focusable separator: Left and Right move it 10px (50px with Shift), Home and End take the explorer to its narrowest (220px) and widest (the content keeps 240px). The width is saved as after a drag (#226).
+
 ## Out of scope for this change
 
 Display-name aliases, pipeline ordering with an Other divider, region chips. All on the canvas, all rejected or deferred.

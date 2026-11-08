@@ -92,9 +92,9 @@
 
   onDestroy(() => clearTimeout(timer));
 
-  /** Seek's Esc (docs/landing.md) hands focus to the tree. */
-  export function focus() {
-    tree?.focus();
+  /** Seek's Esc (docs/landing.md) hands focus to the tree; with pick false nothing gets selected, so the landing stays. */
+  export function focus(pick = true) {
+    tree?.focus(pick);
   }
 
   /** Selects a row and scrolls it into view: a new connection (#216). */
