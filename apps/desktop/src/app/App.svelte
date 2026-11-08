@@ -32,7 +32,7 @@
   import { loadUsage, recordUse, saveUsage, type Place } from "./usage";
   import { rowMenu, type RowMenuContext } from "./row-menu";
   import Workspace from "../query/Workspace.svelte";
-  import { preloadMonaco } from "../query/preload";
+  import { preloadMonaco, warmEditorWhenIdle } from "../query/preload";
   import { intellisense, syncCatalogs } from "../query/intellisense/shared";
   import { QueryWorkspace, type QueryTab } from "../query/store.svelte";
   import SettingsDialog from "./SettingsDialog.svelte";
@@ -326,6 +326,7 @@
       await finishBenchmark(await benchExpand(model, async () => (await tick(), await afterPaint())));
     }
     if (info.benchMode) return;
+    warmEditorWhenIdle();
     settings = await api!.settings();
     model.setEnvOrder(settings.explorer.envOrder);
     const current = await currentVersion();
