@@ -61,6 +61,10 @@
   let clientCert = $state(initial?.clientCertificateFile ?? "");
   // svelte-ignore state_referenced_locally
   let clientKey = $state(initial?.clientKeyFile ?? "");
+  // svelte-ignore state_referenced_locally
+  let awsProfile = $state(initial?.awsProfile ?? "");
+  // svelte-ignore state_referenced_locally
+  let awsRegion = $state(initial?.awsRegion ?? "");
   let secret = $state("");
 
   let busy = $state<"" | "testing" | "saving">("");
@@ -76,8 +80,10 @@
   const authOptions = $derived(described.auths);
   /** Client certificate sign-in (Postgres, #120): a certificate and key, and the key's passphrase as an optional secret. */
   const certAuth = $derived(auth === "certificate");
-  /** A user is required: a login's name, or the role a client certificate maps to. */
-  const login = $derived(auth === "sql" || auth === "password" || certAuth);
+  /** AWS IAM sign-in (Postgres on Amazon RDS, #121): a token from the AWS profile's credentials, so no secret. */
+  const awsAuth = $derived(auth === "awsIam");
+  /** A user is required: a login's name, the role a client certificate maps to, or the IAM database user. */
+  const login = $derived(auth === "sql" || auth === "password" || certAuth || awsAuth);
   const needsSecret = $derived(auth === "sql" || auth === "password" || auth === "key");
   const showSecret = $derived(needsSecret || certAuth);
   /** A .pfx or .p12 holds the key as well, so needs no key file. */
@@ -87,6 +93,10 @@
   /** Postgres signs Entra users in under their Entra name; blank means the name from the sign-in. */
   const entraUser = $derived(fields.entraUser && auth === "entra");
   const placeholder = $derived(described.endpointPlaceholder);
+  /** The region in an RDS server name (the certificate host name's, for a tunnel), as the sidecar reads it. */
+  const rdsRegion = $derived(
+    /^[^:]+\.[^.:]+\.([a-z]{2}(?:-[a-z]+)+-\d+)\.rds\.amazonaws\.com(?:\.cn)?\.?(?::\d+)?$/i.exec(certHost.trim() || endpoint.trim())?.[1]?.toLowerCase() ?? "",
+  );
   const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   /** Some kinds (Cosmos) allow skipping the check for a localhost emulator only (the sidecar refuses otherwise). */
   const trustWarning = $derived.by(() => {
@@ -96,7 +106,9 @@
         ? "your Microsoft Entra sign-in token, which could then be used against other Azure databases for up to an hour"
         : auth === "windows"
           ? "your queries and their results"
-          : "the password";
+          : awsAuth
+            ? "an IAM sign-in token, which could then be used against this database for up to 15 minutes"
+            : "the password";
     return `The certificate of ${endpoint.trim()} won't be checked, so anyone able to intercept the connection could pose as it and capture ${what}. Only trust certificates for servers you control. Where you can, use a certificate host name or file instead.`;
   });
 
@@ -106,7 +118,7 @@
 
   // A test result describes the settings it ran with: any edit to them makes it stale, so it goes (#263).
   $effect(() => {
-    void [kind, endpoint, auth, user, database, tenantId, clientId, trust, certHost, certFile, secret];
+    void [kind, endpoint, auth, user, database, tenantId, clientId, trust, certHost, certFile, awsProfile, awsRegion, secret];
     test = null;
   });
 
@@ -126,6 +138,8 @@
       certificateFile: fields.certificateOptions && certFile.trim() ? certFile.trim() : null,
       clientCertificateFile: certAuth && clientCert.trim() ? clientCert.trim() : null,
       clientKeyFile: certAuth && clientKey.trim() ? clientKey.trim() : null,
+      awsProfile: awsAuth && awsProfile.trim() ? awsProfile.trim() : null,
+      awsRegion: awsAuth && awsRegion.trim() ? awsRegion.trim() : null,
     };
   }
 
@@ -162,6 +176,7 @@
       return "Client id must be an app's Application (client) ID, a GUID such as 11111111-2222-3333-4444-555555555555";
     if (certAuth && !clientCert.trim()) return "Choose the client certificate file.";
     if (certAuth && !clientKey.trim() && !bundle) return "Choose the certificate's private key file, or use a .pfx file, which holds both.";
+    if (awsAuth && !awsRegion.trim() && !rdsRegion) return "Enter the AWS region: it can't be read from this server name.";
     if (fields.certificateOptions && trust && (certHost.trim() || certFile.trim()))
       return "Turn off Trust server certificate to use a certificate host name or file: trusting skips the checks they set up.";
     if (needsSecret && !secret && !keepsSavedSecret)
@@ -250,6 +265,13 @@
         <button type="button" onclick={() => browse("Private keys", ["key", "pem"], (p) => (clientKey = p))}>Browse...</button>
       </span>
     {/if}
+  {/if}
+
+  {#if awsAuth}
+    <label for="c-aws-profile">AWS profile <span class="muted">(optional)</span></label>
+    <input id="c-aws-profile" bind:value={awsProfile} placeholder="default" spellcheck="false" autocomplete="off" />
+    <label for="c-aws-region">Region</label>
+    <input id="c-aws-region" bind:value={awsRegion} placeholder={rdsRegion || "Required for this server name"} spellcheck="false" autocomplete="off" />
   {/if}
 
   {#if showSecret}

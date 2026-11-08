@@ -2,6 +2,30 @@
   "version": 1,
   "dependencies": {
     "net10.0-windows7.0": {
+      "AWSSDK.Core": {
+        "type": "Direct",
+        "requested": "[4.0.102.19, )",
+        "resolved": "4.0.102.19",
+        "contentHash": "Hb6P2ui6y0U+UNUjcC4ASFFoTLzCijhMzfOCXfoFTXq/o0YWQsO1oSH1NG2GQ9dlIT693xeeih0yAcfeL1dphg=="
+      },
+      "AWSSDK.SSO": {
+        "type": "Direct",
+        "requested": "[4.0.100.26, )",
+        "resolved": "4.0.100.26",
+        "contentHash": "ZFY+ijo5Uel3FnQcAkm9fAg+945HQrObdVwZJRaHgT/YTI2nRyrmPyDTHwN/+Oqh6I5kJE98nZYcvQ0fFzcfhQ==",
+        "dependencies": {
+          "AWSSDK.Core": "[4.0.102.19, 5.0.0)"
+        }
+      },
+      "AWSSDK.SSOOIDC": {
+        "type": "Direct",
+        "requested": "[4.0.100.25, )",
+        "resolved": "4.0.100.25",
+        "contentHash": "8S5FQw4kI91T7ApkIKLspRTRp5jUTamiu5sdYEM/o5CeoYALPg/4+TtbQTcfhn7mzTg5slptlLS/ivznHkn6zg==",
+        "dependencies": {
+          "AWSSDK.Core": "[4.0.102.19, 5.0.0)"
+        }
+      },
       "Azure.Identity": {
         "type": "Direct",
         "requested": "[1.21.0, )",

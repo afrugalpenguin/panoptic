@@ -129,7 +129,34 @@ public sealed class TreeService(ConfigStore store, IReadOnlyDictionary<string, I
             throw new RpcException(RpcException.InvalidParams, "The client id must be an app's Application (client) ID, a GUID such as 11111111-2222-3333-4444-555555555555");
         ValidateCertificateOptions(connection, kind);
         ValidateClientCertificate(connection);
+        ValidateAwsIam(connection);
         return backend;
+    }
+
+    /// <summary>
+    /// AWS IAM sign-in (#121): a user, a profile name that can be in the AWS config, and a region, set or read from an
+    /// RDS host name. Other sign-ins take neither AWS field, so nothing is sent that was not meant.
+    /// </summary>
+    private static void ValidateAwsIam(ConnectionConfig c)
+    {
+        var profile = c.AwsProfile?.Trim();
+        var region = c.AwsRegion?.Trim();
+        static RpcException Bad(string message) => new(RpcException.InvalidParams, message);
+        if (c.Auth != AuthKinds.AwsIam)
+        {
+            if (!string.IsNullOrEmpty(profile) || !string.IsNullOrEmpty(region))
+                throw Bad("An AWS profile and region are only used with AWS IAM sign-in.");
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(c.User)) throw Bad("User is required: the database user the IAM policy lets you connect as.");
+        if (!string.IsNullOrEmpty(profile) && (profile.Length > 128 || profile.Any(ch => char.IsWhiteSpace(ch) || char.IsControl(ch) || ch is '[' or ']' or '#' or ';')))
+            throw Bad($"The AWS profile '{profile}' is not a valid profile name.");
+        if (!string.IsNullOrEmpty(region))
+        {
+            if (!Backends.RdsIam.IsRegion(region)) throw Bad($"The AWS region '{region}' is not a region name, such as eu-west-2.");
+        }
+        else if (Backends.RdsIam.Region(c) is null)
+            throw Bad($"Enter the AWS region: it can't be read from the server name {Backends.RdsIam.SigningTarget(c).Host}.");
     }
 
     /// <summary>

@@ -113,6 +113,7 @@ public static class NodeErrors
         AuthKinds.Entra => string.IsNullOrWhiteSpace(c.TenantId) ? "Entra ID (default tenant)" : $"Entra ID (tenant {c.TenantId})",
         AuthKinds.Sql => $"SQL login {c.User}",
         AuthKinds.Password => $"User {c.User}",
+        AuthKinds.AwsIam => string.IsNullOrWhiteSpace(c.AwsProfile) ? $"User {c.User}, AWS IAM (default credentials)" : $"User {c.User}, AWS IAM (profile {c.AwsProfile.Trim()})",
         AuthKinds.Key => "Account key",
         AuthKinds.EntraKeys => string.IsNullOrWhiteSpace(c.TenantId) ? "Account key fetched with Entra ID (default tenant)" : $"Account key fetched with Entra ID (tenant {c.TenantId})",
         AuthKinds.Windows => $"Windows ({Environment.UserDomainName}\\{Environment.UserName})",

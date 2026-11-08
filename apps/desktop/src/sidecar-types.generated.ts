@@ -110,6 +110,8 @@ export interface ConnectionConfig {
   certificateFile?: string | null;
   clientCertificateFile?: string | null;
   clientKeyFile?: string | null;
+  awsProfile?: string | null;
+  awsRegion?: string | null;
 }
 
 export interface ConnectionFields {

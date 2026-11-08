@@ -48,6 +48,8 @@ public static class AuthKinds
     public const string Password = "password";
     /// <summary>A client certificate and key (mutual TLS, Postgres). The secret is the key's passphrase, if it has one.</summary>
     public const string Certificate = "certificate";
+    /// <summary>An Amazon RDS IAM token from AWS credentials (Postgres, #121). No secret is stored.</summary>
+    public const string AwsIam = "awsIam";
 
     /// <summary>An auth as the connection dialog lists it.</summary>
     public static AuthOption Option(string id) => new(id, id switch
@@ -59,6 +61,7 @@ public static class AuthKinds
         Windows => "Windows",
         Password => "Username and password",
         Certificate => "Client certificate",
+        AwsIam => "AWS IAM (RDS)",
         _ => id,
     });
 }
@@ -97,6 +100,8 @@ public sealed record ConnectionFields(bool Database, bool CertificateOptions, bo
 /// <param name="Endpoint">SQL Server host[,port], Postgres host[:port] or Cosmos account URI.</param>
 /// <param name="Database">Optional: restrict the tree to one database (needed for contained users).</param>
 /// <param name="TrustServerCertificate">SQL and Postgres: encrypt without validating the certificate. Cosmos: allowed only for a localhost emulator.</param>
+/// <param name="AwsProfile">AWS IAM only: the profile in the shared AWS config. Blank: the SDK's default credentials.</param>
+/// <param name="AwsRegion">AWS IAM only: the region the token is signed for. Blank: read from the RDS host name.</param>
 public sealed record ConnectionConfig(
     string Id,
     string Name,
@@ -111,7 +116,9 @@ public sealed record ConnectionConfig(
     string? CertificateHostName = null,
     string? CertificateFile = null,
     string? ClientCertificateFile = null,
-    string? ClientKeyFile = null);
+    string? ClientKeyFile = null,
+    string? AwsProfile = null,
+    string? AwsRegion = null);
 
 public sealed record EnvironmentConfig(string Id, string Name, string Color, bool ReadOnly, List<ConnectionConfig> Connections);
 
