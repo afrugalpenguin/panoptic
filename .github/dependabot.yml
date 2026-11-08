@@ -12,6 +12,10 @@ multi-ecosystem-groups:
     schedule:
       interval: weekly
       day: monday
+    # Dependabot only accepts commit-message on the group, not on its member updates.
+    commit-message:
+      prefix: build
+      include: scope
 
 updates:
   - package-ecosystem: nuget
@@ -36,18 +40,12 @@ updates:
     ignore:
       - dependency-name: typescript
         update-types: ["version-update:semver-major"]
-    commit-message:
-      prefix: build
-      include: scope
     labels: [dependencies]
 
   - package-ecosystem: cargo
     directory: /apps/desktop/src-tauri
     multi-ecosystem-group: app
     patterns: ["*"]
-    commit-message:
-      prefix: build
-      include: scope
     labels: [dependencies]
 
   - package-ecosystem: github-actions
