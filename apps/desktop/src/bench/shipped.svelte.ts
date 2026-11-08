@@ -21,20 +21,25 @@ export interface BenchTree {
 /** Loads the root and opens every environment (Expand all), ready to mount. */
 export async function createTree(source: TreeSource): Promise<BenchTree> {
   let live = false;
+  // Raw, as App.svelte holds them: a deep $state proxy over 50k rows made every change cost about 100 ms in the
+  // bench that the app never pays (#195).
+  let rows = $state.raw<Row[]>([]);
   const model: TreeModel = new TreeModel(source.load, () => {
-    if (live) props.rows = model.rows();
+    if (live) rows = model.rows();
   });
-  const props = $state({
+  const props = {
     model,
-    rows: [] as Row[],
+    get rows() {
+      return rows;
+    },
     selectedKey: undefined as string | undefined,
     onContextMenu: () => {},
     onActivate: () => {},
     onOpenProblem: () => {},
-  });
+  };
   await model.loadRoot();
   await model.expandEnvironments();
-  props.rows = model.rows();
+  rows = model.rows();
   let component: ReturnType<typeof mount> | undefined;
   return {
     model,
@@ -46,7 +51,7 @@ export async function createTree(source: TreeSource): Promise<BenchTree> {
     },
     setLive: (on) => (live = on),
     render: () => {
-      props.rows = model.rows();
+      rows = model.rows();
       flushSync();
     },
     destroy: () => component && unmount(component),
