@@ -21,6 +21,7 @@
     onActivate,
     onOpenProblem,
     onMoveConnection,
+    onReorderEnvironments,
     disconnected = false,
     showKindBadge = true,
     rowFont = "mono",
@@ -42,7 +43,8 @@
     onContextMenu: (row: Row, x: number, y: number) => void;
     onActivate: (row: Row) => void;
     onOpenProblem: (parentId: string) => void;
-    onMoveConnection?: (connectionId: string, environmentId: string | null) => void;
+    onMoveConnection?: (connectionId: string, environmentId: string | null, beforeId?: string | null) => void;
+    onReorderEnvironments?: (envOrder: string[]) => void;
     disconnected?: boolean;
     showKindBadge?: boolean;
     rowFont?: "mono" | "ui";
@@ -134,6 +136,7 @@
       {onActivate}
       {onOpenProblem}
       {onMoveConnection}
+      {onReorderEnvironments}
       {disconnected}
       {showKindBadge}
       {rowFont}

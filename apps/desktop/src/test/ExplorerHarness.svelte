@@ -6,7 +6,20 @@
   import Explorer from "../app/Explorer.svelte";
   import { TreeModel, type EngineSummary, type ExplorerSummary, type Row } from "../app/tree-model";
 
-  let { nodes, width, expand = [] }: { nodes: Record<string, TreeNode[]>; width: number; expand?: string[] } = $props();
+  let {
+    nodes,
+    width,
+    expand = [],
+    onMoveConnection,
+    onReorderEnvironments,
+  }: {
+    nodes: Record<string, TreeNode[]>;
+    width: number;
+    expand?: string[];
+    /** Drag and drop and Alt+Up/Down: recorded by the test, not saved. */
+    onMoveConnection?: (connectionId: string, environmentId: string | null, beforeId?: string | null) => void;
+    onReorderEnvironments?: (envOrder: string[]) => void;
+  } = $props();
 
   let rows = $state.raw<Row[]>([]);
   let engines = $state.raw<EngineSummary[]>([]);
@@ -50,6 +63,8 @@
     onContextMenu={noop}
     onActivate={(r) => r.type === "node" && model.toggle(r.node.id)}
     onOpenProblem={noop}
+    {onMoveConnection}
+    {onReorderEnvironments}
     connected
     onNewConnection={noop}
     onNewEnvironment={noop}

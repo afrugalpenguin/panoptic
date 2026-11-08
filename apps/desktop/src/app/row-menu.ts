@@ -19,6 +19,8 @@ export interface RowMenuContext {
   labels: Record<string, string>;
   /** Environment ids in the tree's order, for Move up and Move down. */
   envOrder: string[];
+  /** Connections in no environment, in order, for a loose connection's Move up and Move down. */
+  looseConnections: ConnectionConfig[];
   environment: (id: string) => EnvironmentConfig | undefined;
   connection: (id: string) => FoundConnection | undefined;
   /** Writes text to the clipboard, straight from the click. */
@@ -39,6 +41,8 @@ export interface RowMenuContext {
   editConnection: (found: FoundConnection) => void;
   /** Move to environment...: the picker dialog. */
   moveConnection: (found: FoundConnection) => void;
+  /** Move up (-1) or Move down (1) within the connection's environment, or within none. */
+  stepConnection: (connectionId: string, by: -1 | 1) => void;
   removeFromEnvironment: (connectionId: string) => void;
   /** Asks, removes and offers Undo. */
   removeConnection: (found: FoundConnection) => void;
@@ -77,6 +81,10 @@ export function rowMenu(row: Row, ctx: RowMenuContext): MenuEntry[] {
       };
       items.push(...actionItems(n, ctx.labels, { ...on, refresh }));
       items.push({ label: "Move to environment...", run: () => found && ctx.moveConnection(found) });
+      const group = found ? (found.env?.connections ?? ctx.looseConnections) : [];
+      const position = found ? group.findIndex((c) => c.id === found.connection.id) : -1;
+      items.push({ label: "Move up", disabled: position <= 0, run: () => found && ctx.stepConnection(found.connection.id, -1) });
+      items.push({ label: "Move down", disabled: position < 0 || position >= group.length - 1, run: () => found && ctx.stepConnection(found.connection.id, 1) });
       if (found?.env) items.push({ label: "Remove from environment", run: () => ctx.removeFromEnvironment(found.connection.id) });
       items.push("separator");
       items.push({ label: "Remove connection", danger: true, run: () => found && ctx.removeConnection(found) });

@@ -125,6 +125,9 @@ public sealed record AppConfig(List<EnvironmentConfig> Environments, List<Connec
 
 /// <param name="EnvironmentId">Null: the connection is in no environment.</param>
 public sealed record SaveConnectionParams(string? EnvironmentId, ConnectionConfig Connection, string? Secret);
+/// <param name="EnvironmentId">Null: into no environment.</param>
+/// <param name="BeforeId">The connection to place it before; null, or one not in that list, appends.</param>
+public sealed record MoveConnectionParams(string ConnectionId, string? EnvironmentId, string? BeforeId);
 public sealed record TestConnectionParams(ConnectionConfig Connection, string? Secret);
 public sealed record IdParams(string Id);
 /// <summary>import.scanFile: a file the user picked to import from (#25).</summary>
@@ -279,6 +282,7 @@ public sealed record StoreFile(AppConfig Config, Dictionary<string, string> Secr
 [JsonSerializable(typeof(EnvironmentConfig))]
 [JsonSerializable(typeof(StoreFile))]
 [JsonSerializable(typeof(SaveConnectionParams))]
+[JsonSerializable(typeof(MoveConnectionParams))]
 [JsonSerializable(typeof(TestConnectionParams))]
 [JsonSerializable(typeof(IdParams))]
 [JsonSerializable(typeof(PurgeSecretsParams))]

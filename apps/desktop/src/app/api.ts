@@ -53,6 +53,9 @@ export function createApi(rpc: RpcClient) {
     /** environmentId: null puts it in no environment; another one moves it. secret: undefined keeps the stored one, "" clears it. */
     saveConnection: (environmentId: string | null, connection: ConnectionConfig, secret?: string) =>
       rpc.request<AppConfig>("config.saveConnection", { environmentId, connection, secret: secret ?? null }),
+    /** Moves a connection, unchanged, into an environment or none (null), before beforeId there; null appends (#63). */
+    moveConnection: (connectionId: string, environmentId: string | null, beforeId: string | null) =>
+      rpc.request<AppConfig>("config.moveConnection", { connectionId, environmentId, beforeId } satisfies Sidecar.MoveConnectionParams),
     deleteConnection: (id: string) => rpc.request<AppConfig>("config.deleteConnection", { id }),
     /** Undo of a delete: writes back the config from before it; the sidecar kept the deleted connections' secrets. */
     restoreConfig: (config: AppConfig) => rpc.request<AppConfig>("config.restore", config),

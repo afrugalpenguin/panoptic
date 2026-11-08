@@ -1,0 +1,1 @@
+Added: drag a connection onto another one in the explorer to put it before or after it, in any environment, and drag an environment to reorder the environments. A line shows where it will land. Alt+Up and Alt+Down, and Move up and Move down on a connection's menu, do the same from the keyboard.

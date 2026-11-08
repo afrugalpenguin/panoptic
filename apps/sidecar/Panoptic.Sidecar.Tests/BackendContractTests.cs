@@ -312,6 +312,28 @@ public sealed class BackendContractTests : IDisposable
     }
 
     [Fact]
+    public async Task Move_connection_places_it_before_a_sibling_and_returns_the_config()
+    {
+        var sidecar = Sidecar();
+
+        var config = await Call(sidecar, "config.moveConnection", new { connectionId = "b", environmentId = "e", beforeId = "f" });
+
+        var ids = config.GetProperty("environments")[0].GetProperty("connections").EnumerateArray().Select(c => c.GetProperty("id").GetString());
+        Assert.Equal(["b", "f"], ids);
+    }
+
+    [Fact]
+    public async Task A_connection_moved_out_of_a_read_only_environment_by_move_connection_is_not_read_only()
+    {
+        var sidecar = Sidecar(readOnly: true);
+        await Call(sidecar, "config.moveConnection", new { connectionId = "f", environmentId = (string?)null, beforeId = (string?)null });
+
+        var summary = await Call(sidecar, "query.execute", new { queryId = "q10", nodeId = Widgets, text = "write something" });
+
+        Assert.Equal(JsonValueKind.Null, summary.TryGetProperty("error", out var error) ? error.ValueKind : JsonValueKind.Null);
+    }
+
+    [Fact]
     public async Task Actions_are_labelled_and_invoked_by_the_backend()
     {
         var sidecar = Sidecar();
