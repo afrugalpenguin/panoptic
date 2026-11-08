@@ -26,6 +26,17 @@ A pull request that changes what users see adds one file to `changes/`, one line
 
 Never commit real server names, tenants, credentials or connection details, in code, tests, docs or screenshots. Test data is synthetic: use names under `.example.test`.
 
+## Dependency versions
+
+In `package.json`, use caret ranges (`^1.2.3`); `pnpm-lock.yaml` holds the exact versions, and Dependabot raises the updates. Pin an exact version only when tooling needs it, and give the reason here:
+
+- `vitest` and `@vitest/browser-playwright`: the browser provider requires exactly its own vitest version.
+- `playwright`: CI downloads the Chromium build that matches it, so a new browser comes in only as a deliberate update.
+
+`typescript` is a caret range too: it stays on 6 because `^6` excludes 7, and Dependabot ignores TypeScript majors until svelte-check supports 7. TypeScript minor releases can break type checks, but they arrive as Dependabot pull requests that CI checks like any other update.
+
+Dependabot puts npm and cargo updates in one pull request, so the Tauri JS packages and Rust crates move together.
+
 ## Decisions
 
 Architecture decisions are recorded in [docs/adr/README.md](docs/adr/README.md). Read the relevant ADR before changing something it covers.
