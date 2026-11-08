@@ -1,0 +1,21 @@
+[
+  ["customer", "customer"],
+  ["_x1", "_x1"],
+  ["name", "name"],
+  ["comment", "comment"],
+  ["value", "value"],
+  ["json", "\"json\""],
+  ["order", "\"order\""],
+  ["user", "\"user\""],
+  ["select", "\"select\""],
+  ["position", "\"position\""],
+  ["timestamp", "\"timestamp\""],
+  ["Customer", "\"Customer\""],
+  ["Order Lines", "\"Order Lines\""],
+  ["a\"b", "\"a\"\"b\""],
+  ["1x", "\"1x\""],
+  ["é", "\"é\""],
+  ["a$b", "\"a$b\""],
+  ["a\n", "\"a\n\""],
+  ["", "\"\""]
+]
