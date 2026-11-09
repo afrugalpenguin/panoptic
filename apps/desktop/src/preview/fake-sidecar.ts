@@ -216,6 +216,13 @@ function languageOf(nodeId: string): string {
   return kind === "cosmos" ? "cosmos" : kind === "postgres" ? "pgsql" : "sql";
 }
 
+let settings = {
+  updateCheck: "never",
+  explorer: { showKindBadge: true, rowFont: "mono", envOrder: [] as string[] },
+  editor: { intellisense: true, catalogSampleDocs: 50, autoRefreshOnDdl: true, warnUnknownNames: true, maxRows: 100_000 },
+  lastSeenVersion: VERSION,
+};
+
 function handle(req: Request): unknown {
   const p = req.params ?? {};
   switch (req.method) {
@@ -223,14 +230,20 @@ function handle(req: Request): unknown {
       return { startupMs: 180, version: VERSION, mode: "preview", pid: 1 };
     case "config.get":
       return config;
+    // The environment pane saves its properties as they change (docs/environment-pane.md).
+    case "config.saveEnvironment": {
+      const env = p as unknown as EnvironmentConfig;
+      const i = config.environments.findIndex((e) => e.id === env.id);
+      if (i >= 0) config.environments[i] = env;
+      else config.environments.push(env);
+      return config;
+    }
     case "settings.get":
+      return settings;
+    // Kept, so moving an environment in the preview changes its order.
     case "settings.save":
-      return {
-        updateCheck: "never",
-        explorer: { showKindBadge: true, rowFont: "mono", envOrder: [] },
-        editor: { intellisense: true, catalogSampleDocs: 50, autoRefreshOnDdl: true, warnUnknownNames: true, maxRows: 100_000 },
-        lastSeenVersion: VERSION,
-      };
+      settings = p as unknown as typeof settings;
+      return settings;
     case "backends.describe":
       return BUILTIN_KINDS;
     case "node.actionLabels":

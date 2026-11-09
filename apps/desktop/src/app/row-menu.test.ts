@@ -35,7 +35,6 @@ function context(over: Partial<RowMenuContext> = {}) {
     refreshQueryTabs: record("refreshQueryTabs"),
     invoke: record("invoke"),
     newConnection: record("newConnection"),
-    editEnvironment: record("editEnvironment"),
     moveEnvironment: record("moveEnvironment"),
     deleteEnvironment: record("deleteEnvironment"),
     editConnection: record("editConnection"),
@@ -76,20 +75,20 @@ describe("rowMenu", () => {
     expect(calls).toEqual(["retry(p)"]);
   });
 
-  it("an environment edits, reorders, refreshes and deletes itself; Move up is off for the first", () => {
+  it("an environment reorders, refreshes and deletes itself, and edits in its pane not a dialog; Move up is off for the first", () => {
     const { ctx, calls } = context();
     const items = rowMenu(nodeRow(node({ id: "env:prod", kind: "environment", actions: ["refresh"], meta: { environmentId: "prod" } })), ctx);
     expect(labels(items)).toEqual([
-      "New connection...", "Edit environment...", "Move up [disabled]", "Move down", "Refresh", "---", "Delete environment [danger]",
+      "New connection...", "Move up [disabled]", "Move down", "Refresh", "---", "Delete environment [danger]",
     ]);
-    for (const label of ["New connection...", "Edit environment...", "Move down", "Refresh", "Delete environment"]) run(items, label);
-    expect(calls).toEqual(["newConnection(prod)", "editEnvironment(prod)", "moveEnvironment(prod,1)", "refresh(env:prod)", "deleteEnvironment(prod)"]);
+    for (const label of ["New connection...", "Move down", "Refresh", "Delete environment"]) run(items, label);
+    expect(calls).toEqual(["newConnection(prod)", "moveEnvironment(prod,1)", "refresh(env:prod)", "deleteEnvironment(prod)"]);
   });
 
   it("the last environment cannot move down", () => {
     const { ctx } = context();
     const items = rowMenu(nodeRow(node({ id: "env:uat", kind: "environment", meta: { environmentId: "uat" } })), ctx);
-    expect(labels(items).slice(2, 4)).toEqual(["Move up", "Move down [disabled]"]);
+    expect(labels(items).slice(1, 3)).toEqual(["Move up", "Move down [disabled]"]);
   });
 
   it("a connection edits, queries, moves and removes itself; its refresh also refreshes its query tabs", () => {

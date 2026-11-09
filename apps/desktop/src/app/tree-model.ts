@@ -172,6 +172,14 @@ export interface EngineSummary {
   count: number;
 }
 
+/** A connection in an environment's detail pane: its node id, engine, badge and endpoint segments. */
+export interface EnvConnection {
+  id: string;
+  kind: string;
+  badge: KindBadge;
+  label: LabelSegments;
+}
+
 /** The explorer footer's totals: environments and connections, and how many connections the filters leave. */
 export interface ExplorerSummary {
   environments: number;
@@ -295,6 +303,19 @@ export class TreeModel {
   /** The root's connections in no environment. */
   looseIds(): string[] {
     return this.childIds("").filter((id) => this.nodes.get(id)?.kind === "connection");
+  }
+
+  /**
+   * An environment's connections as the environment detail pane lists them (docs/environment-pane.md): in the tree's
+   * order, unfiltered and whether or not the environment is open, with the tree's label segments and engine badge.
+   */
+  envConnections(envNodeId: string): EnvConnection[] {
+    return this.childIds(envNodeId).flatMap((id) => {
+      const node = this.nodes.get(id);
+      if (node?.kind !== "connection") return [];
+      const kind = node.meta?.connectionKind ?? node.icon;
+      return [{ id, kind, badge: kindBadge(kind), label: this.labels.get(id) ?? { prefix: "", core: node.label, suffix: "" } }];
+    });
   }
 
   isStale(id: string): boolean {

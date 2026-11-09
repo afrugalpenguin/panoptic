@@ -16,6 +16,7 @@
   import ConnectionDialog from "./ConnectionDialog.svelte";
   import ContextMenu, { type MenuItem } from "./ContextMenu.svelte";
   import DetailPane from "./DetailPane.svelte";
+  import type { EnvironmentPaneProps } from "./env-pane";
   import EnvironmentDialog from "./EnvironmentDialog.svelte";
   import ImportDialog from "./ImportDialog.svelte";
   import BackupImportDialog from "./BackupImportDialog.svelte";
@@ -69,7 +70,7 @@
   /** Connection kinds as the sidecar describes them (backends.describe). */
   let kinds = $state.raw<KindDescription[]>([]);
   let dialog = $state<
-    | { kind: "environment"; initial?: EnvironmentConfig }
+    | { kind: "environment" }
     | { kind: "connection"; environmentId: string | null; initial?: ConnectionConfig }
     | { kind: "move"; connection: ConnectionConfig; from?: string }
     | { kind: "import" }
@@ -503,6 +504,57 @@
     undoDelete.offer(undoLabel, prior, connectionIds);
   }
 
+  function deleteEnvironment(env: EnvironmentConfig) {
+    return deleteConfig(
+      confirmText("environment", env.name, env.connections.length),
+      `Deleted environment ${env.name}`,
+      env.connections.map((c) => c.id),
+      () => api!.deleteEnvironment(env.id),
+    );
+  }
+
+  /** The selected environment's detail pane (docs/environment-pane.md); undefined for any other row. */
+  function environmentPane(row: Row): EnvironmentPaneProps | undefined {
+    if (row.type !== "node" || row.node.kind !== "environment") return undefined;
+    const env = envOf(row.node.meta?.environmentId ?? "");
+    if (!env) return undefined;
+    const envNodeId = row.node.id;
+    const order = environmentOrder(settings.explorer.envOrder, config.environments.map((e) => e.id));
+    return {
+      env,
+      position: order.indexOf(env.id) + 1,
+      total: order.length,
+      // Reads rows so the list is rebuilt, and timed again, after every tree change.
+      connections: () => (void rows, model.envConnections(envNodeId)),
+      onSave: async (next) => configChanged(await api!.saveEnvironment(next)),
+      onMove: (by) => void moveEnv(env.id, by),
+      onNewConnection: () => sidecar === "connected" && addConnection(env.id),
+      onRefresh: () => void model.refresh(envNodeId),
+      onDelete: () => void deleteEnvironment(env),
+      onSelectConnection: (id) => void selectConnection(envNodeId, id, false),
+      onExpandConnection: (id) => void selectConnection(envNodeId, id, true),
+      onConnectionMenu: (id, x, y) => void connectionMenu(envNodeId, id, x, y),
+    };
+  }
+
+  /** A connection row in the environment pane: selects it in the tree as a click there would, opening its environment first. */
+  async function selectConnection(envNodeId: string, id: string, expand: boolean) {
+    await model.expand(envNodeId);
+    selectedKey = id;
+    if (expand) await model.expand(id);
+    await tick();
+    explorer?.reveal(id);
+    explorer?.focus(false);
+  }
+
+  /** Right-click on a connection in the environment pane: the tree's menu for it. Its row exists once the environment is open. */
+  async function connectionMenu(envNodeId: string, id: string, x: number, y: number) {
+    await model.expand(envNodeId);
+    await tick();
+    const row = rows.find((r) => r.key === id);
+    if (row) openMenu(row, x, y);
+  }
+
   function openMenu(row: Row, x: number, y: number) {
     const items = rowMenu(row, menuContext());
     if (items.length) menu = { x, y, items };
@@ -524,15 +576,8 @@
       refreshQueryTabs,
       invoke: invokeAction,
       newConnection: addConnection,
-      editEnvironment: (env) => (dialog = { kind: "environment", initial: env }),
       moveEnvironment: moveEnv,
-      deleteEnvironment: (env) =>
-        deleteConfig(
-          confirmText("environment", env.name, env.connections.length),
-          `Deleted environment ${env.name}`,
-          env.connections.map((c) => c.id),
-          () => api!.deleteEnvironment(env.id),
-        ),
+      deleteEnvironment,
       editConnection: (found) => (dialog = { kind: "connection", environmentId: found.env?.id ?? null, initial: found.connection }),
       moveConnection: (found) => (dialog = { kind: "move", connection: found.connection, from: found.env?.id }),
       stepConnection: (connectionId, by) => {
@@ -845,7 +890,7 @@
         onRestart={restartEngine}
       />
     {:else}
-      <DetailPane row={selectedRow} actions={rowMenu(selectedRow, menuContext())} />
+      <DetailPane row={selectedRow} actions={rowMenu(selectedRow, menuContext())} environment={environmentPane(selectedRow)} />
     {/if}
   </main>
 
@@ -875,7 +920,6 @@
 
 {#if dialog?.kind === "environment"}
   <EnvironmentDialog
-    initial={dialog.initial}
     onSave={async (env) => configChanged(await api!.saveEnvironment(env))}
     onClose={() => (dialog = undefined)}
   />

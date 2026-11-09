@@ -1,12 +1,15 @@
 <script lang="ts">
   import { detailFields } from "./detail-fields";
+  import type { EnvironmentPaneProps } from "./env-pane";
+  import EnvironmentPane from "./EnvironmentPane.svelte";
   import Icon from "./Icon.svelte";
   import type { MenuEntry } from "./row-menu";
   import type { Row } from "./tree-model";
 
   // Shown for a selected row; with nothing selected App shows the landing instead (docs/landing.md).
-  // actions: the row's right-click menu (rowMenu), offered as buttons too.
-  let { row, actions = [] }: { row: Row; actions?: MenuEntry[] } = $props();
+  // actions: the row's right-click menu (rowMenu), offered as buttons too. environment: the selected environment's
+  // pane (docs/environment-pane.md), which replaces the buttons and fields for an environment.
+  let { row, actions = [], environment }: { row: Row; actions?: MenuEntry[]; environment?: EnvironmentPaneProps } = $props();
 
   const node = $derived(row.type === "node" ? row.node : undefined);
   const fields = $derived(node ? detailFields(node) : []);
@@ -24,6 +27,9 @@
   const label = (key: string) => key.replace(/([A-Z])/g, " $1").toLowerCase();
 </script>
 
+{#if environment && row.type === "node" && row.node.kind === "environment"}
+  <EnvironmentPane {...environment} />
+{:else}
 <section class="detail">
   {#if row.type === "group"}
     <header><h2>Ungrouped</h2></header>
@@ -35,11 +41,7 @@
     <p class="muted">Press F5 on the parent to retry.</p>
   {:else if node}
     <header>
-      {#if node.kind === "environment"}
-        <span class="swatch" style:background={node.meta?.color}></span>
-      {:else}
-        <Icon icon={node.icon} />
-      {/if}
+      <Icon icon={node.icon} />
       <h2>{node.label}</h2>
       <span class="kind">{label(node.kind)}</span>
     </header>
@@ -54,7 +56,7 @@
       <dl>
         {#each fields as f}
           <dt>{f.label}</dt>
-          <dd>{#if f.swatch}<span class="swatch inline" style:background={f.swatch}></span>{/if}{f.value}</dd>
+          <dd>{f.value}</dd>
         {/each}
       </dl>
     {/if}
@@ -63,6 +65,7 @@
     {/if}
   {/if}
 </section>
+{/if}
 
 <style>
   .detail {
@@ -85,21 +88,11 @@
     color: var(--text-muted);
     font-size: var(--fs-sm);
   }
-  .swatch {
-    width: 12px;
-    height: 12px;
-    border-radius: 3px;
-  }
   .actions {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
     margin: 14px 0 0;
-  }
-  .swatch.inline {
-    display: inline-block;
-    margin-right: 6px;
-    vertical-align: -1px;
   }
   dl {
     display: grid;

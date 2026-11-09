@@ -34,7 +34,6 @@ export interface RowMenuContext {
   refreshQueryTabs: (nodeId: string) => void;
   invoke: (node: TreeNode, actionId: string) => void;
   newConnection: (environmentId?: string) => void;
-  editEnvironment: (env: EnvironmentConfig) => void;
   moveEnvironment: (environmentId: string, by: -1 | 1) => void;
   /** Asks, deletes and offers Undo. */
   deleteEnvironment: (env: EnvironmentConfig) => void;
@@ -70,7 +69,8 @@ export function rowMenu(row: Row, ctx: RowMenuContext): MenuEntry[] {
       copy: ctx.copy,
     };
     items.push(...queryItems(n, ctx.labels, on));
-    // Environments and connections are Panoptic's own config, so their menus also edit, move and delete them.
+    // Environments and connections are Panoptic's own config, so their menus also move and delete them, and edit a
+    // connection; an environment's properties edit in place in its detail pane (docs/environment-pane.md).
     if (n.kind === "environment") items.push(...environmentItems(n, ctx));
     else if (n.kind === "connection") {
       const found = ctx.connection(n.meta!.connectionId);
@@ -98,7 +98,6 @@ function environmentItems(n: TreeNode, ctx: RowMenuContext): MenuEntry[] {
   const position = env ? ctx.envOrder.indexOf(env.id) : -1;
   return [
     { label: "New connection...", run: () => ctx.newConnection(env?.id) },
-    { label: "Edit environment...", run: () => env && ctx.editEnvironment(env) },
     { label: "Move up", disabled: position <= 0, run: () => env && ctx.moveEnvironment(env.id, -1) },
     { label: "Move down", disabled: position < 0 || position >= ctx.envOrder.length - 1, run: () => env && ctx.moveEnvironment(env.id, 1) },
     { label: actionLabel("refresh", ctx.labels), run: () => ctx.refresh(n.id) },

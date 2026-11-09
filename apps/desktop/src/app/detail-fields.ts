@@ -5,17 +5,13 @@ import { kindBadge, kindDescription } from "./kinds";
 export interface DetailField {
   label: string;
   value: string;
-  /** A colour to show as a swatch beside the value. */
-  swatch?: string;
 }
 
 /** Meta that is for the app, not for reading: ids, editor text, and Cosmos JSON (shown as a block of its own). */
 const HIDDEN = new Set(["json", "environmentId", "connectionId", "dragText", "copyText"]);
 
+// An environment has a pane of its own (EnvironmentPane.svelte), so none of its keys are labelled here.
 const LABELS: Record<string, string> = {
-  color: "Colour",
-  readOnly: "Read-only",
-  connectionCount: "Connections",
   connectionKind: "Engine",
   trustServerCertificate: "Trust server certificate",
 };
@@ -32,8 +28,7 @@ export function detailFields(node: TreeNode): DetailField[] {
   for (const [key, raw] of Object.entries(meta)) {
     if (HIDDEN.has(key)) continue;
     const value = raw === "true" ? "Yes" : raw === "false" ? "No" : raw;
-    if (key === "color") fields.push({ label: LABELS.color, value, swatch: raw });
-    else if (key === "connectionKind") fields.push({ label: LABELS.connectionKind, value: kindBadge(raw).name });
+    if (key === "connectionKind") fields.push({ label: LABELS.connectionKind, value: kindBadge(raw).name });
     // "Server", "Account URI": what the connection dialog calls this kind's endpoint.
     else if (key === "endpoint") fields.push({ label: kindDescription(meta.connectionKind ?? "")?.endpointLabel ?? "Server", value });
     else fields.push({ label: LABELS[key] ?? sentence(key), value });
