@@ -717,7 +717,7 @@ describe("connections without an environment", () => {
     await f.model.preload(f.model.envIds());
     expect(f.model.isExpanded("env:dev")).toBe(false);
     const list = f.model.envConnections("env:dev");
-    expect(list.map((c) => [c.id, c.kind, c.badge.letters])).toEqual([["conn:a", "sql", "S"], ["conn:b", "sql", "S"], ["conn:c", "cosmos", "C"]]);
+    expect(list.map((c) => [c.id, c.connectionId, c.kind, c.badge.letters])).toEqual([["conn:a", "a", "sql", "S"], ["conn:b", "b", "sql", "S"], ["conn:c", "c", "cosmos", "C"]]);
     expect(list[0].label).toEqual({ prefix: "dev-", core: "a", suffix: ".example.test" });
     expect(f.model.envConnections("env:nope")).toEqual([]);
   });

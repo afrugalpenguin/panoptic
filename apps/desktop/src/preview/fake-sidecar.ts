@@ -216,6 +216,24 @@ function languageOf(nodeId: string): string {
   return kind === "cosmos" ? "cosmos" : kind === "postgres" ? "pgsql" : "sql";
 }
 
+// Synthetic reachability for the environment pane: one server down, the Cosmos accounts slow, the rest a few ms. Each
+// answer waits its own round trip, so the rows fill in one by one as they do in the app.
+const DOWN = new Set(["us-prod-sql-01"]);
+async function probe(ids: string[]) {
+  return Promise.all(
+    ids.map(async (id) => {
+      const kind = connectionAt(`conn:${id}`)?.kind;
+      if (DOWN.has(id)) {
+        await new Promise((r) => setTimeout(r, 2000));
+        return { connectionId: id, status: "unreachable", error: "No answer within 2 s" };
+      }
+      const ms = kind === "cosmos" ? 60 + id.length : 2 + (id.length % 7);
+      await new Promise((r) => setTimeout(r, ms * 4));
+      return { connectionId: id, status: "reachable", ms };
+    }),
+  );
+}
+
 let settings = {
   updateCheck: "never",
   explorer: { showKindBadge: true, rowFont: "mono", envOrder: [] as string[] },
@@ -238,6 +256,8 @@ function handle(req: Request): unknown {
       else config.environments.push(env);
       return config;
     }
+    case "connection.probe":
+      return probe((p.connectionIds as string[]) ?? []);
     case "settings.get":
       return settings;
     // Kept, so moving an environment in the preview changes its order.

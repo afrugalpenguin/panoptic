@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { engineCounts, formatMs, parseHex, plural, textOn } from "./env-pane";
+import { engineCounts, formatMs, parseHex, plural, probeState, reachability, textOn } from "./env-pane";
 import type { EnvConnection } from "./tree-model";
 
 const conn = (id: string, kind: string): EnvConnection => ({
   id,
+  connectionId: id,
   kind,
   badge: { letters: kind.charAt(0).toUpperCase(), color: "#000000", name: kind.toUpperCase() },
   label: { prefix: "", core: id, suffix: "" },
@@ -33,6 +34,22 @@ describe("environment pane helpers", () => {
     expect(parseHex(" 2f9e44 ")).toBe("#2f9e44");
     expect(parseHex("#fff")).toBeUndefined();
     expect(parseHex("red")).toBeUndefined();
+  });
+
+  it("reads a probe as checking, reachable, slow over 40 ms, unreachable or unknown", () => {
+    expect(probeState(undefined)).toEqual({ state: "checking", label: "Checking", ping: "-" });
+    expect(probeState({ connectionId: "a", status: "reachable", ms: 3.4 })).toEqual({ state: "reachable", label: "Reachable", ping: "3 ms" });
+    expect(probeState({ connectionId: "a", status: "reachable", ms: 40 }).state).toBe("reachable");
+    expect(probeState({ connectionId: "a", status: "reachable", ms: 40.5 })).toEqual({ state: "slow", label: "Slow", ping: "41 ms" });
+    expect(probeState({ connectionId: "a", status: "reachable", ms: 0.2 }).ping).toBe("<1 ms");
+    expect(probeState({ connectionId: "a", status: "unreachable", error: "refused" })).toEqual({ state: "unreachable", label: "Unreachable", ping: "-", title: "refused" });
+    expect(probeState({ connectionId: "a", status: "unknown" })).toEqual({ state: "unknown", label: "Unknown", ping: "-", title: "Panoptic cannot tell where to probe this connection without signing in." });
+  });
+
+  it("counts reachable connections once every probe is back", () => {
+    expect(reachability([undefined, { connectionId: "a", status: "reachable", ms: 3 }])).toEqual({ checking: true, reachable: 1 });
+    expect(reachability([{ connectionId: "a", status: "reachable", ms: 90 }, { connectionId: "b", status: "unreachable" }])).toEqual({ checking: false, reachable: 1 });
+    expect(reachability([])).toEqual({ checking: false, reachable: 0 });
   });
 
   it("puts dark text on light colours and white on dark ones", () => {

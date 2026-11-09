@@ -534,6 +534,7 @@
       onSelectConnection: (id) => void selectConnection(envNodeId, id, false),
       onExpandConnection: (id) => void selectConnection(envNodeId, id, true),
       onConnectionMenu: (id, x, y) => void connectionMenu(envNodeId, id, x, y),
+      probe: (connectionIds, fresh) => (api ? api.probeConnections(connectionIds, fresh) : Promise.reject(new Error("The database engine is not running"))),
     };
   }
 

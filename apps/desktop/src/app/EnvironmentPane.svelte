@@ -1,10 +1,11 @@
 <script lang="ts">
   // The environment detail pane, phase 1 (docs/environment-pane.md): live facts and in-place properties, saved as they
   // change. Reachability, ping, Recent and Catalog come in later phases.
-  import { onDestroy, tick } from "svelte";
+  import { onDestroy, tick, untrack } from "svelte";
+  import type { ProbeResult } from "./api";
   import { ENV_PICKER } from "./env-palette";
   import type { EnvironmentConfig } from "./api";
-  import { engineCounts, formatMs, parseHex, plural, textOn, type EnvironmentPaneProps } from "./env-pane";
+  import { engineCounts, formatMs, parseHex, plural, probeState, reachability, textOn, type EnvironmentPaneProps } from "./env-pane";
   import { GLYPHS, type GlyphName } from "./glyphs";
   import Kbd from "./Kbd.svelte";
   import KindBadge from "./rows/KindBadge.svelte";
@@ -23,6 +24,7 @@
     onSelectConnection,
     onExpandConnection,
     onConnectionMenu,
+    probe,
   }: EnvironmentPaneProps = $props();
 
   // The time to build the list from the store, measured on every rebuild, never a constant.
@@ -33,6 +35,40 @@
   });
   const engines = $derived(engineCounts(built.list));
   const took = $derived(formatMs(built.ms));
+
+  // Reachability (docs/environment-pane.md, "Reachability probes"): every connection at once, each filling in as it
+  // lands, when the environment is shown or its connections change, and past the cache on Refresh. Never on a timer.
+  // Nothing waits on them: the rows paint first, reading Checking.
+  let probes = $state<Record<string, ProbeResult>>({});
+  let probeRun = 0;
+  const probeKey = $derived(JSON.stringify([env.id, ...built.list.map((c) => c.connectionId)]));
+  const reach = $derived(reachability(built.list.map((c) => probes[c.connectionId])));
+
+  function runProbes(fresh: boolean) {
+    const run = ++probeRun;
+    probes = {};
+    for (const { connectionId } of built.list) {
+      probe([connectionId], fresh).then(
+        (results) => {
+          const result = results.find((r) => r.connectionId === connectionId);
+          if (run === probeRun && result) probes = { ...probes, [connectionId]: result };
+        },
+        (e) => {
+          if (run === probeRun) probes = { ...probes, [connectionId]: { connectionId, status: "unknown", error: e instanceof Error ? e.message : String(e) } };
+        },
+      );
+    }
+  }
+
+  $effect(() => {
+    void probeKey;
+    untrack(() => runProbes(false));
+  });
+
+  function refresh() {
+    onRefresh();
+    runProbes(true);
+  }
 
   /** The last store write's failure, shown in the Properties card until the next edit. */
   let saveError = $state("");
@@ -173,6 +209,8 @@
   }
 
   onDestroy(() => {
+    // Late answers for a pane that has gone are dropped.
+    probeRun++;
     clearTimeout(clickTimer);
     clearTimeout(badTimer);
   });
@@ -188,7 +226,7 @@
       onNewConnection();
     } else if (e.key === "r" || e.key === "R") {
       e.preventDefault();
-      onRefresh();
+      refresh();
     } else if (e.key === "F2") {
       e.preventDefault();
       nameInput?.focus();
@@ -221,12 +259,18 @@
           <span class="sep">|</span>
           <span><b>{engines.length}</b> {engines.length === 1 ? "engine" : "engines"}</span>
           <span class="sep">|</span>
+          {#if reach.checking}
+            <span class="reach"><span class="dot-status checking"></span>checking</span>
+          {:else}
+            <span class="reach"><span class="dot-status reachable"></span><b>{reach.reachable}</b> reachable</span>
+          {/if}
+          <span class="sep">|</span>
           <span>{env.readOnly ? "read-only" : "writes allowed"}</span>
         </p>
       </div>
       <div class="actions">
         <button type="button" class="new" onclick={onNewConnection}>New connection <Kbd keys="N" /></button>
-        <button type="button" class="ghost refresh" aria-label="Refresh" title="Refresh (R)" onclick={onRefresh}>{@render glyph("refresh")}</button>
+        <button type="button" class="ghost refresh" aria-label="Refresh" title="Refresh (R)" onclick={refresh}>{@render glyph("refresh")}</button>
         <Kbd keys="R" />
       </div>
     </header>
@@ -244,14 +288,17 @@
           </span>
         </div>
         <div class="cols" aria-hidden="true">
-          <span></span><span>Host</span><span>Engine</span>
+          <span></span><span>Host</span><span>Engine</span><span>Status</span><span class="right">Ping</span>
         </div>
         {#each built.list as c (c.id)}
+          {@const p = probeState(probes[c.connectionId])}
           <button type="button" class="conn" title={`${c.label.prefix}${c.label.core}${c.label.suffix}`}
             onclick={(e) => rowClick(e, c.id)} ondblclick={() => rowDoubleClick(c.id)} oncontextmenu={(e) => rowMenu(e, c.id)}>
             <KindBadge badge={c.badge} size={22} />
             <span class="host"><SegmentedLabel label={c.label} /></span>
             <span class="engine">{c.badge.name}</span>
+            <span class="status {p.state}" title={p.title}><span class="dot-status {p.state}"></span>{p.label}</span>
+            <span class="ping mono {p.state}">{p.ping}</span>
           </button>
         {:else}
           <p class="empty dim">No connections. Drag one onto this environment in the explorer, or add one with New connection.</p>
@@ -529,7 +576,7 @@
   .cols,
   .conn {
     display: grid;
-    grid-template-columns: 28px minmax(0, 1fr) 100px;
+    grid-template-columns: 28px minmax(0, 1fr) 100px 96px 70px;
     gap: 14px;
     align-items: center;
     padding: 0 16px;
@@ -567,6 +614,58 @@
   .engine {
     font-size: 12.5px;
     color: var(--text-muted);
+  }
+  .right {
+    text-align: right;
+  }
+  /* Status colours (docs/environment-pane.md): the theme's ok, warn and bad; Checking and Unknown are dim. */
+  .reachable {
+    --status: var(--ok);
+  }
+  .slow {
+    --status: var(--warn);
+  }
+  .unreachable {
+    --status: var(--bad);
+  }
+  .checking,
+  .unknown {
+    --status: var(--tree-dim);
+  }
+  .status {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12.5px;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+  .dot-status {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--status);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--status) 15%, transparent);
+  }
+  .dot-status.checking,
+  .dot-status.unknown {
+    box-shadow: none;
+  }
+  .ping {
+    font-size: 12.5px;
+    text-align: right;
+    color: var(--status);
+  }
+  .reach {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .reach .dot-status {
+    width: 7px;
+    height: 7px;
+    box-shadow: none;
   }
   .empty {
     margin: 0;
