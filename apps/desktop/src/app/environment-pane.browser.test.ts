@@ -42,6 +42,8 @@ function show(over: Partial<EnvironmentPaneProps> = {}) {
     onConnectionMenu: vi.fn(),
     // Never answers unless a test says otherwise: rows stay Checking.
     probe: vi.fn(() => new Promise<ProbeResult[]>(() => {})),
+    recent: [],
+    onOpenRecent: vi.fn(),
     ...over,
   };
   const target = document.createElement("div");
@@ -296,6 +298,27 @@ describe("EnvironmentPane", () => {
     show({ probe: vi.fn(async () => Promise.reject(new Error("engine stopped"))) });
     await vi.waitFor(() => expect(document.querySelector(".conn .status")?.textContent?.trim()).toBe("Unknown"));
     expect(document.querySelector(".conn .status")?.getAttribute("title")).toBe("engine stopped");
+  });
+
+  it("hides Recent until something has been opened in the environment", () => {
+    show();
+    expect(document.querySelector("[aria-label=Recent]")).toBeNull();
+  });
+
+  it("lists recent objects with their connection and age, and opens one on click", () => {
+    const now = Date.now();
+    const at = (ago: number) => ({
+      envId: "env:uat", hostId: "conn:uat-sql-01", hostName: "uat-sql-01", nodeId: `conn:uat-sql-01/db:Sales/o:${ago}`, kind: "table", at: now - ago,
+    });
+    const recent = [
+      { place: { ...at(4 * 60_000), label: "dbo.Orders" }, connection: "uat-sql-01" },
+      { place: { ...at(2 * 3_600_000), label: "dbo.Lines" }, connection: "uat-sql-01" },
+    ];
+    const props = show({ recent });
+    const rows = [...document.querySelectorAll<HTMLButtonElement>("[aria-label=Recent] button")];
+    expect(rows.map((r) => r.textContent?.replace(/\s+/g, " ").trim())).toEqual(["uat-sql-01 · dbo.Orders 4m", "uat-sql-01 · dbo.Lines 2h"]);
+    rows[1].click();
+    expect(props.onOpenRecent).toHaveBeenCalledWith(recent[1].place);
   });
 
   it("runs New connection, Refresh and Delete", () => {

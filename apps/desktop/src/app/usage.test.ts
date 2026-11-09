@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EMPTY_USAGE, loadUsage, recordUse, RECENT_KEEP, saveUsage, type Place } from "./usage";
+import { age, EMPTY_USAGE, ENV_RECENT_KEEP, envRecent, loadUsage, recordUse, RECENT_KEEP, saveUsage, type Place } from "./usage";
 
 const place = (over: Partial<Place> = {}): Place => ({
   envId: "env:prod", hostId: "conn:a", hostName: "uk-prod-sql-01", nodeId: "conn:a/db:orders/o:t1", label: "dbo.Orders", kind: "table", ...over,
@@ -73,5 +73,48 @@ describe("loadUsage / saveUsage", () => {
     } finally {
       delete (globalThis as { localStorage?: unknown }).localStorage;
     }
+  });
+});
+
+describe("an environment's recent objects", () => {
+  it("keeps objects per environment, newest first, stamped, without duplicates or connections", () => {
+    let u = recordUse(EMPTY_USAGE, place(), 1_000);
+    u = recordUse(u, place({ envId: "env:uat", nodeId: "conn:u/db:x", label: "dbo.Settle" }), 2_000);
+    u = recordUse(u, place({ nodeId: "conn:a/db:orders/o:t2", label: "dbo.Lines" }), 3_000);
+    u = recordUse(u, place(), 4_000);
+    u = recordUse(u, place({ nodeId: "conn:a", label: "uk-prod-sql-01", kind: "connection" }), 5_000);
+    expect(envRecent(u, "env:prod").map((r) => [r.label, r.at])).toEqual([["dbo.Orders", 4_000], ["dbo.Lines", 3_000]]);
+    expect(envRecent(u, "env:uat").map((r) => r.label)).toEqual(["dbo.Settle"]);
+    expect(envRecent(u, "env:none")).toEqual([]);
+  });
+
+  it(`keeps ${ENV_RECENT_KEEP} per environment and shows the newest few`, () => {
+    let u = EMPTY_USAGE;
+    for (let i = 0; i < ENV_RECENT_KEEP + 5; i++) u = recordUse(u, place({ nodeId: `n${i}` }), i);
+    expect(u.envRecent?.["env:prod"]).toHaveLength(ENV_RECENT_KEEP);
+    expect(envRecent(u, "env:prod").map((r) => r.nodeId)).toEqual(["n54", "n53", "n52", "n51", "n50"]);
+  });
+
+  it("a place in no environment has no environment list", () => {
+    expect(recordUse(EMPTY_USAGE, place({ envId: undefined }), 1).envRecent ?? {}).toEqual({});
+  });
+
+  it("survives a save and load, and loads stores written before it existed", () => {
+    const store = new Map<string, string>();
+    const storage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) };
+    saveUsage(recordUse(EMPTY_USAGE, place(), 7), storage);
+    expect(envRecent(loadUsage(storage), "env:prod").map((r) => r.at)).toEqual([7]);
+    store.set("panoptic.usage", JSON.stringify({ envs: {}, recent: [] }));
+    expect(envRecent(loadUsage(storage), "env:prod")).toEqual([]);
+    store.set("panoptic.usage", JSON.stringify({ envs: {}, recent: [], envRecent: "junk" }));
+    expect(envRecent(loadUsage(storage), "env:prod")).toEqual([]);
+  });
+
+  it("reads an age the way the Recent card shows it", () => {
+    expect(age(20_000)).toBe("now");
+    expect(age(4 * 60_000 + 10)).toBe("4m");
+    expect(age(22 * 60_000)).toBe("22m");
+    expect(age(60 * 60_000)).toBe("1h");
+    expect(age(26 * 3_600_000)).toBe("1d");
   });
 });

@@ -10,6 +10,7 @@
   import Kbd from "./Kbd.svelte";
   import KindBadge from "./rows/KindBadge.svelte";
   import SegmentedLabel from "./rows/SegmentedLabel.svelte";
+  import { age } from "./usage";
 
   let {
     env,
@@ -25,6 +26,8 @@
     onExpandConnection,
     onConnectionMenu,
     probe,
+    recent,
+    onOpenRecent,
   }: EnvironmentPaneProps = $props();
 
   // The time to build the list from the store, measured on every rebuild, never a constant.
@@ -373,6 +376,18 @@
           </dl>
           {#if saveError}<p class="error" role="alert">{saveError}</p>{/if}
         </section>
+
+        {#if recent.length}
+          <section class="card recent" aria-label="Recent">
+            <div class="card-head"><span class="label">Recent</span></div>
+            {#each recent as r (r.place.nodeId)}
+              <button type="button" class="ghost recent-row" title="Open {r.place.label} on {r.place.hostName}" onclick={() => onOpenRecent(r.place)}>
+                <span class="what"><span class="dim">{r.connection} ·</span> {r.place.label}</span>
+                <span class="mono dim">{age(Date.now() - r.place.at)}</span>
+              </button>
+            {/each}
+          </section>
+        {/if}
 
         <div class="delete">
           <button type="button" class="ghost danger" onclick={onDelete}>Delete environment</button>
@@ -848,6 +863,34 @@
     padding: 0 16px 14px;
     color: var(--bad);
     overflow-wrap: anywhere;
+  }
+  .recent {
+    padding-bottom: 6px;
+  }
+  .recent-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    height: 28px;
+    padding: 0 16px;
+    border-radius: 0;
+    text-align: left;
+    font-size: var(--fs-md);
+  }
+  .recent-row:hover {
+    background: var(--bg-hover);
+  }
+  .what {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .recent-row .mono {
+    flex: none;
+    font-size: var(--fs-xs);
   }
   .delete {
     margin-top: auto;

@@ -1,6 +1,7 @@
 // The environment detail pane's pure parts (docs/environment-pane.md): counts, wording and colour choices it shows.
 import type { EnvironmentConfig, ProbeResult } from "./api";
 import type { KindBadge } from "./kinds";
+import type { RecentPlace } from "./usage";
 import type { EnvConnection } from "./tree-model";
 
 /** What the environment detail pane reads and runs; App supplies it for the selected environment. */
@@ -27,6 +28,16 @@ export interface EnvironmentPaneProps {
   onConnectionMenu: (id: string, x: number, y: number) => void;
   /** Probes saved connections (by config id) for reachability; fresh skips the sidecar's 60 s cache. */
   probe: (connectionIds: string[], fresh: boolean) => Promise<ProbeResult[]>;
+  /** The environment's most recent objects, newest first, at most 5; the Recent card is hidden while there are none. */
+  recent: RecentRow[];
+  /** Opens a recent object as Seek's recent rows do: the place in the tree and a query tab on it. */
+  onOpenRecent: (place: RecentPlace) => void;
+}
+
+/** A Recent card row: the place and the bright core of its connection's label, as the tree shows it. */
+export interface RecentRow {
+  place: RecentPlace;
+  connection: string;
 }
 
 /** Over this round trip a reachable connection reads Slow (docs/environment-pane.md). */
