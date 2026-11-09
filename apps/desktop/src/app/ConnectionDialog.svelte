@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { open as openFile } from "@tauri-apps/plugin-dialog";
   import { onDestroy } from "svelte";
-  import type { Api, AppConfig, AuthKind, ConnectionConfig, ConnectionKind, EnvironmentConfig, KindDescription, TestConnectionResult } from "./api";
+  import type { Api, AppConfig, ConnectionConfig, ConnectionKind, EnvironmentConfig, KindDescription, TestConnectionResult } from "./api";
   import Dialog from "./Dialog.svelte";
   import { NEW_ENV, NO_ENV, toEnvironmentId } from "./env-picker";
   import EnvPicker from "./EnvPicker.svelte";
-  import { isLoopback } from "./loopback";
+  import SignInFields from "./SignInFields.svelte";
+  import { keepsSecret, SignInDraft } from "./sign-in.svelte";
+  import TrustFields from "./TrustFields.svelte";
 
   let {
     api,
@@ -42,30 +43,7 @@
   // svelte-ignore state_referenced_locally
   let endpoint = $state(initial?.endpoint ?? "");
   // svelte-ignore state_referenced_locally
-  let auth = $state<AuthKind>(initial?.auth ?? "entra");
-  // svelte-ignore state_referenced_locally
-  let user = $state(initial?.user ?? "");
-  // svelte-ignore state_referenced_locally
   let database = $state(initial?.database ?? "");
-  // svelte-ignore state_referenced_locally
-  let tenantId = $state(initial?.tenantId ?? "");
-  // svelte-ignore state_referenced_locally
-  let clientId = $state(initial?.clientId ?? "");
-  // svelte-ignore state_referenced_locally
-  let trust = $state(initial?.trustServerCertificate ?? false);
-  // svelte-ignore state_referenced_locally
-  let certHost = $state(initial?.certificateHostName ?? "");
-  // svelte-ignore state_referenced_locally
-  let certFile = $state(initial?.certificateFile ?? "");
-  // svelte-ignore state_referenced_locally
-  let clientCert = $state(initial?.clientCertificateFile ?? "");
-  // svelte-ignore state_referenced_locally
-  let clientKey = $state(initial?.clientKeyFile ?? "");
-  // svelte-ignore state_referenced_locally
-  let awsProfile = $state(initial?.awsProfile ?? "");
-  // svelte-ignore state_referenced_locally
-  let awsRegion = $state(initial?.awsRegion ?? "");
-  let secret = $state("");
 
   let busy = $state<"" | "testing" | "saving">("");
   let test = $state<TestConnectionResult | null>(null);
@@ -77,48 +55,13 @@
   /** The picked kind; a saved connection of a kind the sidecar no longer serves falls back to the first. */
   const described = $derived(kinds.find((k) => k.kind === kind) ?? kinds[0]);
   const fields = $derived(described.fields);
-  const authOptions = $derived(described.auths);
-  /** Client certificate sign-in (Postgres, #120): a certificate and key, and the key's passphrase as an optional secret. */
-  const certAuth = $derived(auth === "certificate");
-  /** AWS IAM sign-in (Postgres on Amazon RDS, #121): a token from the AWS profile's credentials, so no secret. */
-  const awsAuth = $derived(auth === "awsIam");
-  /** A user is required: a login's name, the role a client certificate maps to, or the IAM database user. */
-  const login = $derived(auth === "sql" || auth === "password" || certAuth || awsAuth);
-  const needsSecret = $derived(auth === "sql" || auth === "password" || auth === "key");
-  const showSecret = $derived(needsSecret || certAuth);
-  /** A .pfx or .p12 holds the key as well, so needs no key file. */
-  const bundle = $derived(/\.(pfx|p12)$/i.test(clientCert.trim()));
-  /** Signs in with Entra: directly, or to fetch a Cosmos account's keys (#65). Either way the tenant and client id apply. */
-  const entra = $derived(auth === "entra" || auth === "entraKeys");
-  /** Postgres signs Entra users in under their Entra name; blank means the name from the sign-in. */
-  const entraUser = $derived(fields.entraUser && auth === "entra");
+  // svelte-ignore state_referenced_locally
+  const draft = new SignInDraft(() => described, () => endpoint, initial);
   const placeholder = $derived(described.endpointPlaceholder);
-  /** The region in an RDS server name (the certificate host name's, for a tunnel), as the sidecar reads it. */
-  const rdsRegion = $derived(
-    /^[^:]+\.[^.:]+\.([a-z]{2}(?:-[a-z]+)+-\d+)\.rds\.amazonaws\.com(?:\.cn)?\.?(?::\d+)?$/i.exec(certHost.trim() || endpoint.trim())?.[1]?.toLowerCase() ?? "",
-  );
-  const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  /** Some kinds (Cosmos) allow skipping the check for a localhost emulator only (the sidecar refuses otherwise). */
-  const trustWarning = $derived.by(() => {
-    if (!trust || fields.trustLocalOnly || !endpoint.trim() || isLoopback(endpoint)) return "";
-    const what =
-      entra
-        ? "your Microsoft Entra sign-in token, which could then be used against other Azure databases for up to an hour"
-        : auth === "windows"
-          ? "your queries and their results"
-          : awsAuth
-            ? "an IAM sign-in token, which could then be used against this database for up to 15 minutes"
-            : "the password";
-    return `The certificate of ${endpoint.trim()} won't be checked, so anyone able to intercept the connection could pose as it and capture ${what}. Only trust certificates for servers you control. Where you can, use a certificate host name or file instead.`;
-  });
-
-  $effect(() => {
-    if (!authOptions.some((o) => o.id === auth)) auth = authOptions[0].id;
-  });
 
   // A test result describes the settings it ran with: any edit to them makes it stale, so it goes (#263).
   $effect(() => {
-    void [kind, endpoint, auth, user, database, tenantId, clientId, trust, certHost, certFile, awsProfile, awsRegion, secret];
+    void [kind, endpoint, database, ...draft.touch()];
     test = null;
   });
 
@@ -128,72 +71,20 @@
       name: name.trim() || endpoint.trim(),
       kind,
       endpoint: endpoint.trim(),
-      auth,
-      user: login || (entraUser && user.trim()) ? user.trim() : null,
+      ...draft.config(),
       database: fields.database && database.trim() ? database.trim() : null,
-      tenantId: entra && tenantId.trim() ? tenantId.trim() : null,
-      clientId: entra && clientId.trim() ? clientId.trim() : null,
-      trustServerCertificate: trust,
-      certificateHostName: fields.certificateOptions && certHost.trim() ? certHost.trim() : null,
-      certificateFile: fields.certificateOptions && certFile.trim() ? certFile.trim() : null,
-      clientCertificateFile: certAuth && clientCert.trim() ? clientCert.trim() : null,
-      clientKeyFile: certAuth && clientKey.trim() ? clientKey.trim() : null,
-      awsProfile: awsAuth && awsProfile.trim() ? awsProfile.trim() : null,
-      awsRegion: awsAuth && awsRegion.trim() ? awsRegion.trim() : null,
     };
   }
 
-  /**
-   * A saved secret can be kept only while the edit still points where it was saved for: same type, server, sign-in,
-   * user and certificate trust (the sidecar enforces the same rule). Otherwise it has to be entered again.
-   */
-  const keepsSavedSecret = $derived.by(() => {
-    if (!initial) return false;
-    const c = config();
-    return (
-      c.kind === initial.kind &&
-      c.endpoint.toLowerCase() === initial.endpoint.toLowerCase() &&
-      c.auth === initial.auth &&
-      (c.user ?? null) === (initial.user ?? null) &&
-      c.trustServerCertificate === initial.trustServerCertificate &&
-      same(c.certificateHostName, initial.certificateHostName) &&
-      same(c.certificateFile, initial.certificateFile) &&
-      same(c.clientCertificateFile, initial.clientCertificateFile) &&
-      same(c.clientKeyFile, initial.clientKeyFile)
-    );
-  });
-  /** Optional text that compares blank-or-missing as equal, ignoring case and surrounding space. */
-  const same = (a?: string | null, b?: string | null) => (a ?? "").trim().toLowerCase() === (b ?? "").trim().toLowerCase();
-  const secretName = $derived(auth === "key" ? "account key" : "password");
+  /** A saved secret can be kept only while the edit still points where it was saved for (keepsSecret). */
+  const keepsSavedSecret = $derived(initial ? keepsSecret(initial, config()) : false);
 
   /** Blank secret means "keep the stored one" while that is allowed. */
-  const secretArg = () => (showSecret ? (secret || (keepsSavedSecret ? undefined : "")) : "");
+  const secretArg = () => draft.secretArg(keepsSavedSecret);
 
   function validate(): string {
     if (!endpoint.trim()) return `${described.endpointLabel} is required`;
-    if (login && !user.trim()) return "User is required";
-    if (entra && clientId.trim() && !GUID.test(clientId.trim()))
-      return "Client id must be an app's Application (client) ID, a GUID such as 11111111-2222-3333-4444-555555555555";
-    if (certAuth && !clientCert.trim()) return "Choose the client certificate file.";
-    if (certAuth && !clientKey.trim() && !bundle) return "Choose the certificate's private key file, or use a .pfx file, which holds both.";
-    if (awsAuth && !awsRegion.trim() && !rdsRegion) return "Enter the AWS region: it can't be read from this server name.";
-    if (fields.certificateOptions && trust && (certHost.trim() || certFile.trim()))
-      return "Turn off Trust server certificate to use a certificate host name or file: trusting skips the checks they set up.";
-    if (needsSecret && !secret && !keepsSavedSecret)
-      return editing
-        ? `Enter the ${secretName} again: the server, user, sign-in or certificate setting changed, so the saved one is not sent.`
-        : auth === "key" ? "Account key is required" : "Password is required";
-    return "";
-  }
-
-  async function browse(name: string, extensions: string[], set: (path: string) => void) {
-    const picked = await openFile({ multiple: false, directory: false, filters: [{ name, extensions }] });
-    if (typeof picked === "string") set(picked);
-  }
-
-  async function browseCertificate() {
-    const picked = await openFile({ multiple: false, directory: false, filters: [{ name: "Certificates", extensions: ["pem", "cer", "crt", "der"] }] });
-    if (typeof picked === "string") certFile = picked;
+    return draft.validate(keepsSavedSecret, editing);
   }
 
   async function runTest() {
@@ -239,58 +130,7 @@
   <label for="c-endpoint">{described.endpointLabel}</label>
   <input id="c-endpoint" bind:value={endpoint} {placeholder} spellcheck="false" data-autofocus />
 
-  <label for="c-auth">Authentication</label>
-  <select id="c-auth" bind:value={auth}>
-    {#each authOptions as o}<option value={o.id}>{o.label}</option>{/each}
-  </select>
-
-  {#if login}
-    <label for="c-user">User</label>
-    <input id="c-user" bind:value={user} spellcheck="false" autocomplete="off" />
-  {:else if entraUser}
-    <label for="c-user">User <span class="muted">(optional)</span></label>
-    <input id="c-user" bind:value={user} placeholder="Defaults to the account you sign in with" spellcheck="false" autocomplete="off" />
-  {/if}
-
-  {#if certAuth}
-    <label for="c-client-cert">Client certificate</label>
-    <span class="file-row">
-      <input id="c-client-cert" bind:value={clientCert} placeholder="The certificate to sign in with (.crt, .pem, or a .pfx with its key)" spellcheck="false" autocomplete="off" />
-      <button type="button" onclick={() => browse("Certificates", ["crt", "pem", "cer", "pfx", "p12"], (p) => (clientCert = p))}>Browse...</button>
-    </span>
-    {#if !bundle}
-      <label for="c-client-key">Key file</label>
-      <span class="file-row">
-        <input id="c-client-key" bind:value={clientKey} placeholder="The certificate's private key (.key, .pem)" spellcheck="false" autocomplete="off" />
-        <button type="button" onclick={() => browse("Private keys", ["key", "pem"], (p) => (clientKey = p))}>Browse...</button>
-      </span>
-    {/if}
-  {/if}
-
-  {#if awsAuth}
-    <label for="c-aws-profile">AWS profile <span class="muted">(optional)</span></label>
-    <input id="c-aws-profile" bind:value={awsProfile} placeholder="default" spellcheck="false" autocomplete="off" />
-    <label for="c-aws-region">Region</label>
-    <input id="c-aws-region" bind:value={awsRegion} placeholder={rdsRegion || "Required for this server name"} spellcheck="false" autocomplete="off" />
-  {/if}
-
-  {#if showSecret}
-    <label for="c-secret">{auth === "key" ? "Account key" : certAuth ? "Key passphrase" : "Password"}{#if certAuth} <span class="muted">(optional)</span>{/if}</label>
-    <input
-      id="c-secret"
-      type="password"
-      bind:value={secret}
-      autocomplete="off"
-      placeholder={keepsSavedSecret ? "Leave blank to keep the saved one" : ""}
-    />
-  {/if}
-
-  {#if entra}
-    <label for="c-tenant">Tenant <span class="muted">(optional)</span></label>
-    <input id="c-tenant" bind:value={tenantId} placeholder="Defaults to your work account's tenant" spellcheck="false" />
-    <label for="c-client">Client id <span class="muted">(optional)</span></label>
-    <input id="c-client" bind:value={clientId} placeholder="An app registration's ID, if your tenant needs its own" spellcheck="false" autocomplete="off" />
-  {/if}
+  <SignInFields {draft} keepsSaved={keepsSavedSecret} />
 
   {#if fields.database}
     <label for="c-db">Database <span class="muted">(optional)</span></label>
@@ -300,22 +140,7 @@
   <label for="c-name">Display name</label>
   <input id="c-name" bind:value={name} placeholder={endpoint || "Defaults to the server"} />
 
-  <span></span>
-  <label class="check">
-    <input type="checkbox" bind:checked={trust} />
-    {fields.trustLocalOnly ? "Skip certificate validation (localhost emulator only)" : "Trust server certificate"}
-  </label>
-  {#if trustWarning}<p class="full trust-warning">{trustWarning}</p>{/if}
-
-  {#if fields.certificateOptions}
-    <label for="c-cert-host">Certificate host name <span class="muted">(optional)</span></label>
-    <input id="c-cert-host" bind:value={certHost} placeholder="The name on the certificate, if not the server's" spellcheck="false" autocomplete="off" />
-    <label for="c-cert-file">Certificate file <span class="muted">(optional)</span></label>
-    <span class="file-row">
-      <input id="c-cert-file" bind:value={certFile} placeholder="A CA or server certificate to trust (.pem, .cer)" spellcheck="false" autocomplete="off" />
-      <button type="button" onclick={browseCertificate}>Browse...</button>
-    </span>
-  {/if}
+  <TrustFields {draft} />
 
   {#if test}
     <p class="full result" class:ok={test.ok}>
@@ -326,7 +151,7 @@
 
   {#snippet footer()}
     <button type="button" disabled={busy !== ""} onclick={runTest}>{busy === "testing" ? "Testing..." : "Test"}</button>
-    {#if entra && busy === "testing"}<span class="muted">A Microsoft sign-in window may open.</span>{/if}
+    {#if draft.entra && busy === "testing"}<span class="muted">A Microsoft sign-in window may open.</span>{/if}
     <span style:flex="1"></span>
     <button type="button" onclick={onClose}>Cancel</button>
     <!-- The form's submit button, so Enter in a field saves (#217). -->
@@ -335,29 +160,6 @@
 </Dialog>
 
 <style>
-  .check {
-    display: flex;
-    gap: 6px;
-    align-items: center;
-    color: var(--text) !important;
-  }
-  .file-row {
-    display: flex;
-    gap: 6px;
-    min-width: 0;
-  }
-  .file-row input {
-    flex: 1;
-    min-width: 0;
-  }
-  .trust-warning {
-    margin: 0;
-    padding: 6px 10px;
-    border-radius: 4px;
-    color: var(--text);
-    background: color-mix(in srgb, var(--warn) 14%, transparent);
-    border-left: 3px solid var(--warn);
-  }
   .result {
     margin: 0;
     padding: 6px 10px;

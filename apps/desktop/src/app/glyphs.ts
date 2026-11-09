@@ -1,5 +1,5 @@
 // Stroke icons drawn in more than one place, on a 16px grid in currentColor (docs/design-tokens.md): the explorer
-// footer's buttons, the landing's actions, the environment pane's buttons, and the folder in the tree and detail pane.
+// footer's buttons, the landing's actions, the detail panes' buttons and rows, and the folder in the tree and detail pane.
 
 export const GLYPHS = {
   import: "M8 2.5v7 M5 6.5 8 9.5l3-3 M2.5 10.5v3h11v-3",
@@ -15,6 +15,8 @@ export const GLYPHS = {
   "arrow-up": "M8 12.5v-9 M4.5 7 8 3.5 11.5 7",
   "arrow-down": "M8 3.5v9 M4.5 9 8 12.5 11.5 9",
   chevron: "M5 6.5 8 9.5l3-3",
+  copy: "M5.5 5.5h7v8h-7z M3.5 10.5v-8h7",
+  lock: "M4 7.5h8v6H4z M5.5 7.5V5a2.5 2.5 0 0 1 5 0v2.5",
 } as const;
 
 export type GlyphName = keyof typeof GLYPHS;

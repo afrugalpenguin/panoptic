@@ -1,6 +1,6 @@
 // Dev-only preview of the landing with synthetic data, for screenshots (docs/plans/2026-10-31-landing.md, Task 12).
 // Query string: ?q=<text> types into Seek, ?envs=0 shows no environments, ?engine=connecting|disconnected.
-// ?app=start|explorer|environment|query|messages mounts the whole App on a fake sidecar instead (README screenshots).
+// ?app=start|explorer|environment|connection|query|messages mounts the whole App on a fake sidecar instead (README screenshots).
 // ?state=flat|mixed|empty-env shows the tree beside the landing with connections in no environment
 // (docs/plans/2026-10-31-loose-connections.md, Task 9). ?state=engines has eight engines, for the engine popover;
 // ?w=<px> sets the explorer width in any ?state.
@@ -149,6 +149,13 @@ async function mountApp(state: string) {
   if (state === "environment") {
     // The environment detail pane (docs/environment-pane.md) on a read-only environment with mixed engines.
     (await row("Prod")).dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+    return;
+  }
+  if (state === "connection") {
+    // The connection detail pane (docs/connection-pane.md) on a SQL connection in a read-only environment, listed.
+    await open("uk-prod-sql-02");
+    await row("Inventory");
+    (await row("uk-prod-sql-02")).dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
     return;
   }
   await open("dev-sql-01");

@@ -320,6 +320,20 @@ export class TreeModel {
     });
   }
 
+  /** A node's label as the tree draws it: a connection's host split into dim prefix, bright core and dim suffix. */
+  labelOf(id: string): LabelSegments {
+    return this.labels.get(id) ?? { prefix: "", core: this.nodes.get(id)?.label ?? "", suffix: "" };
+  }
+
+  /**
+   * A node's children as loaded, stale or not, for the connection detail pane (docs/connection-pane.md), which never
+   * lists them itself; undefined while they have not been listed.
+   */
+  loadedChildren(id: string): TreeNode[] | undefined {
+    const state = this.children.get(id);
+    return state?.status === "loaded" ? state.ids.flatMap((c) => this.nodes.get(c) ?? []) : undefined;
+  }
+
   isStale(id: string): boolean {
     const state = this.children.get(id);
     return state?.status === "loaded" && Date.now() - state.loadedAt > this.staleMs;

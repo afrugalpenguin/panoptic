@@ -55,6 +55,14 @@ export function probeState(result: ProbeResult | undefined): { state: ProbeState
   return result.ms > SLOW_MS ? { state: "slow", label: "Slow", ping } : { state: "reachable", label: "Reachable", ping };
 }
 
+/** A probe state's colour (the theme's ok, warn and bad); checking and unknown are dim and drawn without a ring. */
+export function statusColor(state: ProbeStateName): { color: string; ring: boolean } {
+  if (state === "reachable") return { color: "var(--ok)", ring: true };
+  if (state === "slow") return { color: "var(--warn)", ring: true };
+  if (state === "unreachable") return { color: "var(--bad)", ring: true };
+  return { color: "var(--tree-dim)", ring: false };
+}
+
 /** The header's reachable segment: still checking until every probe is back; slow ones count as reachable. */
 export function reachability(results: (ProbeResult | undefined)[]): { checking: boolean; reachable: number } {
   return { checking: results.some((r) => !r), reachable: results.filter((r) => r?.status === "reachable").length };

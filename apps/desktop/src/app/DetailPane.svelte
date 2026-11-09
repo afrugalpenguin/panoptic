@@ -1,4 +1,6 @@
 <script lang="ts">
+  import type { ConnectionPaneProps } from "./conn-pane";
+  import ConnectionPane from "./ConnectionPane.svelte";
   import { detailFields } from "./detail-fields";
   import type { EnvironmentPaneProps } from "./env-pane";
   import EnvironmentPane from "./EnvironmentPane.svelte";
@@ -8,8 +10,14 @@
 
   // Shown for a selected row; with nothing selected App shows the landing instead (docs/landing.md).
   // actions: the row's right-click menu (rowMenu), offered as buttons too. environment: the selected environment's
-  // pane (docs/environment-pane.md), which replaces the buttons and fields for an environment.
-  let { row, actions = [], environment }: { row: Row; actions?: MenuEntry[]; environment?: EnvironmentPaneProps } = $props();
+  // pane (docs/environment-pane.md), which replaces the buttons and fields for an environment; connection likewise for a
+  // connection (docs/connection-pane.md).
+  let {
+    row,
+    actions = [],
+    environment,
+    connection,
+  }: { row: Row; actions?: MenuEntry[]; environment?: EnvironmentPaneProps; connection?: ConnectionPaneProps } = $props();
 
   const node = $derived(row.type === "node" ? row.node : undefined);
   const fields = $derived(node ? detailFields(node) : []);
@@ -29,6 +37,9 @@
 
 {#if environment && row.type === "node" && row.node.kind === "environment"}
   <EnvironmentPane {...environment} />
+{:else if connection && row.type === "node" && row.node.kind === "connection"}
+  <!-- Keyed by connection: its edits, popovers and probe belong to the one selected. -->
+  {#key connection.connection.id}<ConnectionPane {...connection} />{/key}
 {:else}
 <section class="detail">
   {#if row.type === "group"}

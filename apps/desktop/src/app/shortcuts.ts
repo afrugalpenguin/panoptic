@@ -44,3 +44,15 @@ export function keyCommand(
   const global = globalShortcut(e, state.inEditor);
   return global ? { kind: "global", action: global } : undefined;
 }
+
+/**
+ * Delete on a connection selected in the tree, with focus in the tree and not in its filter: Remove connection, which
+ * asks first (docs/connection-pane.md, "Keyboard"). The connection pane handles Delete within itself.
+ */
+export function removesConnection(
+  e: { key: string; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; altKey: boolean },
+  state: { seeking: boolean; dialogOpen: boolean; inTree: boolean; selectedNode: TreeNode | undefined },
+): boolean {
+  if (e.key !== "Delete" || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return false;
+  return !state.seeking && !state.dialogOpen && state.inTree && state.selectedNode?.kind === "connection";
+}

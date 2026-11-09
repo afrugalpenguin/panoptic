@@ -10,12 +10,13 @@
   import { createUpdateChecker, currentVersion, installPendingUpdate, type UpdateState } from "../updates";
   import { parseChangelog, sectionsSince, type ChangelogSection } from "../whats-new";
   import { createApi, type Api, type AppConfig, type AppSettings, type ConnectionConfig, type DeviceCodePrompt, type EnvironmentConfig, type KindDescription, type TreeNode } from "./api";
-  import { registerKinds } from "./kinds";
+  import { kindBadge, kindDescription, registerKinds } from "./kinds";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import { confirmText, readOnlyMoveText, type ConfirmText } from "./confirm";
   import ConnectionDialog from "./ConnectionDialog.svelte";
   import ContextMenu, { type MenuItem } from "./ContextMenu.svelte";
   import DetailPane from "./DetailPane.svelte";
+  import type { ConnectionPaneProps } from "./conn-pane";
   import type { EnvironmentPaneProps } from "./env-pane";
   import EnvironmentDialog from "./EnvironmentDialog.svelte";
   import ImportDialog from "./ImportDialog.svelte";
@@ -29,9 +30,9 @@
   import Landing from "./Landing.svelte";
   import SeekOverlay from "./SeekOverlay.svelte";
   import { type SeekEnv, type SeekHost, type SeekIndex, type SeekRow } from "./seek";
-  import { keyCommand } from "./shortcuts";
+  import { keyCommand, removesConnection } from "./shortcuts";
   import { envRecent, loadUsage, recordUse, saveUsage, type Place } from "./usage";
-  import { rowMenu, type RowMenuContext } from "./row-menu";
+  import { rowMenu, type FoundConnection, type RowMenuContext } from "./row-menu";
   import Workspace from "../query/Workspace.svelte";
   import { preloadMonaco, warmEditorWhenIdle } from "../query/preload";
   import { intellisense, syncCatalogs } from "../query/intellisense/shared";
@@ -71,7 +72,7 @@
   let kinds = $state.raw<KindDescription[]>([]);
   let dialog = $state<
     | { kind: "environment" }
-    | { kind: "connection"; environmentId: string | null; initial?: ConnectionConfig }
+    | { kind: "connection"; environmentId: string | null }
     | { kind: "move"; connection: ConnectionConfig; from?: string }
     | { kind: "import" }
     | { kind: "backup"; path: string; preview: BackupPreview }
@@ -456,17 +457,41 @@
    * move. Only leaving a read-only environment asks.
    */
   async function moveConnection(connectionId: string, environmentId: string | null, beforeId?: string | null) {
-    const found = connectionOf(connectionId);
-    if (!found || ((found.env?.id ?? null) === environmentId && beforeId === undefined)) return;
-    const leaving = readOnlyMoveText(found.connection.name, found.env, environmentId ? envOf(environmentId) : undefined);
-    if (leaving && !(await ask(leaving))) return;
     try {
-      await configChanged(await api!.moveConnection(connectionId, environmentId, beforeId ?? null));
-      await model.reveal(environmentId);
-      await revealSelected();
+      await relocateConnection(connectionId, environmentId, beforeId);
     } catch (e) {
-      lastLoad = { id: "", label: found.connection.name, count: 0, ms: 0, error: e instanceof Error ? e.message : String(e) };
+      lastLoad = { id: "", label: connectionOf(connectionId)?.connection.name ?? "", count: 0, ms: 0, error: e instanceof Error ? e.message : String(e) };
     }
+  }
+
+  /** moveConnection's work: resolves false when the user declined to leave a read-only environment; rejects when the write fails. */
+  async function relocateConnection(connectionId: string, environmentId: string | null, beforeId?: string | null): Promise<boolean> {
+    const found = connectionOf(connectionId);
+    if (!found || ((found.env?.id ?? null) === environmentId && beforeId === undefined)) return true;
+    const leaving = readOnlyMoveText(found.connection.name, found.env, environmentId ? envOf(environmentId) : undefined);
+    if (leaving && !(await ask(leaving))) return false;
+    await configChanged(await api!.moveConnection(connectionId, environmentId, beforeId ?? null));
+    await model.reveal(environmentId);
+    await revealSelected();
+    return true;
+  }
+
+  /** Move up (-1) or Move down (1) within the connection's environment, or within none. */
+  function stepConnectionBy(connectionId: string, by: -1 | 1) {
+    const found = connectionOf(connectionId);
+    const ids = (found?.env?.connections ?? config.connections).map((c) => c.id);
+    const beforeId = stepConnection(ids, connectionId, by);
+    if (found && beforeId !== undefined) moveConnection(connectionId, found.env?.id ?? null, beforeId);
+  }
+
+  /** Remove connection: asks, removes and offers Undo. */
+  function removeConnection(found: FoundConnection) {
+    return deleteConfig(
+      confirmText("connection", found.connection.name, 1),
+      `Removed connection ${found.connection.name}`,
+      [found.connection.id],
+      () => api!.deleteConnection(found.connection.id),
+    );
   }
 
   /** Settings' Export to a file (#28): the sidecar writes it. Returns what was written, for the dialog to show. */
@@ -544,6 +569,44 @@
     };
   }
 
+  /** The selected connection's detail pane (docs/connection-pane.md); undefined for any other row. */
+  function connectionPane(row: Row): ConnectionPaneProps | undefined {
+    if (row.type !== "node" || row.node.kind !== "connection") return undefined;
+    const node = row.node;
+    const found = connectionOf(node.meta?.connectionId ?? "");
+    if (!found) return undefined;
+    const { env, connection } = found;
+    const siblings = env?.connections ?? config.connections;
+    return {
+      connection,
+      env,
+      label: model.labelOf(node.id),
+      badge: kindBadge(connection.kind),
+      kind: kindDescription(connection.kind),
+      position: siblings.findIndex((c) => c.id === connection.id) + 1,
+      total: siblings.length,
+      environments: environmentOrder(settings.explorer.envOrder, config.environments.map((e) => e.id)).flatMap((id) => envOf(id) ?? []),
+      // Reads rows so the list is read, and timed again, after every tree change. Never loads: that would call the server.
+      children: () => (void rows, model.loadedChildren(node.id)),
+      copyText: node.meta?.copyText,
+      canQuery: node.actions.includes("newQuery"),
+      probe: (fresh) => (api ? api.probeConnections([connection.id], fresh) : Promise.reject(new Error("The database engine is not running"))),
+      onSave: async (next, secret) => configChanged(await api!.saveConnection(env?.id ?? null, next, secret)),
+      onMoveTo: (environmentId) => relocateConnection(connection.id, environmentId),
+      onMove: (by) => stepConnectionBy(connection.id, by),
+      onNewQuery: () => void openQuery(row, "newQuery"),
+      onCopyName: () => {
+        const text = node.meta?.copyText;
+        if (text !== undefined) navigator.clipboard.writeText(text).catch(() => {});
+      },
+      onRefresh: () => {
+        void model.refresh(node.id);
+        refreshQueryTabs(node.id);
+      },
+      onRemove: () => void removeConnection(found),
+    };
+  }
+
   /** A connection row in the environment pane: selects it in the tree as a click there would, opening its environment first. */
   async function selectConnection(envNodeId: string, id: string, expand: boolean) {
     await model.expand(envNodeId);
@@ -585,22 +648,10 @@
       newConnection: addConnection,
       moveEnvironment: moveEnv,
       deleteEnvironment,
-      editConnection: (found) => (dialog = { kind: "connection", environmentId: found.env?.id ?? null, initial: found.connection }),
       moveConnection: (found) => (dialog = { kind: "move", connection: found.connection, from: found.env?.id }),
-      stepConnection: (connectionId, by) => {
-        const found = connectionOf(connectionId);
-        const ids = (found?.env?.connections ?? config.connections).map((c) => c.id);
-        const beforeId = stepConnection(ids, connectionId, by);
-        if (found && beforeId !== undefined) moveConnection(connectionId, found.env?.id ?? null, beforeId);
-      },
+      stepConnection: stepConnectionBy,
       removeFromEnvironment: (connectionId) => moveConnection(connectionId, null),
-      removeConnection: (found) =>
-        deleteConfig(
-          confirmText("connection", found.connection.name, 1),
-          `Removed connection ${found.connection.name}`,
-          [found.connection.id],
-          () => api!.deleteConnection(found.connection.id),
-        ),
+      removeConnection,
     };
   }
 
@@ -732,11 +783,22 @@
   }
 
   function onGlobalKeydown(e: KeyboardEvent) {
+    const target = e.target as Element | null;
+    const selectedNode = selectedRow?.type === "node" ? selectedRow.node : undefined;
+    const dialogOpen = !!dialog || !!confirming || !!menu;
+    // Delete on a connection selected in the tree: Remove connection, which asks first (docs/connection-pane.md).
+    const inTree = !!target?.closest?.(".explorer") && !target.closest("input, select, textarea");
+    if (removesConnection(e, { seeking, dialogOpen, inTree, selectedNode })) {
+      e.preventDefault();
+      const found = connectionOf(selectedNode!.meta?.connectionId ?? "");
+      if (found) void removeConnection(found);
+      return;
+    }
     const command = keyCommand(e, {
       seeking,
-      dialogOpen: !!dialog || !!confirming || !!menu,
+      dialogOpen,
       inEditor: !!(e.target as Element | null)?.closest?.(".monaco-editor"),
-      selectedNode: selectedRow?.type === "node" ? selectedRow.node : undefined,
+      selectedNode,
     });
     if (!command) return;
     e.preventDefault();
@@ -897,7 +959,7 @@
         onRestart={restartEngine}
       />
     {:else}
-      <DetailPane row={selectedRow} actions={rowMenu(selectedRow, menuContext())} environment={environmentPane(selectedRow)} />
+      <DetailPane row={selectedRow} actions={rowMenu(selectedRow, menuContext())} environment={environmentPane(selectedRow)} connection={connectionPane(selectedRow)} />
     {/if}
   </main>
 
@@ -967,8 +1029,7 @@
     {kinds}
     environments={config.environments}
     environmentId={dialog.environmentId}
-    initial={dialog.initial}
-    onSaved={(saved, environmentId) => (dialog?.kind === "connection" && !dialog.initial ? showAddedConnection(saved.id, environmentId) : configChanged())}
+    onSaved={(saved, environmentId) => showAddedConnection(saved.id, environmentId)}
     onEnvironmentCreated={configChanged}
     onClose={() => (dialog = undefined)}
   />
