@@ -5,22 +5,18 @@
 
   const COLORS = ENV_PICKER;
 
+  // New environment only: an existing one edits in place in its detail pane (docs/environment-pane.md).
   let {
-    initial,
     onSave,
     onClose,
   }: {
-    initial?: EnvironmentConfig;
     onSave: (env: EnvironmentConfig) => Promise<void>;
     onClose: () => void;
   } = $props();
 
-  // svelte-ignore state_referenced_locally
-  let name = $state(initial?.name ?? "");
-  // svelte-ignore state_referenced_locally
-  let color = $state(initial?.color ?? COLORS[0]);
-  // svelte-ignore state_referenced_locally
-  let readOnly = $state(initial?.readOnly ?? false);
+  let name = $state("");
+  let color = $state(COLORS[0]);
+  let readOnly = $state(false);
   let error = $state("");
   let saving = $state(false);
 
@@ -31,7 +27,7 @@
     }
     saving = true;
     try {
-      await onSave({ id: initial?.id ?? crypto.randomUUID(), name: name.trim(), color, readOnly, connections: initial?.connections ?? [] });
+      await onSave({ id: crypto.randomUUID(), name: name.trim(), color, readOnly, connections: [] });
       onClose();
     } catch (e) {
       error = String(e instanceof Error ? e.message : e);
@@ -41,7 +37,7 @@
   }
 </script>
 
-<Dialog title={initial ? "Edit environment" : "New environment"} {onClose}>
+<Dialog title="New environment" {onClose}>
   <label for="env-name">Name</label>
   <input id="env-name" bind:value={name} placeholder="dev, UAT, prod, client sandbox" onkeydown={(e) => e.key === "Enter" && save()} />
 

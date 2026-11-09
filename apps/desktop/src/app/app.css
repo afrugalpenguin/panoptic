@@ -35,6 +35,9 @@
   /* A filled accent button and its text (Run, Save, Update), AA in each theme (theme-contrast test, #234). */
   --accent-fill: #1f6feb;
   --on-accent: #ffffff;
+  /* The environment pane's New connection (docs/environment-pane.md): amber with dark text, the same in both themes. */
+  --action-primary: #f2a33a;
+  --on-action-primary: #17181b;
   --ok: #1a7f37;
   --bad: #cf222e;
   --warn: #9a6700;

@@ -1,0 +1,224 @@
+// The environment detail pane, phase 1 (docs/environment-pane.md): properties edit in place and save on change.
+import { flushSync, mount, unmount } from "svelte";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import "./app.css";
+import type { EnvironmentConfig } from "./api";
+import type { EnvironmentPaneProps } from "./env-pane";
+import EnvironmentPane from "./EnvironmentPane.svelte";
+import type { EnvConnection } from "./tree-model";
+
+// Synthetic names only (the spec's fictional Fabrikam estate).
+const uat: EnvironmentConfig = { id: "uat", name: "UAT", color: "#f08c00", readOnly: false, connections: [] };
+const conn = (id: string, kind: string, letters: string, name: string): EnvConnection => ({
+  id: `conn:${id}`,
+  kind,
+  badge: { letters, color: "#2d5aa0", name },
+  label: { prefix: "fabrikam-", core: id, suffix: ".example.test" },
+});
+const list = [conn("uat-sql-01", "sql", "S", "SQL"), conn("uat-sql-02", "sql", "S", "SQL"), conn("uat-cosmos", "cosmos", "C", "Cosmos")];
+
+let mounted: Record<string, unknown> | undefined;
+afterEach(() => {
+  if (mounted) unmount(mounted);
+  mounted = undefined;
+  document.body.innerHTML = "";
+  vi.useRealTimers();
+});
+
+function show(over: Partial<EnvironmentPaneProps> = {}) {
+  const props: EnvironmentPaneProps = {
+    env: uat,
+    position: 2,
+    total: 3,
+    connections: () => list,
+    onSave: vi.fn(async () => {}),
+    onMove: vi.fn(),
+    onNewConnection: vi.fn(),
+    onRefresh: vi.fn(),
+    onDelete: vi.fn(),
+    onSelectConnection: vi.fn(),
+    onExpandConnection: vi.fn(),
+    ...over,
+  };
+  const target = document.createElement("div");
+  target.style.height = "700px";
+  target.style.width = "1100px";
+  document.body.append(target);
+  mounted = mount(EnvironmentPane, { target, props });
+  flushSync();
+  return props;
+}
+
+const $ = <T extends Element = HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
+const button = (label: string) => $<HTMLButtonElement>(`button[aria-label="${label}"]`);
+const nameInput = () => $<HTMLInputElement>("#env-pane-name");
+
+function typeName(value: string) {
+  const input = nameInput();
+  input.focus();
+  input.value = value;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+const press = (el: Element, key: string) => el.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+
+describe("EnvironmentPane", () => {
+  it("shows the header, the summary and the connections with the tree's label split", () => {
+    show();
+    expect($("h2").textContent).toBe("UAT");
+    expect($(".place").textContent).toBe("Environment · 2 of 3");
+    expect($(".summary").textContent?.replace(/\s+/g, " ").trim()).toBe("3 connections | 2 engines | writes allowed");
+    const rows = [...document.querySelectorAll(".conn")];
+    expect(rows).toHaveLength(3);
+    expect(rows[0].querySelector(".dim")?.textContent).toBe("fabrikam-");
+    expect(rows[0].querySelector(".core")?.textContent).toBe("uat-sql-01");
+    expect(rows[2].querySelector(".engine")?.textContent).toBe("Cosmos");
+    expect([...document.querySelectorAll(".pill")].map((p) => p.textContent)).toEqual(["SQL 2", "Cosmos 1"]);
+    expect(getComputedStyle($(".env-pane")).getPropertyValue("--env")).toBe("#f08c00");
+  });
+
+  it("saves the name on Enter", async () => {
+    const props = show();
+    typeName("  Staging ");
+    press(nameInput(), "Enter");
+    await vi.waitFor(() => expect(props.onSave).toHaveBeenCalledWith({ ...uat, name: "Staging" }));
+    expect(props.onSave).toHaveBeenCalledTimes(1);
+  });
+
+  it("reverts the name on Escape without saving", async () => {
+    const props = show();
+    typeName("Typo");
+    press(nameInput(), "Escape");
+    flushSync();
+    expect(nameInput().value).toBe("UAT");
+    expect(document.activeElement).not.toBe(nameInput());
+    await new Promise((r) => setTimeout(r, 20));
+    expect(props.onSave).not.toHaveBeenCalled();
+  });
+
+  it("refuses an empty name, restores the previous one and flashes the field", async () => {
+    const props = show();
+    typeName("   ");
+    press(nameInput(), "Enter");
+    flushSync();
+    expect(nameInput().value).toBe("UAT");
+    await vi.waitFor(() => expect(nameInput().classList).toContain("bad"));
+    expect(props.onSave).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a failed write and puts the name back", async () => {
+    show({ onSave: vi.fn(async () => Promise.reject(new Error("store is read-only"))) });
+    typeName("Staging");
+    press(nameInput(), "Enter");
+    await vi.waitFor(() => expect($("[role=alert]").textContent).toBe("Not saved: store is read-only"));
+    expect(nameInput().value).toBe("UAT");
+  });
+
+  it("the write policy menu sets readOnly, and back", async () => {
+    const props = show();
+    button("Write policy Allowed").click();
+    flushSync();
+    const items = [...document.querySelectorAll<HTMLButtonElement>("[role=menuitemradio]")];
+    expect(items.map((i) => [i.textContent?.trim(), i.getAttribute("aria-checked")])).toEqual([["Allowed", "true"], ["Read-only", "false"]]);
+    items[1].click();
+    await vi.waitFor(() => expect(props.onSave).toHaveBeenCalledWith({ ...uat, readOnly: true }));
+    flushSync();
+    expect(document.querySelector("[role=menu]")).toBeNull();
+
+    unmount(mounted!);
+    document.body.innerHTML = "";
+    const ro = show({ env: { ...uat, readOnly: true } });
+    expect($(".summary").textContent).toContain("read-only");
+    button("Write policy Read-only").click();
+    flushSync();
+    $<HTMLButtonElement>("[role=menuitemradio][aria-checked=false]").click();
+    await vi.waitFor(() => expect(ro.onSave).toHaveBeenCalledWith({ ...uat, readOnly: false }));
+  });
+
+  it("picks a colour from the swatches or the hex field, and refuses a bad hex", async () => {
+    const props = show();
+    button("Colour #f08c00").click();
+    flushSync();
+    $<HTMLButtonElement>('[role=radio][aria-label="#1971c2"]').click();
+    await vi.waitFor(() => expect(props.onSave).toHaveBeenCalledWith({ ...uat, color: "#1971c2" }));
+    flushSync();
+    expect(document.querySelector("[role=dialog]")).toBeNull();
+
+    button("Colour #f08c00").click();
+    flushSync();
+    const hex = $<HTMLInputElement>(".hex input");
+    hex.value = "nope";
+    hex.dispatchEvent(new Event("input", { bubbles: true }));
+    press(hex, "Enter");
+    flushSync();
+    expect(hex.getAttribute("aria-invalid")).toBe("true");
+    hex.value = "5C7CFA";
+    hex.dispatchEvent(new Event("input", { bubbles: true }));
+    press(hex, "Enter");
+    await vi.waitFor(() => expect(props.onSave).toHaveBeenLastCalledWith({ ...uat, color: "#5c7cfa" }));
+  });
+
+  it("disables the position arrows at the ends and moves by one otherwise", () => {
+    const first = show({ position: 1, total: 3 });
+    expect(button("Move up").disabled).toBe(true);
+    expect(button("Move down").disabled).toBe(false);
+    button("Move down").click();
+    expect(first.onMove).toHaveBeenCalledWith(1);
+
+    unmount(mounted!);
+    document.body.innerHTML = "";
+    show({ position: 3, total: 3 });
+    expect(button("Move up").disabled).toBe(false);
+    expect(button("Move down").disabled).toBe(true);
+
+    unmount(mounted!);
+    document.body.innerHTML = "";
+    show({ position: 1, total: 1 });
+    expect(button("Move up").disabled).toBe(true);
+    expect(button("Move down").disabled).toBe(true);
+  });
+
+  it("times building the connection list, not a constant, in the footer and the card header", () => {
+    // A store call that takes measurable time, so the measurement is seen to wrap it.
+    const slow = () => {
+      const until = performance.now() + 3;
+      while (performance.now() < until);
+      return list;
+    };
+    show({ connections: slow });
+    const footer = $("footer").textContent!.replace(/\s+/g, " ");
+    const match = /UAT: 3 items in ([\d.]+) ms/.exec(footer);
+    expect(match).not.toBeNull();
+    const ms = Number(match![1]);
+    expect(Number.isFinite(ms)).toBe(true);
+    expect(ms).toBeGreaterThan(0);
+    expect(ms).toBeGreaterThanOrEqual(3);
+    expect($(".timing").textContent).toBe(`3 listed in ${match![1]} ms`);
+    expect(footer).toContain("Ready");
+    expect(footer).toContain("Changes save as you make them");
+  });
+
+  it("selects a connection on click and expands it on double-click", async () => {
+    const props = show();
+    const row = document.querySelectorAll<HTMLButtonElement>(".conn")[1];
+    row.click();
+    await vi.waitFor(() => expect(props.onSelectConnection).toHaveBeenCalledWith("conn:uat-sql-02"));
+
+    row.click();
+    row.click();
+    row.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    expect(props.onExpandConnection).toHaveBeenCalledWith("conn:uat-sql-02");
+    await new Promise((r) => setTimeout(r, 300));
+    expect(props.onSelectConnection).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs New connection, Refresh and Delete", () => {
+    const props = show();
+    $<HTMLButtonElement>("button.new").click();
+    button("Refresh").click();
+    [...document.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Delete environment")!.click();
+    expect(props.onNewConnection).toHaveBeenCalledOnce();
+    expect(props.onRefresh).toHaveBeenCalledOnce();
+    expect(props.onDelete).toHaveBeenCalledOnce();
+    expect($(".delete p").textContent).toBe("Removes the environment and its 3 connections. Saved secrets are deleted.");
+  });
+});

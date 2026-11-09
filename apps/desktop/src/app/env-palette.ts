@@ -1,5 +1,6 @@
-// Environment colours: one palette for the Environment dialog's swatches and the colours Import assigns. They are
-// saved in config as hex, so they are values here rather than CSS tokens (docs/design-tokens.md).
+// Environment colours: one palette for the swatches (New environment, the environment pane's Colour) and the colours
+// Import assigns. They are saved in config as hex, so they are values here rather than CSS tokens
+// (docs/design-tokens.md).
 
 export const ENV_COLORS = {
   red: "#e03131",
@@ -17,7 +18,7 @@ export const ENV_COLORS = {
 
 const c = ENV_COLORS;
 
-/** The Environment dialog's swatches, in order. */
+/** The swatches New environment and the environment pane offer, in order. */
 export const ENV_PICKER: string[] = [c.green, c.blue, c.orange, c.red, c.violet, c.teal, c.grey];
 
 /** Colours Import gives environments whose names it does not recognise, in turn. */

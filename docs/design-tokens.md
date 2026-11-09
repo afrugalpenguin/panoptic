@@ -5,7 +5,7 @@ Every colour, size and spacing value in the UI comes from the CSS custom propert
 ## Colour
 
 - **Surfaces and text:** `--bg`, `--bg-pane`, `--bg-hover`, `--bg-selected`, `--bg-selected-blur`, `--border`, `--text`, `--text-muted`.
-- **State:** `--accent` (links, focus, selection), `--accent-fill` with `--on-accent` (filled buttons), `--ok`, `--bad`, `--warn`, `--focus-ring`.
+- **State:** `--accent` (links, focus, selection), `--accent-fill` with `--on-accent` (filled buttons), `--action-primary` with `--on-action-primary` (the environment pane's New connection), `--ok`, `--bad`, `--warn`, `--focus-ring`.
 - **Brand:** `--brand-primary` (cyan) and `--brand-secondary` (amber) are the logo's colours, for the logo and decoration only. On the light theme they are too pale for text or indicators, which use `--text-brand-primary` and `--text-brand-secondary`.
 - **Object kinds:** `--glyph-database`, `--glyph-table`, `--glyph-view`, `--glyph-proc`, `--glyph-function`, `--glyph-key`, `--glyph-policy` and `--glyph-neutral`, the letter-on-tint icons in the tree and detail pane (`Icon.svelte`).
 - **Badges:** `--on-badge` is the text on a filled badge. Connection kind badge colours come from the sidecar (`backends.describe`); `--kind-unknown` is for a kind it did not describe.

@@ -704,6 +704,24 @@ describe("connections without an environment", () => {
     return f;
   }
 
+  it("lists an environment's connections for the detail pane with the tree's labels and badges, even collapsed", async () => {
+    const f = fixture({
+      "": [env("env:dev", 2)],
+      "env:dev": [
+        { ...conn("conn:a"), meta: { endpoint: "dev-a.example.test", connectionKind: "sql", connectionId: "a" } },
+        { ...conn("conn:b"), meta: { endpoint: "dev-b.example.test", connectionKind: "sql", connectionId: "b" } },
+        conn("conn:c", "cosmos"),
+      ],
+    });
+    await f.model.loadRoot();
+    await f.model.preload(f.model.envIds());
+    expect(f.model.isExpanded("env:dev")).toBe(false);
+    const list = f.model.envConnections("env:dev");
+    expect(list.map((c) => [c.id, c.kind, c.badge.letters])).toEqual([["conn:a", "sql", "S"], ["conn:b", "sql", "S"], ["conn:c", "cosmos", "C"]]);
+    expect(list[0].label).toEqual({ prefix: "dev-", core: "a", suffix: ".example.test" });
+    expect(f.model.envConnections("env:nope")).toEqual([]);
+  });
+
   it("with no environments, lists them flat at the root with no header and no environment colour", async () => {
     const { model } = await flat();
     await model.expand("conn:a");
