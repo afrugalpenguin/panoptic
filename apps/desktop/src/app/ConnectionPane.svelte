@@ -1,10 +1,22 @@
 <script lang="ts">
-  // The connection detail pane, phase 1 (docs/connection-pane.md): a status board about the server and its properties,
-  // edited in place and saved as they change. Shares the environment pane's frame, cards and controls (pane/). One
-  // component for every engine: everything engine-specific comes from the node or the sidecar's kind description.
+  // The connection detail pane (docs/connection-pane.md): a status board about the server and its properties, edited
+  // in place and saved as they change. Shares the environment pane's frame, cards and controls (pane/). One component
+  // for every engine: everything engine-specific comes from the node, the sidecar's kind description or its describe.
   import { onDestroy, untrack } from "svelte";
-  import type { ConnectionConfig, ProbeResult } from "./api";
-  import { authLabel, databases, paneNotices, placeText, secretPlace, writePolicy, type ConnectionPaneProps } from "./conn-pane";
+  import type { ConnectionConfig, ProbeResult, ServerState } from "./api";
+  import {
+    ago,
+    attentionTitle,
+    authLabel,
+    databases,
+    databaseSummary,
+    paneNotices,
+    placeText,
+    secretPlace,
+    tokenLeft,
+    writePolicy,
+    type ConnectionPaneProps,
+  } from "./conn-pane";
   import { formatMs, plural, probeState, statusColor } from "./env-pane";
   import KindBadge from "./rows/KindBadge.svelte";
   import SegmentedLabel from "./rows/SegmentedLabel.svelte";
@@ -37,6 +49,8 @@
     copyText,
     canQuery,
     probe,
+    server,
+    serverRevision,
     onSave,
     onMoveTo,
     onMove,
@@ -84,9 +98,38 @@
     untrack(() => runProbe(false));
   });
 
+  // Session, About and exceptions (docs/connection-pane.md, phase 2): read from the sidecar's cache when the pane is
+  // shown and whenever it says a describe finished; this never opens a session. Refresh describes the server again.
+  let serverState = $state<ServerState>();
+  let serverRun = 0;
+
+  function loadServer(refresh: boolean) {
+    const run = ++serverRun;
+    server(refresh).then(
+      (state) => {
+        if (run === serverRun) serverState = state;
+      },
+      () => {
+        // The engine went away or refused: the tiles keep what they had, "-" when nothing came yet.
+      },
+    );
+  }
+
+  $effect(() => {
+    void [connection.id, serverRevision];
+    untrack(() => loadServer(false));
+  });
+
+  const session = $derived(serverState?.session ?? undefined);
+  const about = $derived(serverState?.about ?? undefined);
+  const dbSummary = $derived(serverState?.databases ? databaseSummary(serverState.databases) : undefined);
+  const exceptions = $derived(serverState?.exceptions ?? []);
+  const attentionError = $derived(exceptions.some((e) => e.severity === "error"));
+
   function refresh() {
     onRefresh();
     runProbe(true);
+    loadServer(true);
   }
 
   /** The last store write's failure, shown in the Properties card until the next edit; notice is a note after a save. */
@@ -185,8 +228,9 @@
   }
 
   onDestroy(() => {
-    // A late answer for a pane that has gone is dropped.
+    // Late answers for a pane that has gone are dropped.
     probeRun++;
+    serverRun++;
   });
 
   /** C, R, F2 and Delete while focus is in the pane and not in a field or a popover. Ctrl+N is the app's. */
@@ -236,8 +280,8 @@
 
   {#snippet main()}
     <div class="left">
-      <!-- Server strip: only tiles whose source exists. Ping is the environment pane's probe; Connected, Catalog and
-           Session come with their sources (docs/connection-pane.md, phases 2 and 3). -->
+      <!-- Server strip: only tiles whose source exists. Ping is the environment pane's probe; Connected and Session are
+           the sidecar's record of its sessions; Catalog comes with its source (docs/connection-pane.md, phase 3). -->
       <Card label="Server" name="server">
         {#snippet head()}<span class="mono dim next">next on refresh</span>{/snippet}
         <div class="tiles">
@@ -246,10 +290,66 @@
             <span class="value mono" style:color={reachColor.color}>{reach.ping}</span>
             <span class="sub" title={reach.title}><Dot color={reachColor.color} size={7} />{reach.label}</span>
           </div>
+          <div class="tile connected">
+            <span class="key">Connected</span>
+            {#if session}
+              <span class="value mono">{formatMs(session.handshakeMs)} ms</span>
+              <span class="sub" title="The handshake of the first session the explorer or a query opened">opened {ago(Date.now() - session.openedAt)}</span>
+            {:else}
+              <span class="value mono">-</span>
+              <span class="sub">not connected</span>
+            {/if}
+          </div>
+          <div class="tile session">
+            <span class="key">Session</span>
+            {#if session}
+              <span class="value mono identity" title={session.identity}>{session.identity}</span>
+              <span class="sub">{session.authMode}{#if session.tokenExpiresAt != null}, {tokenLeft(session.tokenExpiresAt, Date.now())}{/if}</span>
+            {:else}
+              <span class="value mono">-</span>
+              <span class="sub">not connected</span>
+            {/if}
+          </div>
         </div>
       </Card>
-      <!-- Slot: About this server card (describeServer, phase 2). Hidden until a session has opened. -->
-      <!-- Slot: Needs attention strip (exceptions, phase 2). Rendered only when there is at least one. -->
+
+      <!-- About: hidden until a session has opened and the server has been described; never placeholders. -->
+      {#if session && (about || serverState?.aboutError)}
+        <Card label="About this server" name="about">
+          {#snippet head()}<span class="mono dim next">read on connect, cached</span>{/snippet}
+          {#each about ?? [] as fact (fact.label)}
+            <div class="about-row">
+              <span class="dim">{fact.label}</span>
+              <span class:mono={fact.mono}>{fact.value}{#if fact.detail}<span class="detail">{fact.detail}</span>{/if}</span>
+            </div>
+          {/each}
+          {#if dbSummary}
+            <div class="about-row">
+              <span class="dim">Databases</span>
+              <span class="databases">
+                <span class="mono">{dbSummary.text}</span>
+                {#each dbSummary.pills as pill (pill.state)}
+                  <span class="state-pill" class:error={pill.error}>{pill.count} {pill.state}</span>
+                {/each}
+              </span>
+            </div>
+          {/if}
+          {#if serverState?.aboutError}<p class="about-error" role="status">Could not read the server: {serverState.aboutError}</p>{/if}
+        </Card>
+      {/if}
+
+      <!-- Needs attention: only when there is at least one exception; red when any is an error. -->
+      {#if exceptions.length}
+        <section class="attention" class:error={attentionError} aria-label="Needs attention">
+          <Dot color={attentionError ? "var(--bad)" : "var(--warn)"} />
+          <div>
+            <p class="attention-title">{attentionTitle(exceptions)}</p>
+            {#each exceptions as e (e.group + e.subject)}
+              <p class="attention-item"><span class="mono">{e.subject}</span> {e.detail}</p>
+            {/each}
+          </div>
+        </section>
+      {/if}
     </div>
   {/snippet}
 
@@ -368,6 +468,7 @@
     border-top: 1px solid var(--border);
   }
   .tile {
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -391,6 +492,85 @@
     align-items: center;
     gap: 6px;
     font-size: 11.5px;
+    color: var(--text-muted);
+  }
+  .tile .value.identity {
+    font-size: 15px;
+    line-height: 30px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .about-row {
+    display: grid;
+    grid-template-columns: 150px minmax(0, 1fr);
+    align-items: center;
+    min-height: 34px;
+    padding: 0 16px;
+    border-top: 1px solid var(--border);
+    font-size: var(--fs-md);
+  }
+  .about-row > span:last-child {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .detail {
+    margin-left: 8px;
+    font-family: var(--font-ui);
+    font-size: var(--fs-xs);
+    color: var(--tree-dim);
+  }
+  .databases {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  .state-pill {
+    padding: 1px 7px;
+    border: 1px solid color-mix(in srgb, var(--warn) 50%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--warn) 14%, transparent);
+    font-size: var(--fs-xs);
+    white-space: nowrap;
+  }
+  .state-pill.error {
+    border-color: color-mix(in srgb, var(--bad) 50%, transparent);
+    background: color-mix(in srgb, var(--bad) 14%, transparent);
+  }
+  .about-error {
+    margin: 0;
+    padding: 10px 16px;
+    border-top: 1px solid var(--border);
+    color: var(--text-muted);
+    overflow-wrap: anywhere;
+  }
+  .attention {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 16px;
+    border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--border));
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--warn) 6%, var(--bg));
+  }
+  .attention.error {
+    border-color: color-mix(in srgb, var(--bad) 35%, var(--border));
+    background: color-mix(in srgb, var(--bad) 6%, var(--bg));
+  }
+  .attention > :global(.dot) {
+    margin-top: 5px;
+  }
+  .attention p {
+    margin: 0;
+  }
+  .attention-title {
+    font-size: var(--fs-md);
+    font-weight: 600;
+  }
+  .attention-item {
+    margin-top: 4px !important;
+    font-size: 12.5px;
     color: var(--text-muted);
   }
   .engine {

@@ -1,5 +1,6 @@
 // The connection detail pane's pure parts (docs/connection-pane.md): what App supplies, and the wording it shows.
-import type { AuthKind, ConnectionConfig, EnvironmentConfig, KindDescription, ProbeResult, TreeNode } from "./api";
+import type { AuthKind, ConnectionConfig, EnvironmentConfig, KindDescription, ProbeResult, ServerState, TreeNode } from "./api";
+import type { ServerDatabases } from "../sidecar-types.generated";
 import type { KindBadge } from "./kinds";
 import type { LabelSegments } from "./labels";
 
@@ -25,6 +26,11 @@ export interface ConnectionPaneProps {
   canQuery: boolean;
   /** Probes this connection for reachability (the environment pane's probe); fresh skips the sidecar's 60 s cache. */
   probe: (fresh: boolean) => Promise<ProbeResult[]>;
+  /** The sidecar's cached session, About facts, databases and exceptions for this connection; refresh describes the
+   * server again when a session has opened. Never opens one: showing the pane runs nothing on the server. */
+  server: (refresh: boolean) => Promise<ServerState>;
+  /** Changes when the sidecar says a describe for this connection finished (connection.serverUpdated). */
+  serverRevision: number;
   /** Writes the changed connection where it is (config.saveConnection); secret undefined keeps the stored one while the
    * sidecar's binding rule allows, "" clears it. Rejects when the write fails. */
   onSave: (next: ConnectionConfig, secret?: string) => Promise<void>;
@@ -79,3 +85,39 @@ export const databases = (children: TreeNode[] | undefined) => children?.filter(
  * the component that set it, until the next edit there.
  */
 export const paneNotices = new Map<string, string>();
+
+/** How long ago, for the Connected tile: "just now", "2 min ago", "3 h ago", "2 d ago". */
+export function ago(ms: number): string {
+  const minutes = Math.floor(Math.max(0, ms) / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  return hours < 24 ? `${hours} h ago` : `${Math.floor(hours / 24)} d ago`;
+}
+
+/** The Session tile's token note: "token 42 min left", "token 3 h left", or "token expired". */
+export function tokenLeft(expiresAt: number, now: number): string {
+  const minutes = Math.floor((expiresAt - now) / 60_000);
+  if (minutes < 0) return "token expired";
+  if (minutes < 60) return `token ${minutes} min left`;
+  return `token ${Math.floor(minutes / 60)} h left`;
+}
+
+/** The About card's Databases row: "12 · 11 online", and a pill per state that is not online with how many. */
+export function databaseSummary(databases: ServerDatabases): { text: string; pills: { state: string; count: number; error: boolean }[] } {
+  const pills = new Map<string, { state: string; count: number; error: boolean }>();
+  for (const d of databases.notOnline) {
+    const found = pills.get(d.state);
+    if (found) found.count++;
+    else pills.set(d.state, { state: d.state, count: 1, error: !!d.error });
+  }
+  return { text: `${databases.total} · ${databases.online} online`, pills: [...pills.values()] };
+}
+
+/** The Needs attention strip's heading: "1 database needs attention", "3 databases need attention". */
+export function attentionTitle(exceptions: { group: string }[]): string {
+  const groups = new Set(exceptions.map((e) => e.group));
+  const n = exceptions.length;
+  const word = groups.size === 1 ? [...groups][0] : "item";
+  return `${n} ${word}${n === 1 ? " needs" : "s need"} attention`;
+}

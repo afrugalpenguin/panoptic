@@ -1,8 +1,9 @@
-// The connection detail pane, phase 1 (docs/connection-pane.md): properties edit in place and save on change.
+// The connection detail pane (docs/connection-pane.md): properties edit in place and save on change (phase 1); the
+// session, About and Needs attention come from the sidecar's cache (phase 2).
 import { flushSync, mount, unmount } from "svelte";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import "./app.css";
-import type { ConnectionConfig, EnvironmentConfig, ProbeResult, TreeNode } from "./api";
+import type { ConnectionConfig, EnvironmentConfig, ProbeResult, ServerState, TreeNode } from "./api";
 import { BUILTIN_KINDS } from "./builtin-kinds";
 import { paneNotices, type ConnectionPaneProps } from "./conn-pane";
 import ConnectionPane from "./ConnectionPane.svelte";
@@ -44,6 +45,9 @@ function show(over: Partial<ConnectionPaneProps> = {}) {
     canQuery: true,
     // Never answers unless a test says otherwise: the tile stays "-".
     probe: vi.fn(() => new Promise<ProbeResult[]>(() => {})),
+    // No session has opened unless a test says otherwise.
+    server: vi.fn(async (): Promise<ServerState> => ({ exceptions: [] })),
+    serverRevision: 0,
     onSave: vi.fn(async () => {}),
     onMoveTo: vi.fn(async () => true),
     onMove: vi.fn(),
@@ -387,12 +391,12 @@ describe("ConnectionPane", () => {
     expect(footer).toContain("Changes save as you make them");
   });
 
-  it("shows only the Ping tile, filled in when the probe answers, and the reachable segment with it", async () => {
+  it("shows the Ping, Connected and Session tiles (no Catalog yet); Ping fills in when the probe answers", async () => {
     let answer: (r: ProbeResult[]) => void = () => {};
     const probe = vi.fn((_fresh: boolean) => new Promise<ProbeResult[]>((resolve) => (answer = resolve)));
     show({ probe });
     expect(probe).toHaveBeenCalledWith(false);
-    expect([...document.querySelectorAll(".tile .key")].map((k) => k.textContent)).toEqual(["Ping"]);
+    expect([...document.querySelectorAll(".tile .key")].map((k) => k.textContent)).toEqual(["Ping", "Connected", "Session"]);
     expect(text($(".tiles .value"))).toBe("-");
     answer([{ connectionId: "c2", status: "reachable", ms: 88 }]);
     await vi.waitFor(() => expect(text($(".tiles .value"))).toBe("88 ms"));
@@ -409,6 +413,87 @@ describe("ConnectionPane", () => {
     expect(props.onCopyName).toHaveBeenCalledOnce();
     expect(props.onRefresh).toHaveBeenCalledOnce();
     expect(props.probe).toHaveBeenLastCalledWith(true);
+    expect(props.server).toHaveBeenLastCalledWith(true);
+  });
+
+  describe("server (phase 2)", () => {
+    const now = Date.now();
+    const described: ServerState = {
+      session: { openedAt: now - 2 * 60_000 - 5_000, handshakeMs: 184.2, identity: "ana.costa@fabrikam.example", authMode: "Microsoft Entra ID", tokenExpiresAt: now + 42 * 60_000 + 30_000 },
+      about: [
+        { label: "Product", value: "Azure SQL Database", mono: false },
+        { label: "Version", value: "12.0.2000.8", detail: "RTM", mono: true },
+        { label: "Collation", value: "SQL_Latin1_General_CP1_CI_AS", mono: true },
+      ],
+      describedAt: now - 60_000,
+      databases: { total: 12, online: 9, notOnline: [{ name: "Sales_archive", state: "restoring", error: false }, { name: "Old_ledger", state: "restoring", error: false }, { name: "Ledger", state: "suspect", error: true }] },
+      exceptions: [
+        { severity: "error", group: "database", subject: "Ledger", detail: "is suspect" },
+        { severity: "warn", group: "database", subject: "Old_ledger", detail: "is restoring" },
+        { severity: "warn", group: "database", subject: "Sales_archive", detail: "is restoring" },
+      ],
+    };
+    const tile = (key: string) => [...document.querySelectorAll(".tile")].find((t) => t.querySelector(".key")?.textContent === key)!;
+
+    it("reads the sidecar's cache when shown, never refreshing it, and with no session shows no About or Needs attention", async () => {
+      const props = show();
+      expect(props.server).toHaveBeenCalledExactlyOnceWith(false);
+      await Promise.resolve();
+      flushSync();
+      expect(text(tile("Connected"))).toBe("Connected - not connected");
+      expect(text(tile("Session"))).toBe("Session - not connected");
+      expect(document.querySelector("[aria-label='About this server']")).toBeNull();
+      expect(document.querySelector("[aria-label='Needs attention']")).toBeNull();
+    });
+
+    it("shows the session's handshake, age, identity and token time left", async () => {
+      show({ server: vi.fn(async () => described) });
+      await vi.waitFor(() => expect(text(tile("Connected"))).toBe("Connected 184 ms opened 2 min ago"));
+      expect(text(tile("Session"))).toBe("Session ana.costa@fabrikam.example Microsoft Entra ID, token 42 min left");
+    });
+
+    it("lists the About facts in the backend's order, then Databases with a pill per state", async () => {
+      show({ server: vi.fn(async () => described) });
+      await vi.waitFor(() => expect(document.querySelector("[aria-label='About this server']")).not.toBeNull());
+      const aboutRows = [...document.querySelectorAll(".about-row")].map((r) => text(r));
+      expect(aboutRows).toEqual([
+        "Product Azure SQL Database",
+        "Version 12.0.2000.8RTM",
+        "Collation SQL_Latin1_General_CP1_CI_AS",
+        "Databases 12 · 9 online 2 restoring1 suspect",
+      ]);
+      expect([...document.querySelectorAll(".pill, .state-pill")].map((p) => text(p))).toEqual(["2 restoring", "1 suspect"]);
+      expect(document.querySelectorAll(".about-row")[2].querySelector("span:last-child")?.classList).toContain("mono");
+      expect(text($("[aria-label='About this server'] .next"))).toBe("read on connect, cached");
+    });
+
+    it("shows Needs attention for the databases that are not online, red when one is an error", async () => {
+      show({ server: vi.fn(async () => described) });
+      await vi.waitFor(() => expect(document.querySelector("[aria-label='Needs attention']")).not.toBeNull());
+      const strip = $("[aria-label='Needs attention']");
+      expect(text(strip.querySelector(".attention-title"))).toBe("3 databases need attention");
+      expect([...strip.querySelectorAll(".attention-item")].map((i) => text(i))).toEqual(["Ledger is suspect", "Old_ledger is restoring", "Sales_archive is restoring"]);
+      expect(strip.classList).toContain("error");
+    });
+
+    it("a single warning reads in the singular and stays amber", async () => {
+      show({ server: vi.fn(async () => ({ ...described, exceptions: [described.exceptions[2]] })) });
+      await vi.waitFor(() => expect(document.querySelector("[aria-label='Needs attention']")).not.toBeNull());
+      expect(text($(".attention-title"))).toBe("1 database needs attention");
+      expect($("[aria-label='Needs attention']").classList).not.toContain("error");
+    });
+
+    it("says when the server could not be read, keeping what was read before", async () => {
+      show({ server: vi.fn(async () => ({ ...described, aboutError: "VIEW SERVER STATE permission was denied" })) });
+      await vi.waitFor(() => expect(text($("[aria-label='About this server'] [role=status]"))).toBe("Could not read the server: VIEW SERVER STATE permission was denied"));
+      expect(document.querySelectorAll(".about-row")).toHaveLength(4);
+    });
+
+    it("keeps the tiles at '-' when the engine does not answer", async () => {
+      show({ server: vi.fn(async () => Promise.reject(new Error("The database engine is not running"))) });
+      await new Promise((r) => setTimeout(r, 20));
+      expect(text(tile("Session"))).toBe("Session - not connected");
+    });
   });
 
   it("keys: C copies, R refreshes, F2 focuses Host, Delete removes; not while typing in a field", () => {

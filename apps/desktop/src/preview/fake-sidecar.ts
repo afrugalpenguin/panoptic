@@ -101,6 +101,7 @@ function children(id: string): TreeNode[] {
   const c = connectionAt(parts[0]);
   if (!c) return [];
   if (parts.length === 1) {
+    opened(c);
     return DATABASES[c.kind].map((db) =>
       node(`${id}/db:${db}`, "database", db, "database", true, QUERYABLE, { system: String(["master", "model", "msdb", "tempdb", "postgres"].includes(db)) }),
     );
@@ -236,6 +237,47 @@ async function probe(ids: string[]) {
   );
 }
 
+// Synthetic sessions and server descriptions for the connection pane (docs/connection-pane.md, phase 2): a connection
+// gets a session when the tree first lists its databases, as in the sidecar, and is then described.
+const sessions = new Map<string, { openedAt: number; handshakeMs: number; identity: string; authMode: string; tokenExpiresAt?: number }>();
+function opened(c: ConnectionConfig) {
+  if (sessions.has(c.id)) return;
+  const login = c.auth === "sql";
+  sessions.set(c.id, {
+    openedAt: Date.now() - 2 * 60_000,
+    handshakeMs: 184,
+    identity: login ? (c.user ?? "") : "ana.costa@fabrikam.example",
+    authMode: login ? "SQL login" : "Microsoft Entra ID",
+    ...(login ? {} : { tokenExpiresAt: Date.now() + 42 * 60_000 }),
+  });
+  setTimeout(() => notify("connection.serverUpdated", { connectionId: c.id }), 30);
+}
+function serverState(id: string) {
+  const session = sessions.get(id);
+  const c = connectionAt(`conn:${id}`);
+  if (!session || !c) return { exceptions: [] };
+  const sql = c.kind === "sql";
+  const about = sql
+    ? [
+        { label: "Product", value: "Azure SQL Database", mono: false },
+        { label: "Version", value: "12.0.2000.8", detail: "RTM", mono: true },
+        { label: "Edition", value: "General Purpose", detail: "GP_S_Gen5_4", mono: false },
+        { label: "Collation", value: "SQL_Latin1_General_CP1_CI_AS", mono: true },
+        { label: "Server time", value: "2026-11-09 12:42:07 UTC", detail: "at connect", mono: true },
+      ]
+    : [{ label: "Product", value: c.kind === "cosmos" ? "NoSQL" : "PostgreSQL 16.4", mono: false }];
+  const restoring = id === "uk-prod-sql-02";
+  const total = DATABASES[c.kind].length + (restoring ? 1 : 0);
+  const notOnline = restoring ? [{ name: "Sales_archive", state: "restoring", error: false }] : [];
+  return {
+    session,
+    about,
+    describedAt: session.openedAt + 400,
+    databases: { total, online: total - notOnline.length, notOnline },
+    exceptions: notOnline.map((d) => ({ severity: "warn", group: "database", subject: d.name, detail: `is ${d.state}` })),
+  };
+}
+
 let settings = {
   updateCheck: "never",
   explorer: { showKindBadge: true, rowFont: "mono", envOrder: [] as string[] },
@@ -281,6 +323,8 @@ function handle(req: Request): unknown {
       target.splice(before >= 0 ? before : target.length, 0, moving);
       return config;
     }
+    case "connection.server":
+      return serverState(String(p.connectionId));
     case "connection.probe":
       return probe((p.connectionIds as string[]) ?? []);
     case "settings.get":
