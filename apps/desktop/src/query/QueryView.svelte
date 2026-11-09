@@ -5,7 +5,7 @@
   import { writeTextFile } from "@tauri-apps/plugin-fs";
   import SeekBox from "../app/SeekBox.svelte";
   import type { SeekHost, SeekIndex, SeekRow } from "../app/seek";
-  import { toCsv, toJson } from "./export";
+  import { rememberExportDir, suggestExportPath, toCsv, toJson } from "./export";
   import QueryEditor from "./QueryEditor.svelte";
   import ResultGrid from "./ResultGrid.svelte";
   import type { QueryTab, QueryWorkspace } from "./store.svelte";
@@ -58,10 +58,11 @@
     if (!current) return;
     exportError = undefined;
     const path = await save({
-      defaultPath: `results.${format}`,
+      defaultPath: await suggestExportPath(format),
       filters: [{ name: format.toUpperCase(), extensions: [format] }],
     });
     if (!path) return;
+    rememberExportDir(path);
     try {
       await writeTextFile(path, format === "csv" ? toCsv(current.columns, current.rows) : toJson(current.columns, current.rows));
     } catch (e) {
@@ -75,13 +76,14 @@
   async function saveAll() {
     confirmingSave = false;
     const path = await save({
-      defaultPath: "results.csv",
+      defaultPath: await suggestExportPath("csv"),
       filters: [
         { name: "CSV", extensions: ["csv"] },
         { name: "JSON", extensions: ["json"] },
       ],
     });
     if (!path) return;
+    rememberExportDir(path);
     await workspace.saveAll(tab, path, path.toLowerCase().endsWith(".json") ? "json" : "csv");
   }
 

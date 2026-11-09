@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { toCsv, toJson } from "./export";
+import { folderOf, toCsv, toJson } from "./export";
 
 const columns = [{ name: "id", type: "int" }, { name: "name", type: "nvarchar" }, { name: "note", type: "nvarchar" }];
 
@@ -50,5 +50,16 @@ describe("toJson", () => {
   it("disambiguates duplicate column names", () => {
     const dup = [{ name: "a", type: "" }, { name: "a", type: "" }, { name: "", type: "" }];
     expect(JSON.parse(toJson(dup, [[1, 2, 3]]))).toEqual([{ a: 1, a_2: 2, column3: 3 }]);
+  });
+});
+
+describe("folderOf", () => {
+  it("drops the file name from Windows and POSIX paths", () => {
+    expect(folderOf("C:\\Users\\me\\Downloads\\results (1).csv")).toBe("C:\\Users\\me\\Downloads");
+    expect(folderOf("/home/me/results.json")).toBe("/home/me");
+  });
+
+  it("is undefined for a bare name", () => {
+    expect(folderOf("results.csv")).toBeUndefined();
   });
 });
