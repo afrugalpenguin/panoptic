@@ -37,7 +37,6 @@ function context(over: Partial<RowMenuContext> = {}) {
     newConnection: record("newConnection"),
     moveEnvironment: record("moveEnvironment"),
     deleteEnvironment: record("deleteEnvironment"),
-    editConnection: record("editConnection"),
     moveConnection: record("moveConnection"),
     stepConnection: record("stepConnection"),
     removeFromEnvironment: record("removeFromEnvironment"),
@@ -91,17 +90,17 @@ describe("rowMenu", () => {
     expect(labels(items).slice(1, 3)).toEqual(["Move up", "Move down [disabled]"]);
   });
 
-  it("a connection edits, queries, moves and removes itself; its refresh also refreshes its query tabs", () => {
+  it("a connection queries, moves and removes itself (its properties edit in its pane); its refresh also refreshes its query tabs", () => {
     const { ctx, calls } = context();
     const n = node({ id: "conn:c1", kind: "connection", actions: ["newQuery", "refresh"], meta: { connectionId: "c1", copyText: "orders" } });
     const items = rowMenu(nodeRow(n), ctx);
     expect(labels(items)).toEqual([
-      "New query (Ctrl+N)", "---", "Edit connection...", "Refresh", "Copy name", "Move to environment...", "Move up [disabled]", "Move down [disabled]",
+      "New query (Ctrl+N)", "---", "Refresh", "Copy name", "Move to environment...", "Move up [disabled]", "Move down [disabled]",
       "Remove from environment", "---", "Remove connection [danger]",
     ]);
-    for (const label of ["New query (Ctrl+N)", "Edit connection...", "Refresh", "Copy name", "Move to environment...", "Remove from environment", "Remove connection"]) run(items, label);
+    for (const label of ["New query (Ctrl+N)", "Refresh", "Copy name", "Move to environment...", "Remove from environment", "Remove connection"]) run(items, label);
     expect(calls).toEqual([
-      "openQuery(conn:c1,newQuery)", "editConnection(c1)", "refresh(conn:c1)", "refreshQueryTabs(conn:c1)", "copy(orders)",
+      "openQuery(conn:c1,newQuery)", "refresh(conn:c1)", "refreshQueryTabs(conn:c1)", "copy(orders)",
       "moveConnection(c1)", "removeFromEnvironment(c1)", "removeConnection(c1)",
     ]);
   });

@@ -722,6 +722,26 @@ describe("connections without an environment", () => {
     expect(f.model.envConnections("env:nope")).toEqual([]);
   });
 
+  it("gives the connection pane a connection's label split and its children as loaded, without loading them", async () => {
+    const f = fixture({
+      "": [env("env:dev", 2)],
+      "env:dev": [
+        { ...conn("conn:a"), meta: { endpoint: "dev-a.example.test", connectionKind: "sql", connectionId: "a" } },
+        { ...conn("conn:b"), meta: { endpoint: "dev-b.example.test", connectionKind: "sql", connectionId: "b" } },
+      ],
+      "conn:a": [node("conn:a/db:x", false), node("conn:a/db:y", false)],
+    });
+    await f.model.loadRoot();
+    await f.model.preload(f.model.envIds());
+    expect(f.model.labelOf("conn:a")).toEqual({ prefix: "dev-", core: "a", suffix: ".example.test" });
+    expect(f.model.loadedChildren("conn:a")).toBeUndefined();
+    await f.model.expand("conn:a");
+    expect(f.model.loadedChildren("conn:a")?.map((n) => n.id)).toEqual(["conn:a/db:x", "conn:a/db:y"]);
+    // Collapsing keeps what was listed.
+    f.model.collapse("conn:a");
+    expect(f.model.loadedChildren("conn:a")).toHaveLength(2);
+  });
+
   it("with no environments, lists them flat at the root with no header and no environment colour", async () => {
     const { model } = await flat();
     await model.expand("conn:a");

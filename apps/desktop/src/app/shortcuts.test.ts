@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TreeNode } from "./api";
-import { globalShortcut, keyCommand } from "./shortcuts";
+import { globalShortcut, keyCommand, removesConnection } from "./shortcuts";
 
 const k = (key: string, mods: { ctrlKey?: boolean; shiftKey?: boolean } = {}, inEditor = false) =>
   globalShortcut({ key, ctrlKey: !!mods.ctrlKey, metaKey: false, shiftKey: !!mods.shiftKey }, inEditor);
@@ -47,5 +47,27 @@ describe("keyCommand", () => {
     expect(keyCommand(ctrl("p"), idle)).toEqual({ kind: "global", action: "seek" });
     expect(keyCommand(ctrl("i"), idle)).toEqual({ kind: "global", action: "import" });
     expect(keyCommand(ctrl("i"), { ...idle, inEditor: true })).toBeUndefined();
+  });
+});
+
+describe("removesConnection", () => {
+  const connection: TreeNode = { id: "conn:c1", kind: "connection", label: "c1", icon: "sql", hasChildren: true, actions: [] };
+  const table: TreeNode = { ...connection, id: "conn:c1/t", kind: "table" };
+  const del = (mods: { ctrlKey?: boolean; shiftKey?: boolean; altKey?: boolean } = {}) => ({ key: "Delete", ctrlKey: !!mods.ctrlKey, metaKey: false, shiftKey: !!mods.shiftKey, altKey: !!mods.altKey });
+  const state = { seeking: false, dialogOpen: false, inTree: true, selectedNode: connection as TreeNode | undefined };
+
+  it("is Delete in the tree on a selected connection", () => {
+    expect(removesConnection(del(), state)).toBe(true);
+  });
+
+  it("is nothing else: other nodes, modifiers, other keys, outside the tree, or behind a dialog or Seek", () => {
+    expect(removesConnection(del(), { ...state, selectedNode: table })).toBe(false);
+    expect(removesConnection(del(), { ...state, selectedNode: undefined })).toBe(false);
+    expect(removesConnection(del({ shiftKey: true }), state)).toBe(false);
+    expect(removesConnection(del({ ctrlKey: true }), state)).toBe(false);
+    expect(removesConnection({ ...del(), key: "Backspace" }, state)).toBe(false);
+    expect(removesConnection(del(), { ...state, inTree: false })).toBe(false);
+    expect(removesConnection(del(), { ...state, dialogOpen: true })).toBe(false);
+    expect(removesConnection(del(), { ...state, seeking: true })).toBe(false);
   });
 });

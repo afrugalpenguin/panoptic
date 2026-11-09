@@ -3,20 +3,22 @@
 // databases or tenants): the environments extend the landing fixture (docs/plans/2026-10-31-landing.md, Task 3).
 import { emit } from "@tauri-apps/api/event";
 import { mockIPC } from "@tauri-apps/api/mocks";
-import type { AppConfig, ConnectionKind, EnvironmentConfig, TreeNode } from "../app/api";
+import type { AppConfig, ConnectionConfig, ConnectionKind, EnvironmentConfig, TreeNode } from "../app/api";
 import { BUILTIN_KINDS } from "../app/builtin-kinds";
 
 const VERSION = "0.2.0";
 
-const conn = (name: string, kind: ConnectionKind, endpoint: string) => ({
+const conn = (name: string, kind: ConnectionKind, endpoint: string, sql?: { user: string; database?: string }): ConnectionConfig => ({
   id: name,
   name,
   kind,
   endpoint,
-  auth: "entra" as const,
+  auth: sql ? "sql" : "entra",
+  user: sql?.user ?? null,
+  database: sql?.database ?? null,
   trustServerCertificate: false,
 });
-const env = (id: string, name: string, color: string, readOnly: boolean, connections: ReturnType<typeof conn>[]): EnvironmentConfig => ({
+const env = (id: string, name: string, color: string, readOnly: boolean, connections: ConnectionConfig[]): EnvironmentConfig => ({
   id,
   name,
   color,
@@ -34,7 +36,7 @@ export const config: AppConfig = {
     env("uat", "UAT", "#f08c00", false, [conn("uat-sql-01", "sql", "uat-sql-01.example.test"), conn("uat-pg", "postgres", "uat-pg.example.test")]),
     env("prod", "Prod", "#e03131", true, [
       conn("uk-prod-sql-01", "sql", "uk-prod-sql-01.example.test"),
-      conn("uk-prod-sql-02", "sql", "uk-prod-sql-02.example.test"),
+      conn("uk-prod-sql-02", "sql", "uk-prod-sql-02.example.test", { user: "report_reader" }),
       conn("us-prod-sql-01", "sql", "us-prod-sql-01.example.test"),
       conn("uk-prod-cosmos", "cosmos", "https://uk-prod-cosmos.example.test:443/"),
     ]),
@@ -254,6 +256,29 @@ function handle(req: Request): unknown {
       const i = config.environments.findIndex((e) => e.id === env.id);
       if (i >= 0) config.environments[i] = env;
       else config.environments.push(env);
+      return config;
+    }
+    // The connection pane saves and moves connections as they change (docs/connection-pane.md).
+    case "config.saveConnection": {
+      const { environmentId, connection } = p as { environmentId: string | null; connection: ConnectionConfig };
+      const lists = [...config.environments.map((e) => e.connections), config.connections];
+      const target = environmentId ? config.environments.find((e) => e.id === environmentId)!.connections : config.connections;
+      const at = target.findIndex((c) => c.id === connection.id);
+      if (at >= 0) target[at] = connection;
+      else {
+        for (const list of lists) list.splice(0, list.length, ...list.filter((c) => c.id !== connection.id));
+        target.push(connection);
+      }
+      return config;
+    }
+    case "config.moveConnection": {
+      const { connectionId, environmentId, beforeId } = p as { connectionId: string; environmentId: string | null; beforeId: string | null };
+      const moving = connectionAt(`conn:${connectionId}`);
+      if (!moving) return config;
+      for (const list of [...config.environments.map((e) => e.connections), config.connections]) list.splice(0, list.length, ...list.filter((c) => c.id !== connectionId));
+      const target = environmentId ? config.environments.find((e) => e.id === environmentId)!.connections : config.connections;
+      const before = beforeId ? target.findIndex((c) => c.id === beforeId) : -1;
+      target.splice(before >= 0 ? before : target.length, 0, moving);
       return config;
     }
     case "connection.probe":
