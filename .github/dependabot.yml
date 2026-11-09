@@ -46,6 +46,11 @@ updates:
     directory: /apps/desktop/src-tauri
     multi-ecosystem-group: app
     patterns: ["*"]
+    # The WebView2 memory target (lib.rs) uses wry's own webview2-com and windows-core: a newer one is a different
+    # crate whose traits don't apply to wry's types, so the build breaks (#351). They move by hand with Tauri.
+    ignore:
+      - dependency-name: windows-core
+      - dependency-name: webview2-com
     labels: [dependencies]
 
   - package-ecosystem: github-actions
