@@ -48,6 +48,8 @@ function show(over: Partial<ConnectionPaneProps> = {}) {
     // No session has opened unless a test says otherwise.
     server: vi.fn(async (): Promise<ServerState> => ({ exceptions: [] })),
     serverRevision: 0,
+    recent: [],
+    onOpenRecent: vi.fn(),
     onSave: vi.fn(async () => {}),
     onMoveTo: vi.fn(async () => true),
     onMove: vi.fn(),
@@ -498,6 +500,61 @@ describe("ConnectionPane", () => {
       show({ server: vi.fn(async () => Promise.reject(new Error("The database engine is not running"))) });
       await new Promise((r) => setTimeout(r, 20));
       expect(text(tile("Session"))).toBe("Session - not connected");
+    });
+  });
+
+  describe("catalog and recent (phase 3)", () => {
+    const tile = (key: string) => [...document.querySelectorAll(".tile")].find((t) => t.querySelector(".key")?.textContent === key);
+    const minutesAgo = (m: number) => Date.now() - m * 60_000 - 5_000;
+
+    it("places the Catalog tile between Connected and Session with its state and snapshot count", async () => {
+      show({
+        server: vi.fn(async (): Promise<ServerState> => ({
+          exceptions: [],
+          databases: { total: 12, online: 12, notOnline: [] },
+          catalog: { state: "warm", snapshots: 3, newestAt: minutesAgo(4), failures: [] },
+        })),
+      });
+      await vi.waitFor(() => expect(tile("Catalog")).toBeDefined());
+      expect([...document.querySelectorAll(".tile .key")].map((k) => k.textContent)).toEqual(["Ping", "Connected", "Catalog", "Session"]);
+      expect(text(tile("Catalog")!)).toBe("Catalog warm 3 of 12 databases · 4 min ago");
+      expect((tile("Catalog")!.querySelector(".value") as HTMLElement).style.color).toBe("var(--ok)");
+    });
+
+    it("reads refreshing in amber and cold in dim, and says when there are no snapshots", async () => {
+      show({ server: vi.fn(async (): Promise<ServerState> => ({ exceptions: [], catalog: { state: "refreshing", snapshots: 2, newestAt: minutesAgo(65), failures: [] } })) });
+      await vi.waitFor(() => expect(text(tile("Catalog") ?? null)).toBe("Catalog refreshing 2 databases · 1 h ago"));
+      expect((tile("Catalog")!.querySelector(".value") as HTMLElement).style.color).toBe("var(--warn)");
+
+      unmount(mounted!);
+      document.body.innerHTML = "";
+      show({ server: vi.fn(async (): Promise<ServerState> => ({ exceptions: [], catalog: { state: "cold", snapshots: 0, newestAt: null, failures: [] } })) });
+      await vi.waitFor(() => expect(text(tile("Catalog") ?? null)).toBe("Catalog cold no snapshots yet"));
+    });
+
+    it("leaves the Catalog tile out when the sidecar has no catalog to report", async () => {
+      const props = show();
+      await vi.waitFor(() => expect(props.server).toHaveBeenCalled());
+      await Promise.resolve();
+      flushSync();
+      expect(tile("Catalog")).toBeUndefined();
+    });
+
+    it("lists the connection's recent objects with their database and age, and opens one on click", () => {
+      const at = (minutes: number, label: string, database?: string) => ({
+        envId: "env:prod", hostId: "conn:c2", hostName: "prod-02", nodeId: `conn:c2/x:${label}`, label, kind: "table", at: minutesAgo(minutes), ...(database ? { database } : {}),
+      });
+      const recent = [at(4, "dbo.Orders", "Sales"), at(130, "dbo.Settle")];
+      const props = show({ recent });
+      const rows = [...document.querySelectorAll<HTMLButtonElement>("[aria-label=Recent] button")];
+      expect(rows.map((r) => text(r))).toEqual(["Sales · dbo.Orders 4m", "dbo.Settle 2h"]);
+      rows[0].click();
+      expect(props.onOpenRecent).toHaveBeenCalledWith(recent[0]);
+    });
+
+    it("hides Recent until something has been opened on the connection", () => {
+      show();
+      expect(document.querySelector("[aria-label=Recent]")).toBeNull();
     });
   });
 

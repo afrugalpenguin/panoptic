@@ -32,7 +32,7 @@ Card header row 12px: `SERVER` label, `probed 12 s ago` mono dim, right-aligned 
 
 1. **Ping**: round trip in ms coloured like the status, subline the status word with its dot. Same probe, cache and thresholds as the environment pane. Slow threshold is the environment pane's; do not define a second one here.
 2. **Connected**: handshake time in ms, subline `opened 2 min ago` or `not connected` with the value `-`. From the sidecar's record of its own opens: when the session to this connection started and how long that open took. Whether a pooled connection is still open is not shown: the drivers' pools cannot be asked.
-3. **Catalog**: `warm` green, `cold` dim, `refreshing` amber; subline `3 of 12 databases · 4 min ago` (how many databases have a snapshot and when the newest was built). From the catalog snapshot store the query editor already uses. Tile omitted until that store exists in the build.
+3. **Catalog**: `warm` green, `cold` dim, `refreshing` amber; subline `3 of 12 databases · 4 min ago` (how many databases have a snapshot and when the newest was built). From the catalog snapshot store the query editor already uses: the count and time come from the snapshot files' names and times, nothing is decrypted, and the "of 12" from the describe (left out until there is one). `refreshing` while any of the connection's catalogs is building or being checked, `warm` once one has been confirmed or built this session, `cold` otherwise, including snapshots on disk not yet checked. Builds starting and finishing update the tile.
 4. **Session**: the authenticated identity in mono 15px (Entra UPN, SQL login name, or `account key` for Cosmos key auth), subline the auth mode and, for token auth, time left on the token. Value `-` with subline `not connected` until a session has been opened.
 
 Tiles never block paint. Each shows `-` until its source answers.
@@ -55,7 +55,7 @@ Card hidden until the first session has opened; it never shows placeholders.
 
 Rendered only when there is at least one exception. Amber hairline border `#3a2f16`, background `#15130e`, 12px 16px padding. Amber dot, then a 13px 600 title `1 database needs attention` (or `3 databases need attention`), a 12.5px muted line per item naming the object in mono and the state with its age (`is restoring, started 14 min ago`), and a right-aligned `Show in tree` link that selects and reveals the first item.
 
-Sources in phase 2: any database the describe found not online (restoring, offline, suspect...; on Postgres, one that takes no connections or was left invalid). No age is shown: there is no portable source for when a state began. No `Show in tree` link either, as these databases are not in the tree. Later: expired or expiring token (under 5 min), probe unreachable while a session is open, catalog refresh failed. Each source is a backend-reported `{severity, title, detail, nodeId?}`; the UI only renders. Red variant (`#3a2226` / `#1a0f11`, dot `#ff7b7b`) for severity error.
+Sources in phase 2: any database the describe found not online (restoring, offline, suspect...; on Postgres, one that takes no connections or was left invalid). No age is shown: there is no portable source for when a state began. No `Show in tree` link either, as these databases are not in the tree. Phase 3 adds, all from state the sidecar already holds: an Entra token that has run out or will within 5 minutes (warn; the next query signs in again), the server not answering its cached probe while a session is open (error), and an IntelliSense catalog build that failed, per database, until one succeeds (warn). The strip's heading names the kind when all items are one kind (`2 databases need attention`), otherwise `3 items need attention`. Each source is a backend-reported `{severity, title, detail, nodeId?}`; the UI only renders. Red variant (`#3a2226` / `#1a0f11`, dot `#ff7b7b`) for severity error.
 
 ### Right rail
 
@@ -72,7 +72,7 @@ Two cards, then Remove pinned to the bottom (`margin-top: auto`). Same row styli
 - Secret: lock icon and where it lives (`Credential Manager`, `Keychain`), or `none` for integrated/interactive auth that stores nothing. Display only.
 - Position: `2 of 8` mono, up and down ghost arrows, disabled at the ends. Replaces Move up / Move down. Hidden for a loose connection.
 
-**Recent card.** Label `RECENT`. Same MRU as the environment pane, filtered to this connection, each row `database · object` with the database dim. Hidden until at least one entry exists.
+**Recent card.** Label `RECENT`. Same MRU as the environment pane, filtered to this connection, each row `database · object` with the database dim. Hidden until at least one entry exists. Usage keeps a list per connection as well as per environment, so a loose connection has one and a moved connection keeps its history; places recorded before the database was stored show the object alone.
 
 **Remove.** Ghost danger button `Remove connection`, full width, then the 12px dim centred note: `Deletes the saved connection and its secret. Nothing on the server is touched.` Confirmation dialog as now.
 

@@ -12,6 +12,8 @@ export interface Place {
   nodeId: string;
   label: string;
   kind: string;
+  /** The database it is in, as the tree labels it, when it is below one; absent for places recorded before. */
+  database?: string;
 }
 
 export interface Usage {
@@ -22,6 +24,9 @@ export interface Usage {
   /** The environment pane's Recent card (docs/environment-pane.md): places below connection level per environment node
    * id, newest first, each with when it was used. Absent in usage saved before it existed. */
   envRecent?: Record<string, RecentPlace[]>;
+  /** The connection pane's Recent card (docs/connection-pane.md): the same, per connection node id, whether or not the
+   * connection is in an environment. Absent in usage saved before it existed. */
+  hostRecent?: Record<string, RecentPlace[]>;
 }
 
 export interface RecentPlace extends Place {
@@ -32,24 +37,44 @@ export interface RecentPlace extends Place {
 export const EMPTY_USAGE: Usage = { envs: {}, recent: [] };
 export const RECENT_KEEP = 20;
 export const ENV_RECENT_KEEP = 50;
+export const HOST_RECENT_KEEP = 20;
 const KEY = "panoptic.usage";
 
 type Storage = Pick<globalThis.Storage, "getItem" | "setItem">;
 
+/** A newest-first list with the place put first, once, and cut to keep. */
+const push = (list: RecentPlace[] | undefined, place: Place, now: number, keep: number): RecentPlace[] =>
+  [{ ...place, at: now }, ...(list ?? []).filter((r) => r.nodeId !== place.nodeId)].slice(0, keep);
+
 export function recordUse(usage: Usage, place: Place, now: number): Usage {
-  const recent = place.kind === "connection" ? usage.recent : [place, ...usage.recent.filter((r) => r.nodeId !== place.nodeId)].slice(0, RECENT_KEEP);
-  if (!place.envId) return { ...usage, last: place, recent };
+  if (place.kind === "connection") {
+    if (!place.envId) return { ...usage, last: place };
+    const env = usage.envs[place.envId];
+    return { ...usage, envs: { ...usage.envs, [place.envId]: { last: now, uses: (env?.uses ?? 0) + 1 } }, last: place };
+  }
+  const recent = [place, ...usage.recent.filter((r) => r.nodeId !== place.nodeId)].slice(0, RECENT_KEEP);
+  const hostRecent = { ...usage.hostRecent, [place.hostId]: push(usage.hostRecent?.[place.hostId], place, now, HOST_RECENT_KEEP) };
+  if (!place.envId) return { ...usage, last: place, recent, hostRecent };
   const env = usage.envs[place.envId];
   const envs = { ...usage.envs, [place.envId]: { last: now, uses: (env?.uses ?? 0) + 1 } };
-  if (place.kind === "connection") return { ...usage, envs, last: place, recent };
-  const kept = (usage.envRecent?.[place.envId] ?? []).filter((r) => r.nodeId !== place.nodeId);
-  const envRecent = { ...usage.envRecent, [place.envId]: [{ ...place, at: now }, ...kept].slice(0, ENV_RECENT_KEEP) };
-  return { envs, last: place, recent, envRecent };
+  const envRecent = { ...usage.envRecent, [place.envId]: push(usage.envRecent?.[place.envId], place, now, ENV_RECENT_KEEP) };
+  return { ...usage, envs, last: place, recent, envRecent, hostRecent };
 }
 
 /** An environment's most recent objects, newest first: the Recent card's rows. */
 export function envRecent(usage: Usage, envId: string, limit = 5): RecentPlace[] {
   return (usage.envRecent?.[envId] ?? []).slice(0, limit);
+}
+
+/**
+ * A connection's most recent objects, newest first: the connection pane's Recent card. Its own list, plus what the
+ * environments' lists hold for it from before it had one (or from an environment it has since left), each place once.
+ */
+export function connectionRecent(usage: Usage, hostId: string, limit = 5): RecentPlace[] {
+  const all = [...(usage.hostRecent?.[hostId] ?? []), ...Object.values(usage.envRecent ?? {}).flat().filter((r) => r.hostId === hostId)];
+  const newest = new Map<string, RecentPlace>();
+  for (const r of all) if ((newest.get(r.nodeId)?.at ?? -1) < r.at) newest.set(r.nodeId, r);
+  return [...newest.values()].sort((a, b) => b.at - a.at).slice(0, limit);
 }
 
 /** How long ago, as the Recent card shows it: "now", "4m", "1h", "2d". */
@@ -67,15 +92,23 @@ export function loadUsage(storage?: Storage): Usage {
     const raw = (storage ?? globalThis.localStorage)?.getItem(KEY);
     const parsed = raw ? (JSON.parse(raw) as Usage) : undefined;
     if (!parsed || typeof parsed.envs !== "object" || !Array.isArray(parsed.recent)) return EMPTY_USAGE;
-    const envRecent =
-      parsed.envRecent && typeof parsed.envRecent === "object" && !Array.isArray(parsed.envRecent)
+    const recentMap = (map: unknown): Record<string, RecentPlace[]> | undefined =>
+      map && typeof map === "object" && !Array.isArray(map)
         ? Object.fromEntries(
-            Object.entries(parsed.envRecent)
-              .filter(([, list]) => Array.isArray(list))
-              .map(([env, list]) => [env, list.map((p) => ({ ...withoutEnvSegment(p), at: Number(p.at) || 0 }))]),
+            Object.entries(map as Record<string, unknown>)
+              .filter((entry): entry is [string, RecentPlace[]] => Array.isArray(entry[1]))
+              .map(([key, list]) => [key, list.map((p) => ({ ...withoutEnvSegment(p), at: Number(p.at) || 0 }))]),
           )
         : undefined;
-    return { ...parsed, last: parsed.last && withoutEnvSegment(parsed.last), recent: parsed.recent.map(withoutEnvSegment), envRecent };
+    const envRecent = recentMap(parsed.envRecent);
+    const hostRecent = recentMap(parsed.hostRecent);
+    return {
+      ...parsed,
+      last: parsed.last && withoutEnvSegment(parsed.last),
+      recent: parsed.recent.map(withoutEnvSegment),
+      envRecent,
+      ...(hostRecent ? { hostRecent } : {}),
+    };
   } catch {
     return EMPTY_USAGE;
   }

@@ -275,6 +275,8 @@ function serverState(id: string) {
     describedAt: session.openedAt + 400,
     databases: { total, online: total - notOnline.length, notOnline },
     exceptions: notOnline.map((d) => ({ severity: "warn", group: "database", subject: d.name, detail: `is ${d.state}` })),
+    // Snapshots from earlier sessions, confirmed this one: three of the server's databases, the newest four minutes old.
+    catalog: { state: "warm", snapshots: 3, newestAt: Date.now() - 4 * 60_000, failures: [] },
   };
 }
 
