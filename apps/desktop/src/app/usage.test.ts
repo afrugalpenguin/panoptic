@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { age, EMPTY_USAGE, ENV_RECENT_KEEP, envRecent, loadUsage, recordUse, RECENT_KEEP, saveUsage, type Place } from "./usage";
+import { age, connectionRecent, EMPTY_USAGE, ENV_RECENT_KEEP, envRecent, HOST_RECENT_KEEP, loadUsage, recordUse, RECENT_KEEP, saveUsage, type Place } from "./usage";
 
 const place = (over: Partial<Place> = {}): Place => ({
   envId: "env:prod", hostId: "conn:a", hostName: "uk-prod-sql-01", nodeId: "conn:a/db:orders/o:t1", label: "dbo.Orders", kind: "table", ...over,
@@ -116,5 +116,37 @@ describe("an environment's recent objects", () => {
     expect(age(22 * 60_000)).toBe("22m");
     expect(age(60 * 60_000)).toBe("1h");
     expect(age(26 * 3_600_000)).toBe("1d");
+  });
+});
+
+describe("a connection's recent objects", () => {
+  it("keeps objects per connection, newest first, in an environment or not, without connections themselves", () => {
+    let u = recordUse(EMPTY_USAGE, place({ database: "orders" }), 1_000);
+    u = recordUse(u, place({ hostId: "conn:b", nodeId: "conn:b/db:x/o:t", label: "dbo.Other" }), 2_000);
+    u = recordUse(u, place({ envId: undefined, nodeId: "conn:a/db:orders/o:t2", label: "dbo.Lines" }), 3_000);
+    u = recordUse(u, place({ nodeId: "conn:a", label: "uk-prod-sql-01", kind: "connection" }), 4_000);
+    expect(connectionRecent(u, "conn:a").map((r) => [r.label, r.at, r.database])).toEqual([["dbo.Lines", 3_000, undefined], ["dbo.Orders", 1_000, "orders"]]);
+    expect(connectionRecent(u, "conn:b").map((r) => r.label)).toEqual(["dbo.Other"]);
+    expect(connectionRecent(u, "conn:none")).toEqual([]);
+  });
+
+  it(`keeps ${HOST_RECENT_KEEP} per connection and shows the newest five`, () => {
+    let u = EMPTY_USAGE;
+    for (let i = 0; i < HOST_RECENT_KEEP + 5; i++) u = recordUse(u, place({ nodeId: `n${i}` }), i);
+    expect(u.hostRecent?.["conn:a"]).toHaveLength(HOST_RECENT_KEEP);
+    expect(connectionRecent(u, "conn:a").map((r) => r.nodeId)).toEqual(["n24", "n23", "n22", "n21", "n20"]);
+  });
+
+  it("also finds what the environments' lists held for it from before, each place once at its newest", () => {
+    const before = { ...EMPTY_USAGE, envRecent: { "env:old": [{ ...place({ envId: "env:old" }), at: 500 }, { ...place({ nodeId: "conn:a/db:orders/o:t9", label: "dbo.Gone" }), at: 400 }] } };
+    const u = recordUse(before, place(), 900);
+    expect(connectionRecent(u, "conn:a").map((r) => [r.label, r.at])).toEqual([["dbo.Orders", 900], ["dbo.Gone", 400]]);
+  });
+
+  it("reads the per-connection lists back from storage", () => {
+    const store = new Map<string, string>();
+    const storage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) };
+    saveUsage(recordUse(EMPTY_USAGE, place({ envId: undefined }), 7), storage);
+    expect(connectionRecent(loadUsage(storage), "conn:a").map((r) => [r.label, r.at])).toEqual([["dbo.Orders", 7]]);
   });
 });

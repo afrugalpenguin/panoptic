@@ -8,6 +8,8 @@
     ago,
     attentionTitle,
     authLabel,
+    catalogLine,
+    catalogState,
     databases,
     databaseSummary,
     paneNotices,
@@ -34,6 +36,7 @@
   import PositionControl from "./pane/PositionControl.svelte";
   import PrimaryAction from "./pane/PrimaryAction.svelte";
   import PropertyList from "./pane/PropertyList.svelte";
+  import RecentRows from "./pane/RecentRows.svelte";
   import ValueMenu from "./pane/ValueMenu.svelte";
 
   let {
@@ -51,6 +54,8 @@
     probe,
     server,
     serverRevision,
+    recent,
+    onOpenRecent,
     onSave,
     onMoveTo,
     onMove,
@@ -303,6 +308,15 @@
               <span class="sub">not connected</span>
             {/if}
           </div>
+          {#if serverState?.catalog}
+            {@const catalog = serverState.catalog}
+            {@const word = catalogState(catalog.state)}
+            <div class="tile catalog">
+              <span class="key">Catalog</span>
+              <span class="value" style:color={word.color}>{word.word}</span>
+              <span class="sub" title="IntelliSense snapshots saved for this connection's databases">{catalogLine(catalog, serverState.databases?.total, Date.now())}</span>
+            </div>
+          {/if}
           <div class="tile session">
             <span class="key">Session</span>
             {#if session}
@@ -438,6 +452,15 @@
       </PropertyList>
       {#if notice}<p class="notice" role="status">{notice}</p>{/if}
     </Card>
+
+    <!-- Recent: the environment pane's MRU, for this connection; hidden until there is one. -->
+    {#if recent.length}
+      <Card label="Recent">
+        <RecentRows
+          rows={recent.map((r) => ({ key: r.nodeId, context: r.database, label: r.label, title: `Open ${r.label}`, at: r.at, open: () => onOpenRecent(r) }))}
+        />
+      </Card>
+    {/if}
 
     <DangerAction label="Remove connection" note="Deletes the saved connection and its secret. Nothing on the server is touched." onclick={onRemove} />
   {/snippet}

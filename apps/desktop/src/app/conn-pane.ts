@@ -1,6 +1,7 @@
 // The connection detail pane's pure parts (docs/connection-pane.md): what App supplies, and the wording it shows.
 import type { AuthKind, ConnectionConfig, EnvironmentConfig, KindDescription, ProbeResult, ServerState, TreeNode } from "./api";
-import type { ServerDatabases } from "../sidecar-types.generated";
+import type { CatalogInfo, ServerDatabases } from "../sidecar-types.generated";
+import type { RecentPlace } from "./usage";
 import type { KindBadge } from "./kinds";
 import type { LabelSegments } from "./labels";
 
@@ -29,8 +30,13 @@ export interface ConnectionPaneProps {
   /** The sidecar's cached session, About facts, databases and exceptions for this connection; refresh describes the
    * server again when a session has opened. Never opens one: showing the pane runs nothing on the server. */
   server: (refresh: boolean) => Promise<ServerState>;
-  /** Changes when the sidecar says a describe for this connection finished (connection.serverUpdated). */
+  /** Changes when the sidecar says something the pane shows changed (connection.serverUpdated): a describe finished, a
+   * catalog started or finished building. */
   serverRevision: number;
+  /** The connection's most recent objects, newest first, at most 5; the Recent card is hidden while there are none. */
+  recent: RecentPlace[];
+  /** Opens a recent object as the environment pane's Recent rows do: the place in the tree and a query tab on it. */
+  onOpenRecent: (place: RecentPlace) => void;
   /** Writes the changed connection where it is (config.saveConnection); secret undefined keeps the stored one while the
    * sidecar's binding rule allows, "" clears it. Rejects when the write fails. */
   onSave: (next: ConnectionConfig, secret?: string) => Promise<void>;
@@ -121,3 +127,24 @@ export function attentionTitle(exceptions: { group: string }[]): string {
   const word = groups.size === 1 ? [...groups][0] : "item";
   return `${n} ${word}${n === 1 ? " needs" : "s need"} attention`;
 }
+
+/** The Catalog tile's state word and colour: warm green, refreshing amber, cold dim. */
+export function catalogState(state: string): { word: string; color: string } {
+  if (state === "warm") return { word: "warm", color: "var(--ok)" };
+  if (state === "refreshing") return { word: "refreshing", color: "var(--warn)" };
+  return { word: "cold", color: "var(--tree-dim)" };
+}
+
+/**
+ * The Catalog tile's subline: how many of the server's databases have an IntelliSense snapshot and when the newest was
+ * built, "3 of 12 databases · 4 min ago"; without a describe, just how many; "no snapshots yet" when there are none.
+ */
+export function catalogLine(catalog: CatalogInfo, databaseTotal: number | undefined, now: number): string {
+  if (catalog.snapshots === 0) return "no snapshots yet";
+  const when = catalog.newestAt == null ? "" : ` · ${ago(now - catalog.newestAt)}`;
+  // A connection's default database has a snapshot of its own as well, so there can be one more than databases.
+  if (databaseTotal != null) return `${Math.min(catalog.snapshots, databaseTotal)} of ${plural(databaseTotal, "database")}${when}`;
+  return `${plural(catalog.snapshots, "database")}${when}`;
+}
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;

@@ -33,8 +33,8 @@ const envs: SeekEnv[] = [
   env("dr", "DR", "#868e96", ["dr-sql-01"]),
   env("sandbox", "Sandbox", "#0c8599", ["sbx-pg-01"]),
 ];
-const place = (envId: string, hostName: string, nodeId: string, label: string, kind = "table"): Place => ({
-  envId: `env:${envId}`, hostId: `conn:${hostName}`, hostName, nodeId, label, kind,
+const place = (envId: string, hostName: string, nodeId: string, label: string, kind = "table", database = "Sales"): Place => ({
+  envId: `env:${envId}`, hostId: `conn:${hostName}`, hostName, nodeId, label, kind, database,
 });
 const orders = place("prod", "uk-prod-sql-01", "n1", "dbo.Orders");
 const recent = [orders, place("prod", "uk-prod-sql-02", "n2", "dbo.OrderLines"), place("dev", "uk-dev-pg", "n3", "public.customers"), place("uat", "uat-sql-01", "n4", "dbo.usp_Settle", "proc")];

@@ -8,7 +8,6 @@
   import { engineCounts, formatMs, parseHex, plural, probeState, reachability, statusColor, textOn, type EnvironmentPaneProps } from "./env-pane";
   import KindBadge from "./rows/KindBadge.svelte";
   import SegmentedLabel from "./rows/SegmentedLabel.svelte";
-  import { age } from "./usage";
   import Card from "./pane/Card.svelte";
   import DangerAction from "./pane/DangerAction.svelte";
   import Dot from "./pane/Dot.svelte";
@@ -19,6 +18,7 @@
   import PositionControl from "./pane/PositionControl.svelte";
   import PrimaryAction from "./pane/PrimaryAction.svelte";
   import PropertyList from "./pane/PropertyList.svelte";
+  import RecentRows from "./pane/RecentRows.svelte";
   import ValueMenu from "./pane/ValueMenu.svelte";
 
   let {
@@ -286,13 +286,17 @@
     </Card>
 
     {#if recent.length}
-      <Card label="Recent" name="recent">
-        {#each recent as r (r.place.nodeId)}
-          <button type="button" class="ghost recent-row" title="Open {r.place.label} on {r.place.hostName}" onclick={() => onOpenRecent(r.place)}>
-            <span class="what"><span class="dim">{r.connection} ·</span> {r.place.label}</span>
-            <span class="mono dim">{age(Date.now() - r.place.at)}</span>
-          </button>
-        {/each}
+      <Card label="Recent">
+        <RecentRows
+          rows={recent.map((r) => ({
+            key: r.place.nodeId,
+            context: r.connection,
+            label: r.place.label,
+            title: `Open ${r.place.label} on ${r.place.hostName}`,
+            at: r.place.at,
+            open: () => onOpenRecent(r.place),
+          }))}
+        />
       </Card>
     {/if}
 
@@ -421,33 +425,5 @@
   }
   .hex input.bad {
     border-color: var(--bad);
-  }
-  .recent-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    width: 100%;
-    height: 28px;
-    padding: 0 16px;
-    border-radius: 0;
-    text-align: left;
-    font-size: var(--fs-md);
-  }
-  .recent-row:last-child {
-    margin-bottom: 6px;
-  }
-  .recent-row:hover {
-    background: var(--bg-hover);
-  }
-  .what {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .recent-row .mono {
-    flex: none;
-    font-size: var(--fs-xs);
   }
 </style>

@@ -70,6 +70,19 @@ public sealed class ProbeService(
     private readonly TimeSpan _timeout = timeout ?? DefaultTimeout;
     private readonly ConcurrentDictionary<string, (string Endpoint, DateTimeOffset At, ProbeResult Result)> _cache = new();
 
+    /// <summary>What a cached result was probed for: a changed kind or endpoint probes anew.</summary>
+    private static string EndpointKey(ConnectionConfig connection) => $"{connection.Kind}\u001f{connection.Endpoint}";
+
+    /// <summary>The cached result for a connection while it is still fresh and for its current endpoint, without probing:
+    /// the connection pane's "unreachable while a session is open" exception. Null when there is none.</summary>
+    public ProbeResult? Peek(string connectionId)
+    {
+        if (store.FindConnection(connectionId) is not { Connection: var connection }) return null;
+        return _cache.TryGetValue(connectionId, out var hit) && hit.Endpoint == EndpointKey(connection) && time.GetUtcNow() - hit.At < CacheFor
+            ? hit.Result
+            : null;
+    }
+
     /// <summary>The results in the order of the ids asked for. A cancelled request throws and caches nothing.</summary>
     public async Task<ProbeResult[]> ProbeAsync(IReadOnlyList<string> connectionIds, bool fresh, CancellationToken cancellationToken) =>
         await Task.WhenAll(connectionIds.Select(id => OneAsync(id, fresh, cancellationToken)));
@@ -88,7 +101,7 @@ public sealed class ProbeService(
         }
         if (target is null) return new ProbeResult(id, "unknown");
 
-        var endpoint = $"{connection.Kind}\u001f{connection.Endpoint}";
+        var endpoint = EndpointKey(connection);
         if (!fresh && _cache.TryGetValue(id, out var hit) && hit.Endpoint == endpoint && time.GetUtcNow() - hit.At < CacheFor) return hit.Result;
 
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

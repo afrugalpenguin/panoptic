@@ -50,6 +50,18 @@ public sealed class CatalogCache(string folder)
         File.Move(temp, path, overwrite: true);
     }
 
+    /// <summary>
+    /// How many snapshots a connection has on disk and when the newest was written: the connection pane's Catalog tile.
+    /// Only file names and times are read; nothing is decrypted.
+    /// </summary>
+    public (int Count, DateTimeOffset? Newest) Snapshots(string connectionId)
+    {
+        if (!Directory.Exists(folder)) return (0, null);
+        var prefix = PrefixOf(connectionId) + "-";
+        var files = new DirectoryInfo(folder).EnumerateFiles(prefix + "*.bin").ToList();
+        return (files.Count, files.Count == 0 ? null : files.Max(f => new DateTimeOffset(f.LastWriteTimeUtc, TimeSpan.Zero)));
+    }
+
     /// <summary>Deletes every snapshot of these connections (they were deleted and the delete stands).</summary>
     public void Remove(IEnumerable<string> connectionIds)
     {

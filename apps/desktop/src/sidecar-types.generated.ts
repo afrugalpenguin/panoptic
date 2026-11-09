@@ -63,6 +63,18 @@ export interface BackupPreviewEnvironment {
   exists: boolean;
 }
 
+export interface CatalogFailure {
+  database?: string | null;
+  message: string;
+}
+
+export interface CatalogInfo {
+  state: string;
+  snapshots: number;
+  newestAt?: number | null;
+  failures: CatalogFailure[];
+}
+
 export interface CatalogNotice {
   key: string;
   state: string;
@@ -380,6 +392,7 @@ export interface ServerState {
   databases?: ServerDatabases | null;
   exceptions: ServerException[];
   aboutError?: string | null;
+  catalog?: CatalogInfo | null;
 }
 
 export interface ServerUpdated {

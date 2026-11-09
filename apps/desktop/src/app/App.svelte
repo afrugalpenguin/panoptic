@@ -31,7 +31,7 @@
   import SeekOverlay from "./SeekOverlay.svelte";
   import { type SeekEnv, type SeekHost, type SeekIndex, type SeekRow } from "./seek";
   import { keyCommand, removesConnection } from "./shortcuts";
-  import { envRecent, loadUsage, recordUse, saveUsage, type Place } from "./usage";
+  import { connectionRecent, envRecent, loadUsage, recordUse, saveUsage, type Place } from "./usage";
   import { rowMenu, type FoundConnection, type RowMenuContext } from "./row-menu";
   import Workspace from "../query/Workspace.svelte";
   import { preloadMonaco, warmEditorWhenIdle } from "../query/preload";
@@ -599,6 +599,8 @@
       probe: (fresh) => (api ? api.probeConnections([connection.id], fresh) : Promise.reject(new Error("The database engine is not running"))),
       server: (refresh) => (api ? api.serverState(connection.id, refresh) : Promise.reject(new Error("The database engine is not running"))),
       serverRevision: serverRevisions[connection.id] ?? 0,
+      recent: connectionRecent(usage, node.id),
+      onOpenRecent: (place) => void reopen(place),
       onSave: async (next, secret) => configChanged(await api!.saveConnection(env?.id ?? null, next, secret)),
       onMoveTo: (environmentId) => relocateConnection(connection.id, environmentId),
       onMove: (by) => stepConnectionBy(connection.id, by),
@@ -709,13 +711,17 @@
   function placeFor(nodeId: string, label: string): Place | undefined {
     let host: TreeNode | undefined;
     let env: TreeNode | undefined;
+    let database: TreeNode | undefined;
     for (let id: string | undefined = nodeId; id; id = model.parentOf(id)) {
       const n = model.node(id);
       if (n?.kind === "connection") host = n;
       else if (n?.kind === "environment") env = n;
+      // The database it is in, for the connection pane's Recent rows; not the database itself.
+      else if (n?.kind === "database" && id !== nodeId) database = n;
     }
     if (!host) return undefined;
-    return { envId: env?.id, hostId: host.id, hostName: host.label, nodeId, label, kind: model.node(nodeId)?.kind ?? "object" };
+    const place: Place = { envId: env?.id, hostId: host.id, hostName: host.label, nodeId, label, kind: model.node(nodeId)?.kind ?? "object" };
+    return database ? { ...place, database: database.label } : place;
   }
 
   function remember(nodeId: string, label: string) {

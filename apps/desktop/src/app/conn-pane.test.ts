@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { EnvironmentConfig, TreeNode } from "./api";
 import { BUILTIN_KINDS } from "./builtin-kinds";
-import { ago, attentionTitle, authLabel, databases, databaseSummary, placeText, secretPlace, tokenLeft, writePolicy } from "./conn-pane";
+import { ago, attentionTitle, authLabel, catalogLine, catalogState, databases, databaseSummary, placeText, secretPlace, tokenLeft, writePolicy } from "./conn-pane";
 import { keepsSecret } from "./sign-in.svelte";
 
 const prod: EnvironmentConfig = { id: "prod", name: "Prod", color: "#e03131", readOnly: true, connections: [] };
@@ -83,5 +83,23 @@ describe("connection pane server wording (phase 2)", () => {
     expect(attentionTitle([{ group: "database" }])).toBe("1 database needs attention");
     expect(attentionTitle([{ group: "database" }, { group: "database" }])).toBe("2 databases need attention");
     expect(attentionTitle([{ group: "database" }, { group: "token" }])).toBe("2 items need attention");
+  });
+});
+
+describe("connection pane catalog wording (phase 3)", () => {
+  const info = (snapshots: number, newestAt: number | null = null) => ({ state: "warm", snapshots, newestAt, failures: [] });
+  const now = 10_000_000;
+
+  it("names the state with its colour", () => {
+    expect(catalogState("warm")).toEqual({ word: "warm", color: "var(--ok)" });
+    expect(catalogState("refreshing")).toEqual({ word: "refreshing", color: "var(--warn)" });
+    expect(catalogState("cold")).toEqual({ word: "cold", color: "var(--tree-dim)" });
+  });
+
+  it("counts snapshots against the server's databases when the describe has them, never more than there are", () => {
+    expect(catalogLine(info(3, now - 4 * 60_000), 12, now)).toBe("3 of 12 databases · 4 min ago");
+    expect(catalogLine(info(2), 1, now)).toBe("1 of 1 database");
+    expect(catalogLine(info(1, now), undefined, now)).toBe("1 database · just now");
+    expect(catalogLine(info(0), 12, now)).toBe("no snapshots yet");
   });
 });
