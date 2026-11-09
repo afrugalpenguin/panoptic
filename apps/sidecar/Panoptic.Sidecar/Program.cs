@@ -48,14 +48,19 @@ var query = new Panoptic.Sidecar.Query.QueryService(store, tree, Notify);
 var catalogCache = new Panoptic.Sidecar.Catalog.CatalogCache(Environment.GetEnvironmentVariable("PANOPTIC_CATALOG") ?? Panoptic.Sidecar.Catalog.CatalogCache.DefaultFolder);
 // Snapshots of connections deleted while no sidecar was running (or before snapshots were removed on delete).
 _ = Task.Run(() => catalogCache.Prune(store.ConnectionIds()));
+// The connection pane's Catalog tile follows builds as they start and finish; its exceptions read the probe's cache.
+ServerInfoService? server = null;
 var catalog = new Panoptic.Sidecar.Catalog.CatalogService(
     p => tree.ResolveTarget(p.NodeId, p.Database),
     catalogCache,
     new Panoptic.Sidecar.Catalog.CatalogSources(store, tree),
-    (method, notice) => Notify(method, w => JsonSerializer.Serialize(w, notice, SidecarJson.Default.CatalogNotice)));
-var server = new ServerInfoService(store, tree.BackendFor, sessions, TimeProvider.System,
-    id => Notify("connection.serverUpdated", w => JsonSerializer.Serialize(w, new ServerUpdated(id), SidecarJson.Default.ServerUpdated)));
-var dispatcher = new JsonRpcDispatcher(Methods.Create(new SidecarInfo(Math.Round(startupMs, 1), version, mode), store, tree, query, catalog, server: server));
+    (method, notice) => Notify(method, w => JsonSerializer.Serialize(w, notice, SidecarJson.Default.CatalogNotice)),
+    id => server?.Changed(id));
+var probes = new ProbeService(store, tree.BackendFor, new NetworkProbe(), TimeProvider.System);
+server = new ServerInfoService(store, tree.BackendFor, sessions, TimeProvider.System,
+    id => Notify("connection.serverUpdated", w => JsonSerializer.Serialize(w, new ServerUpdated(id), SidecarJson.Default.ServerUpdated)),
+    catalog.Info, probes.Peek);
+var dispatcher = new JsonRpcDispatcher(Methods.Create(new SidecarInfo(Math.Round(startupMs, 1), version, mode), store, tree, query, catalog, probes, server));
 // Compiles the UI's first requests while the shell is still creating its window.
 _ = Task.Run(() => StartupWarmUp.RunAsync(dispatcher, store.Config));
 

@@ -188,13 +188,16 @@ public sealed record ServerException(string Severity, string Group, string Subje
 /// <param name="About">The described facts; null until a describe has finished.</param>
 /// <param name="DescribedAt">When <paramref name="About"/> was read, Unix milliseconds.</param>
 /// <param name="AboutError">Why the last describe failed, in one line.</param>
+/// <param name="Catalog">The connection's IntelliSense catalogs, for the Catalog tile; null where there is no catalog
+/// service.</param>
 public sealed record ServerState(
     SessionInfo? Session,
     List<ServerFact>? About,
     double? DescribedAt,
     ServerDatabases? Databases,
     List<ServerException> Exceptions,
-    string? AboutError = null);
+    string? AboutError = null,
+    Catalog.CatalogInfo? Catalog = null);
 
 /// <param name="Database">Overrides the database the node resolves to (the tab's database picker).</param>
 public sealed record QueryRequest(string QueryId, string NodeId, string Text, string? Database = null);

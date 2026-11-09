@@ -17,7 +17,23 @@ public static class CatalogStates
     /// <summary>No cached copy; a build is running and catalog.updated follows.</summary>
     public const string Building = "building";
     public const string Error = "error";
+
+    // A connection's catalogs as a whole, for the connection pane's Catalog tile (CatalogService.Info).
+    /// <summary>One of its catalogs is building or being checked.</summary>
+    public const string Refreshing = "refreshing";
+    /// <summary>At least one of its catalogs has been confirmed or built this session.</summary>
+    public const string Warm = "warm";
+    /// <summary>None has been confirmed this session: snapshots on disk, if any, are unchecked.</summary>
+    public const string Cold = "cold";
 }
+
+/// <summary>A connection's catalogs for the connection pane's Catalog tile.</summary>
+/// <param name="State">"warm", "cold" or "refreshing" (<see cref="CatalogStates"/>).</param>
+/// <param name="Snapshots">How many snapshots it has on disk, one per database (and its default).</param>
+/// <param name="NewestAt">When the newest snapshot was written, Unix milliseconds.</param>
+/// <param name="Failures">Builds or checks that failed, by database (null: the connection's default), until one works.</param>
+public sealed record CatalogInfo(string State, int Snapshots, double? NewestAt, List<CatalogFailure> Failures);
+public sealed record CatalogFailure(string? Database, string Message);
 
 public sealed record ColumnRef(string Name, string Type, bool Nullable);
 public sealed record ParamRef(string Name, string Type, bool Output);

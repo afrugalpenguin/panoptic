@@ -78,19 +78,39 @@ public sealed class ServerInfoService
     /// <summary>Bumped by Forget, so a describe that finishes after its connection changed is dropped.</summary>
     private readonly ConcurrentDictionary<string, int> _generation = new();
 
+    private readonly Func<string, Catalog.CatalogInfo?> _catalog;
+    private readonly Func<string, ProbeResult?> _probe;
+
     private sealed record Described(double At, ServerDescription? Description, string? Error);
 
-    /// <param name="updated">Called with a connection id when a describe for it finished (the connection.serverUpdated
-    /// notification).</param>
-    public ServerInfoService(ConfigStore store, Func<ConnectionConfig, IBackend> backendFor, SessionLog sessions, TimeProvider time, Action<string> updated)
+    /// <summary>A token this close to running out is reported (docs/connection-pane.md, Needs attention).</summary>
+    public static readonly TimeSpan TokenWarning = TimeSpan.FromMinutes(5);
+
+    /// <param name="updated">Called with a connection id when something the pane shows changed: a describe finished, or
+    /// a catalog started or finished building (the connection.serverUpdated notification).</param>
+    /// <param name="catalog">The connection's catalogs (CatalogService.Info), for the Catalog tile and failed refreshes.</param>
+    /// <param name="probe">The connection's cached probe result, never a new probe (ProbeService.Peek).</param>
+    public ServerInfoService(
+        ConfigStore store,
+        Func<ConnectionConfig, IBackend> backendFor,
+        SessionLog sessions,
+        TimeProvider time,
+        Action<string> updated,
+        Func<string, Catalog.CatalogInfo?>? catalog = null,
+        Func<string, ProbeResult?>? probe = null)
     {
         _store = store;
         _backendFor = backendFor;
         _sessions = sessions;
         _time = time;
         _updated = updated;
+        _catalog = catalog ?? (_ => null);
+        _probe = probe ?? (_ => null);
         sessions.FirstOpen += id => _ = DescribeAsync(id, CancellationToken.None);
     }
+
+    /// <summary>Something the pane shows changed for this connection outside a describe (a catalog build): tell it.</summary>
+    public void Changed(string connectionId) => _updated(connectionId);
 
     /// <summary>The pane's state for a connection. Refresh describes the server again, waiting for it, when a session has
     /// opened; without one there is nothing to describe yet and nothing is opened for it.</summary>
@@ -105,13 +125,16 @@ public sealed class ServerInfoService
         var session = _sessions.Get(connectionId);
         var described = session is null ? null : _described.GetValueOrDefault(connectionId);
         var databases = described?.Description?.Databases;
+        var catalog = _catalog(connectionId);
+        var endpoint = _store.FindConnection(connectionId)?.Connection.Endpoint ?? "";
         return new ServerState(
             session,
             described?.Description?.Facts,
             described?.At,
             databases,
-            Exceptions(databases),
-            described?.Error);
+            Exceptions(databases, catalog, session, session is null ? null : _probe(connectionId), endpoint, _time.GetUtcNow()),
+            described?.Error,
+            catalog);
     }
 
     /// <summary>The connection changed or went: its session, description and any describe running for it.</summary>
@@ -123,13 +146,38 @@ public sealed class ServerInfoService
         _generation.AddOrUpdate(connectionId, 1, (_, g) => g + 1);
     }
 
-    /// <summary>Databases that are not online, worst first, then by name.</summary>
-    public static List<ServerException> Exceptions(ServerDatabases? databases) =>
-        (databases?.NotOnline ?? [])
-            .OrderByDescending(d => d.Error)
-            .ThenBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(d => new ServerException(d.Error ? "error" : "warn", "database", d.Name, $"is {d.State}"))
-            .ToList();
+    /// <summary>
+    /// The Needs attention items, errors first, from state the sidecar already holds (no query): databases that are not
+    /// online; catalog builds that failed; an Entra token that has run out or will within <see cref="TokenWarning"/>; and
+    /// the server not answering its probe while a session to it is open.
+    /// </summary>
+    public static List<ServerException> Exceptions(
+        ServerDatabases? databases,
+        Catalog.CatalogInfo? catalog = null,
+        SessionInfo? session = null,
+        ProbeResult? probe = null,
+        string endpoint = "",
+        DateTimeOffset now = default)
+    {
+        var items = new List<ServerException>();
+        items.AddRange((databases?.NotOnline ?? [])
+            .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(d => new ServerException(d.Error ? "error" : "warn", "database", d.Name, $"is {d.State}")));
+        items.AddRange((catalog?.Failures ?? [])
+            .Select(f => new ServerException("warn", "catalog", f.Database ?? "default database", $"IntelliSense catalog did not refresh: {f.Message}")));
+        if (session?.TokenExpiresAt is { } expires)
+        {
+            var left = DateTimeOffset.FromUnixTimeMilliseconds((long)expires) - now;
+            var minutes = (int)Math.Ceiling(Math.Abs(left.TotalMinutes));
+            if (left <= TimeSpan.Zero)
+                items.Add(new ServerException("warn", "token", session.Identity, $"sign-in token expired {minutes} min ago; the next query signs in again"));
+            else if (left < TokenWarning)
+                items.Add(new ServerException("warn", "token", session.Identity, $"sign-in token expires in {minutes} min"));
+        }
+        if (probe?.Status == "unreachable")
+            items.Add(new ServerException("error", "server", endpoint, $"is not answering while a session is open: {probe.Error}"));
+        return items.OrderByDescending(e => e.Severity == "error").ToList();
+    }
 
     /// <summary>Describes the server once at a time per connection: a second call while one runs waits for it.</summary>
     private Task DescribeAsync(string connectionId, CancellationToken ct)
