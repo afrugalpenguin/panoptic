@@ -77,6 +77,8 @@ export class QueryTab {
   /** Save all rows is running again for this tab (#287); saveId cancels it. */
   saving = $state(false);
   saveId = "";
+  /** When the running Save all rows began, for its elapsed timer (#349). */
+  saveStartedAt = $state(0);
   startedAt = $state(0);
   queryId = "";
   results = $state.raw<ResultSet[]>([]);
@@ -449,7 +451,7 @@ export class QueryWorkspace {
     if (!this.api.saveAll || !tab.target || tab.running || tab.saving || !tab.runText.trim()) return;
     tab.saving = true;
     tab.saveId = crypto.randomUUID();
-    const started = Date.now();
+    const started = (tab.saveStartedAt = Date.now());
     const say = (kind: "info" | "error", text: string) =>
       (tab.messages = [...tab.messages, { id: ++nextMessageId, kind, text, elapsedMs: Date.now() - started }]);
     try {

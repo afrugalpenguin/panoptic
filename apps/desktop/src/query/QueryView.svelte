@@ -40,6 +40,7 @@
   });
 
   // now ticks every 100 ms, so just after a run starts it can still be behind startedAt: never show "-0.0 s".
+  const saveElapsed = $derived(Math.max(0, now - tab.saveStartedAt) / 1000);
   const elapsed = $derived(Math.max(0, (tab.running ? now : tab.startedAt + (tab.summary?.elapsedMs ?? 0)) - tab.startedAt) / 1000);
   const current = $derived(tab.view >= 0 ? tab.results[tab.view] : undefined);
   // Each tab has its own QueryView (keyed in Workspace), but read the props at call time all the same.
@@ -197,7 +198,7 @@
   <div class="splitter" role="separator" aria-orientation="horizontal" onpointerdown={startResize}></div>
 
   <div class="results">
-    {#if tab.running}<div class="progress" role="progressbar" aria-label="Query running"></div>{/if}
+    {#if tab.running || tab.saving}<div class="progress" role="progressbar" aria-label={tab.saving ? "Saving all rows" : "Query running"}></div>{/if}
     <div class="result-tabs">
       {#each tab.results as set, i}
         <button class="ghost" class:on={tab.view === i} onclick={() => (tab.view = i)}>
@@ -228,7 +229,8 @@
       </p>
     {:else if tab.saving}
       <p class="banner save-confirm" role="status">
-        Saving all rows...
+        <Spinner size={12} label="Saving" />
+        Saving all rows... {saveElapsed.toFixed(1)} s
         <button class="small" onclick={() => workspace.cancel(tab)}>Cancel</button>
       </p>
     {/if}
