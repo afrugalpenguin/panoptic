@@ -22,6 +22,7 @@
     onDelete,
     onSelectConnection,
     onExpandConnection,
+    onConnectionMenu,
   }: EnvironmentPaneProps = $props();
 
   // The time to build the list from the store, measured on every rebuild, never a constant.
@@ -138,9 +139,32 @@
   let clickTimer: ReturnType<typeof setTimeout> | undefined;
   const DOUBLE_CLICK_MS = 250;
 
-  function rowClick(id: string) {
+  function rowClick(e: MouseEvent, id: string) {
     clearTimeout(clickTimer);
-    clickTimer = setTimeout(() => onSelectConnection(id), DOUBLE_CLICK_MS);
+    // Enter or Space on a focused row: no double-click to wait for.
+    if (e.detail === 0) onSelectConnection(id);
+    else clickTimer = setTimeout(() => onSelectConnection(id), DOUBLE_CLICK_MS);
+  }
+
+  /** Right-click, or the menu key (no pointer position: the menu opens under the row). */
+  function rowMenu(e: MouseEvent, id: string) {
+    e.preventDefault();
+    clearTimeout(clickTimer);
+    const row = e.currentTarget as HTMLElement;
+    if (e.clientX || e.clientY) return onConnectionMenu(id, e.clientX, e.clientY);
+    const box = row.getBoundingClientRect();
+    onConnectionMenu(id, Math.round(box.left + 16), Math.round(box.bottom));
+  }
+
+  /** Up, Down, Home and End move focus between the connection rows. */
+  function rowKey(e: KeyboardEvent) {
+    const rows = [...(e.currentTarget as HTMLElement).querySelectorAll<HTMLButtonElement>(".conn")];
+    const at = rows.indexOf(document.activeElement as HTMLButtonElement);
+    if (at < 0) return;
+    const to = e.key === "ArrowDown" ? at + 1 : e.key === "ArrowUp" ? at - 1 : e.key === "Home" ? 0 : e.key === "End" ? rows.length - 1 : undefined;
+    if (to === undefined) return;
+    e.preventDefault();
+    rows[Math.max(0, Math.min(rows.length - 1, to))].focus();
   }
 
   function rowDoubleClick(id: string) {
@@ -208,7 +232,8 @@
     </header>
 
     <div class="body">
-      <section class="card connections" aria-label="Connections">
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+      <section class="card connections" aria-label="Connections" onkeydown={rowKey}>
         <div class="card-head">
           <span class="label">Connections</span>
           <span class="mono dim timing">{built.list.length} listed in {took} ms</span>
@@ -223,7 +248,7 @@
         </div>
         {#each built.list as c (c.id)}
           <button type="button" class="conn" title={`${c.label.prefix}${c.label.core}${c.label.suffix}`}
-            onclick={() => rowClick(c.id)} ondblclick={() => rowDoubleClick(c.id)}>
+            onclick={(e) => rowClick(e, c.id)} ondblclick={() => rowDoubleClick(c.id)} oncontextmenu={(e) => rowMenu(e, c.id)}>
             <KindBadge badge={c.badge} size={22} />
             <span class="host"><SegmentedLabel label={c.label} /></span>
             <span class="engine">{c.badge.name}</span>

@@ -533,6 +533,7 @@
       onDelete: () => void deleteEnvironment(env),
       onSelectConnection: (id) => void selectConnection(envNodeId, id, false),
       onExpandConnection: (id) => void selectConnection(envNodeId, id, true),
+      onConnectionMenu: (id, x, y) => void connectionMenu(envNodeId, id, x, y),
     };
   }
 
@@ -544,6 +545,14 @@
     await tick();
     explorer?.reveal(id);
     explorer?.focus(false);
+  }
+
+  /** Right-click on a connection in the environment pane: the tree's menu for it. Its row exists once the environment is open. */
+  async function connectionMenu(envNodeId: string, id: string, x: number, y: number) {
+    await model.expand(envNodeId);
+    await tick();
+    const row = rows.find((r) => r.key === id);
+    if (row) openMenu(row, x, y);
   }
 
   function openMenu(row: Row, x: number, y: number) {

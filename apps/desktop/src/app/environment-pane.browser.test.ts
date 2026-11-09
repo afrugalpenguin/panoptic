@@ -38,6 +38,7 @@ function show(over: Partial<EnvironmentPaneProps> = {}) {
     onDelete: vi.fn(),
     onSelectConnection: vi.fn(),
     onExpandConnection: vi.fn(),
+    onConnectionMenu: vi.fn(),
     ...over,
   };
   const target = document.createElement("div");
@@ -200,15 +201,59 @@ describe("EnvironmentPane", () => {
   it("selects a connection on click and expands it on double-click", async () => {
     const props = show();
     const row = document.querySelectorAll<HTMLButtonElement>(".conn")[1];
-    row.click();
+    // A mouse click counts its clicks in detail; a keyboard click has 0.
+    const click = (detail: number) => row.dispatchEvent(new MouseEvent("click", { bubbles: true, detail }));
+    click(1);
+    expect(props.onSelectConnection).not.toHaveBeenCalled();
     await vi.waitFor(() => expect(props.onSelectConnection).toHaveBeenCalledWith("conn:uat-sql-02"));
 
-    row.click();
-    row.click();
+    click(1);
+    click(2);
     row.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
     expect(props.onExpandConnection).toHaveBeenCalledWith("conn:uat-sql-02");
     await new Promise((r) => setTimeout(r, 300));
     expect(props.onSelectConnection).toHaveBeenCalledTimes(1);
+  });
+
+  it("right-click on a row opens the connection's menu where the pointer is, without selecting it", async () => {
+    const props = show();
+    const row = document.querySelectorAll<HTMLButtonElement>(".conn")[2];
+    const e = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 120, clientY: 340 });
+    row.dispatchEvent(e);
+    expect(e.defaultPrevented).toBe(true);
+    expect(props.onConnectionMenu).toHaveBeenCalledWith("conn:uat-cosmos", 120, 340);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(props.onSelectConnection).not.toHaveBeenCalled();
+  });
+
+  it("the menu key opens it at the row when there is no pointer position", () => {
+    const props = show();
+    const row = document.querySelectorAll<HTMLButtonElement>(".conn")[0];
+    row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 0, clientY: 0 }));
+    const box = row.getBoundingClientRect();
+    expect(props.onConnectionMenu).toHaveBeenCalledWith("conn:uat-sql-01", Math.round(box.left + 16), Math.round(box.bottom));
+  });
+
+  it("arrow keys, Home and End move between connection rows; Enter selects at once", () => {
+    const props = show();
+    const rows = [...document.querySelectorAll<HTMLButtonElement>(".conn")];
+    rows[0].focus();
+    press(rows[0], "ArrowDown");
+    expect(document.activeElement).toBe(rows[1]);
+    press(rows[1], "ArrowDown");
+    press(rows[2], "ArrowDown");
+    expect(document.activeElement).toBe(rows[2]);
+    press(rows[2], "Home");
+    expect(document.activeElement).toBe(rows[0]);
+    press(rows[0], "ArrowUp");
+    expect(document.activeElement).toBe(rows[0]);
+    press(rows[0], "End");
+    expect(document.activeElement).toBe(rows[2]);
+    press(rows[2], "ArrowUp");
+    expect(document.activeElement).toBe(rows[1]);
+    // A keyboard click (Enter or Space) has no double-click to wait for.
+    rows[1].dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
+    expect(props.onSelectConnection).toHaveBeenCalledWith("conn:uat-sql-02");
   });
 
   it("runs New connection, Refresh and Delete", () => {

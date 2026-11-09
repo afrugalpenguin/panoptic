@@ -23,6 +23,8 @@ export interface EnvironmentPaneProps {
   onSelectConnection: (id: string) => void;
   /** Selects and expands the connection in the tree. */
   onExpandConnection: (id: string) => void;
+  /** The tree's context menu for the connection, at x, y in the viewport. */
+  onConnectionMenu: (id: string, x: number, y: number) => void;
 }
 
 /** One engine present in the environment, for the Connections card's pills: the tree's badge and how many. */
