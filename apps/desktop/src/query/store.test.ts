@@ -651,6 +651,24 @@ describe("QueryWorkspace: save all rows (#287)", () => {
     expect(tab.messages.at(-1)).toMatchObject({ kind: "error", text: expect.stringContaining("only a single SELECT") });
   });
 
+  it("records when the save started while it runs, for the elapsed timer (#349)", async () => {
+    const { ws, api } = setupSave({ rows: 1, cancelled: false });
+    let during = { saving: false, startedAt: 0 };
+    const tab = ws.open(target, "select 1");
+    api.saveAll.mockImplementation(async () => {
+      during = { saving: tab.saving, startedAt: tab.saveStartedAt };
+      return { rows: 1, cancelled: false };
+    });
+    await ws.run(tab);
+
+    const before = Date.now();
+    await ws.saveAll(tab, "C:\\out\\t.csv", "csv");
+
+    expect(during.saving).toBe(true);
+    expect(during.startedAt).toBeGreaterThanOrEqual(before);
+    expect(tab.saving).toBe(false);
+  });
+
   it("says when a save was cancelled", async () => {
     const { ws } = setupSave({ rows: 0, cancelled: true });
     const tab = ws.open(target, "select 1");
