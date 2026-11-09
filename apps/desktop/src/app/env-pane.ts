@@ -1,6 +1,7 @@
 // The environment detail pane's pure parts (docs/environment-pane.md): counts, wording and colour choices it shows.
-import type { EnvironmentConfig } from "./api";
+import type { EnvironmentConfig, ProbeResult } from "./api";
 import type { KindBadge } from "./kinds";
+import type { RecentPlace } from "./usage";
 import type { EnvConnection } from "./tree-model";
 
 /** What the environment detail pane reads and runs; App supplies it for the selected environment. */
@@ -25,6 +26,38 @@ export interface EnvironmentPaneProps {
   onExpandConnection: (id: string) => void;
   /** The tree's context menu for the connection, at x, y in the viewport. */
   onConnectionMenu: (id: string, x: number, y: number) => void;
+  /** Probes saved connections (by config id) for reachability; fresh skips the sidecar's 60 s cache. */
+  probe: (connectionIds: string[], fresh: boolean) => Promise<ProbeResult[]>;
+  /** The environment's most recent objects, newest first, at most 5; the Recent card is hidden while there are none. */
+  recent: RecentRow[];
+  /** Opens a recent object as Seek's recent rows do: the place in the tree and a query tab on it. */
+  onOpenRecent: (place: RecentPlace) => void;
+}
+
+/** A Recent card row: the place and the bright core of its connection's label, as the tree shows it. */
+export interface RecentRow {
+  place: RecentPlace;
+  connection: string;
+}
+
+/** Over this round trip a reachable connection reads Slow (docs/environment-pane.md). */
+export const SLOW_MS = 40;
+
+export type ProbeStateName = "checking" | "reachable" | "slow" | "unreachable" | "unknown";
+
+/** A Connections row's Status and Ping: undefined is a probe not back yet. */
+export function probeState(result: ProbeResult | undefined): { state: ProbeStateName; label: string; ping: string; title?: string } {
+  if (!result) return { state: "checking", label: "Checking", ping: "-" };
+  if (result.status === "unreachable") return { state: "unreachable", label: "Unreachable", ping: "-", ...(result.error ? { title: result.error } : {}) };
+  if (result.status !== "reachable" || result.ms == null)
+    return { state: "unknown", label: "Unknown", ping: "-", title: result.error ?? "Panoptic cannot tell where to probe this connection without signing in." };
+  const ping = result.ms < 1 ? "<1 ms" : `${Math.round(result.ms)} ms`;
+  return result.ms > SLOW_MS ? { state: "slow", label: "Slow", ping } : { state: "reachable", label: "Reachable", ping };
+}
+
+/** The header's reachable segment: still checking until every probe is back; slow ones count as reachable. */
+export function reachability(results: (ProbeResult | undefined)[]): { checking: boolean; reachable: number } {
+  return { checking: results.some((r) => !r), reachable: results.filter((r) => r?.status === "reachable").length };
 }
 
 /** One engine present in the environment, for the Connections card's pills: the tree's badge and how many. */

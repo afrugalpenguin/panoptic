@@ -142,6 +142,12 @@ public sealed record ImportFileParams(string Path);
 public sealed record PurgeSecretsParams(List<string>? ConnectionIds);
 public sealed record TreeChildrenParams(string NodeId);
 public sealed record TestConnectionResult(bool Ok, double ElapsedMs, string? Error);
+/// <summary>connection.probe: saved connections by id; Fresh skips the 60 s cache (the pane's Refresh).</summary>
+public sealed record ProbeParams(List<string> ConnectionIds, bool Fresh = false);
+/// <param name="Status">"reachable", "unreachable", or "unknown" when there is nowhere to probe without signing in.</param>
+/// <param name="Ms">The probe's round trip, when reachable.</param>
+/// <param name="Error">Why it was unreachable or unknown, in one line.</param>
+public sealed record ProbeResult(string ConnectionId, string Status, double? Ms = null, string? Error = null);
 /// <param name="Database">Overrides the database the node resolves to (the tab's database picker).</param>
 public sealed record QueryRequest(string QueryId, string NodeId, string Text, string? Database = null);
 public sealed record QueryCancelParams(string QueryId);
@@ -295,6 +301,8 @@ public sealed record StoreFile(AppConfig Config, Dictionary<string, string> Secr
 [JsonSerializable(typeof(PurgeSecretsParams))]
 [JsonSerializable(typeof(TreeChildrenParams))]
 [JsonSerializable(typeof(TestConnectionResult))]
+[JsonSerializable(typeof(ProbeParams))]
+[JsonSerializable(typeof(ProbeResult[]))]
 [JsonSerializable(typeof(DeviceCodePrompt))]
 [JsonSerializable(typeof(Import.ImportSource[]))]
 [JsonSerializable(typeof(Import.ImportSource))]

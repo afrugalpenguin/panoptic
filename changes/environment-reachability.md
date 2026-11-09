@@ -1,0 +1,1 @@
+Added: the environment pane shows whether each connection answers and how fast (Reachable, Slow over 40 ms, Unreachable) and how many are reachable. Panoptic only opens a connection to the server and closes it again (no sign-in, no query) when you select the environment or press Refresh, and remembers the answer for a minute.

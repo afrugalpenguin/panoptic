@@ -114,7 +114,16 @@ async function mountApp(state: string) {
   const { installFakeSidecar } = await import("./fake-sidecar");
   installFakeSidecar();
   // Fresh profile each capture: the same recent objects as the landing states.
-  const usage = { envs: { "env:prod": { last: 50, uses: 40 }, "env:dev": { last: 40, uses: 12 }, "env:uat": { last: 30, uses: 3 } }, last: orders, recent };
+  // The environment pane's Recent card: Prod's objects, used minutes and hours ago.
+  const ago = (minutes: number) => Date.now() - minutes * 60_000;
+  const envRecent = {
+    "env:prod": [
+      { ...orders, at: ago(4) },
+      { ...recent[1], at: ago(22) },
+      { ...place("prod", "uk-prod-sql-01", "n5", "dbo.Customers"), at: ago(65) },
+    ],
+  };
+  const usage = { envs: { "env:prod": { last: 50, uses: 40 }, "env:dev": { last: 40, uses: 12 }, "env:uat": { last: 30, uses: 3 } }, last: orders, recent, envRecent };
   try {
     localStorage.setItem("panoptic.usage", JSON.stringify(usage));
     localStorage.setItem("panoptic.treeWidth", "340");

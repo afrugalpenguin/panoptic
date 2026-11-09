@@ -2,7 +2,7 @@
 import { flushSync, mount, unmount } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "./app.css";
-import type { EnvironmentConfig } from "./api";
+import type { EnvironmentConfig, ProbeResult } from "./api";
 import type { EnvironmentPaneProps } from "./env-pane";
 import EnvironmentPane from "./EnvironmentPane.svelte";
 import type { EnvConnection } from "./tree-model";
@@ -11,6 +11,7 @@ import type { EnvConnection } from "./tree-model";
 const uat: EnvironmentConfig = { id: "uat", name: "UAT", color: "#f08c00", readOnly: false, connections: [] };
 const conn = (id: string, kind: string, letters: string, name: string): EnvConnection => ({
   id: `conn:${id}`,
+  connectionId: id,
   kind,
   badge: { letters, color: "#2d5aa0", name },
   label: { prefix: "fabrikam-", core: id, suffix: ".example.test" },
@@ -39,6 +40,10 @@ function show(over: Partial<EnvironmentPaneProps> = {}) {
     onSelectConnection: vi.fn(),
     onExpandConnection: vi.fn(),
     onConnectionMenu: vi.fn(),
+    // Never answers unless a test says otherwise: rows stay Checking.
+    probe: vi.fn(() => new Promise<ProbeResult[]>(() => {})),
+    recent: [],
+    onOpenRecent: vi.fn(),
     ...over,
   };
   const target = document.createElement("div");
@@ -67,7 +72,7 @@ describe("EnvironmentPane", () => {
     show();
     expect($("h2").textContent).toBe("UAT");
     expect($(".place").textContent).toBe("Environment · 2 of 3");
-    expect($(".summary").textContent?.replace(/\s+/g, " ").trim()).toBe("3 connections | 2 engines | writes allowed");
+    expect($(".summary").textContent?.replace(/\s+/g, " ").trim()).toBe("3 connections | 2 engines | checking | writes allowed");
     const rows = [...document.querySelectorAll(".conn")];
     expect(rows).toHaveLength(3);
     expect(rows[0].querySelector(".dim")?.textContent).toBe("fabrikam-");
@@ -254,6 +259,66 @@ describe("EnvironmentPane", () => {
     // A keyboard click (Enter or Space) has no double-click to wait for.
     rows[1].dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
     expect(props.onSelectConnection).toHaveBeenCalledWith("conn:uat-sql-02");
+  });
+
+  it("probes each connection when shown, filling in Status and Ping as each lands", async () => {
+    const answers = new Map<string, (r: ProbeResult[]) => void>();
+    const probe = vi.fn((ids: string[], _fresh: boolean) => new Promise<ProbeResult[]>((resolve) => answers.set(ids[0], resolve)));
+    show({ probe });
+    expect(probe.mock.calls.map((c) => c[0])).toEqual([["uat-sql-01"], ["uat-sql-02"], ["uat-cosmos"]]);
+    expect(probe.mock.calls.every((c) => c[1] === false)).toBe(true);
+    const status = () => [...document.querySelectorAll(".conn .status")].map((s) => s.textContent?.trim());
+    const ping = () => [...document.querySelectorAll(".conn .ping")].map((s) => s.textContent?.trim());
+    expect(status()).toEqual(["Checking", "Checking", "Checking"]);
+
+    answers.get("uat-sql-01")!([{ connectionId: "uat-sql-01", status: "reachable", ms: 3.2 }]);
+    await vi.waitFor(() => expect(status()[0]).toBe("Reachable"));
+    expect(ping()).toEqual(["3 ms", "-", "-"]);
+    expect($(".summary").textContent).toContain("checking");
+
+    answers.get("uat-sql-02")!([{ connectionId: "uat-sql-02", status: "reachable", ms: 88 }]);
+    answers.get("uat-cosmos")!([{ connectionId: "uat-cosmos", status: "unreachable", error: "No answer within 2 s" }]);
+    await vi.waitFor(() => expect(status()).toEqual(["Reachable", "Slow", "Unreachable"]));
+    expect(ping()).toEqual(["3 ms", "88 ms", "-"]);
+    expect(document.querySelectorAll(".conn .status")[2].getAttribute("title")).toBe("No answer within 2 s");
+    expect($(".summary").textContent?.replace(/\s+/g, " ")).toContain("| 2 reachable |");
+  });
+
+  it("probes again, past the cache, on Refresh", async () => {
+    const probe = vi.fn(async (ids: string[], _fresh: boolean) => ids.map((id): ProbeResult => ({ connectionId: id, status: "reachable", ms: 2 })));
+    const props = show({ probe });
+    await vi.waitFor(() => expect($(".summary").textContent).toContain("3 reachable"));
+    button("Refresh").click();
+    expect(props.onRefresh).toHaveBeenCalledOnce();
+    expect(probe).toHaveBeenCalledTimes(6);
+    expect(probe.mock.calls.slice(3).every((c) => c[1] === true)).toBe(true);
+  });
+
+  it("a failed probe call reads unknown rather than checking for ever", async () => {
+    show({ probe: vi.fn(async () => Promise.reject(new Error("engine stopped"))) });
+    await vi.waitFor(() => expect(document.querySelector(".conn .status")?.textContent?.trim()).toBe("Unknown"));
+    expect(document.querySelector(".conn .status")?.getAttribute("title")).toBe("engine stopped");
+  });
+
+  it("hides Recent until something has been opened in the environment", () => {
+    show();
+    expect(document.querySelector("[aria-label=Recent]")).toBeNull();
+  });
+
+  it("lists recent objects with their connection and age, and opens one on click", () => {
+    const now = Date.now();
+    const at = (ago: number) => ({
+      envId: "env:uat", hostId: "conn:uat-sql-01", hostName: "uat-sql-01", nodeId: `conn:uat-sql-01/db:Sales/o:${ago}`, kind: "table", at: now - ago,
+    });
+    const recent = [
+      { place: { ...at(4 * 60_000), label: "dbo.Orders" }, connection: "uat-sql-01" },
+      { place: { ...at(2 * 3_600_000), label: "dbo.Lines" }, connection: "uat-sql-01" },
+    ];
+    const props = show({ recent });
+    const rows = [...document.querySelectorAll<HTMLButtonElement>("[aria-label=Recent] button")];
+    expect(rows.map((r) => r.textContent?.replace(/\s+/g, " ").trim())).toEqual(["uat-sql-01 · dbo.Orders 4m", "uat-sql-01 · dbo.Lines 2h"]);
+    rows[1].click();
+    expect(props.onOpenRecent).toHaveBeenCalledWith(recent[1].place);
   });
 
   it("runs New connection, Refresh and Delete", () => {

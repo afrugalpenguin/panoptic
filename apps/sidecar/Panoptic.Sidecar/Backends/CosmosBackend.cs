@@ -402,6 +402,12 @@ public sealed class CosmosBackend(Credentials credentials, CosmosAccountKeys? ac
         return client;
     }
 
+    /// <summary>The account URI, probed with an HTTPS HEAD: the account answers 401 without a key, which is reachable.</summary>
+    public ProbeTarget? ProbeTarget(ConnectionConfig connection) =>
+        Uri.TryCreate(connection.Endpoint.Trim(), UriKind.Absolute, out var uri) && uri.Scheme is "https" or "http"
+            ? new ProbeTarget(uri.Host, uri.Port, new Uri(uri.GetLeftPart(UriPartial.Authority) + "/"))
+            : null;
+
     private CosmosClient Create(ConnectionConfig c, string? secret)
     {
         var options = new CosmosClientOptions

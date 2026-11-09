@@ -175,6 +175,8 @@ export interface EngineSummary {
 /** A connection in an environment's detail pane: its node id, engine, badge and endpoint segments. */
 export interface EnvConnection {
   id: string;
+  /** The connection's config id (meta.connectionId), which the sidecar's connection methods take. */
+  connectionId: string;
   kind: string;
   badge: KindBadge;
   label: LabelSegments;
@@ -314,7 +316,7 @@ export class TreeModel {
       const node = this.nodes.get(id);
       if (node?.kind !== "connection") return [];
       const kind = node.meta?.connectionKind ?? node.icon;
-      return [{ id, kind, badge: kindBadge(kind), label: this.labels.get(id) ?? { prefix: "", core: node.label, suffix: "" } }];
+      return [{ id, connectionId: node.meta?.connectionId ?? "", kind, badge: kindBadge(kind), label: this.labels.get(id) ?? { prefix: "", core: node.label, suffix: "" } }];
     });
   }
 

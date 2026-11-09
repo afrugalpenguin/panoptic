@@ -30,7 +30,7 @@
   import SeekOverlay from "./SeekOverlay.svelte";
   import { type SeekEnv, type SeekHost, type SeekIndex, type SeekRow } from "./seek";
   import { keyCommand } from "./shortcuts";
-  import { loadUsage, recordUse, saveUsage, type Place } from "./usage";
+  import { envRecent, loadUsage, recordUse, saveUsage, type Place } from "./usage";
   import { rowMenu, type RowMenuContext } from "./row-menu";
   import Workspace from "../query/Workspace.svelte";
   import { preloadMonaco, warmEditorWhenIdle } from "../query/preload";
@@ -534,6 +534,13 @@
       onSelectConnection: (id) => void selectConnection(envNodeId, id, false),
       onExpandConnection: (id) => void selectConnection(envNodeId, id, true),
       onConnectionMenu: (id, x, y) => void connectionMenu(envNodeId, id, x, y),
+      probe: (connectionIds, fresh) => (api ? api.probeConnections(connectionIds, fresh) : Promise.reject(new Error("The database engine is not running"))),
+      recent: envRecent(usage, envNodeId).map((place) => ({
+        place,
+        // The connection as the tree labels it, while it is still in this environment; its name otherwise.
+        connection: model.envConnections(envNodeId).find((c) => c.id === place.hostId)?.label.core ?? place.hostName,
+      })),
+      onOpenRecent: (place) => void reopen(place),
     };
   }
 
