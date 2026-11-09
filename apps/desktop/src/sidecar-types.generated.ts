@@ -135,6 +135,12 @@ export interface DatabaseCatalog {
   containers?: ContainerRef[] | null;
 }
 
+export interface DatabaseState {
+  name: string;
+  state: string;
+  error: boolean;
+}
+
 export interface DeviceCodePrompt {
   message: string;
   userCode: string;
@@ -339,6 +345,53 @@ export interface SaveConnectionParams {
   environmentId?: string | null;
   connection: ConnectionConfig;
   secret?: string | null;
+}
+
+export interface ServerDatabases {
+  total: number;
+  online: number;
+  notOnline: DatabaseState[];
+}
+
+export interface ServerException {
+  severity: string;
+  group: string;
+  subject: string;
+  detail: string;
+  nodeId?: string | null;
+}
+
+export interface ServerFact {
+  label: string;
+  value: string;
+  detail?: string | null;
+  mono: boolean;
+}
+
+export interface ServerParams {
+  connectionId: string;
+  refresh: boolean;
+}
+
+export interface ServerState {
+  session?: SessionInfo | null;
+  about?: ServerFact[] | null;
+  describedAt?: number | null;
+  databases?: ServerDatabases | null;
+  exceptions: ServerException[];
+  aboutError?: string | null;
+}
+
+export interface ServerUpdated {
+  connectionId: string;
+}
+
+export interface SessionInfo {
+  openedAt: number;
+  handshakeMs: number;
+  identity: string;
+  authMode: string;
+  tokenExpiresAt?: number | null;
 }
 
 export interface TestConnectionParams {

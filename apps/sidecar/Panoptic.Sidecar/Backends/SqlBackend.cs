@@ -11,7 +11,8 @@ namespace Panoptic.Sidecar.Backends;
 /// SQL Server, Azure SQL and Synapse SQL pools. One catalog query per expand, never one per child. Each expand opens
 /// a pooled connection in the target database (no USE, so it works on Azure SQL).
 /// </summary>
-public sealed class SqlBackend(Credentials credentials) : IQueryBackend
+/// <param name="sessions">Where each successful open is recorded, for the connection pane; none in most tests.</param>
+public sealed class SqlBackend(Credentials credentials, SessionLog? sessions = null) : IQueryBackend
 {
     private static readonly string[] SqlScope = ["https://database.windows.net/.default"];
 
@@ -442,6 +443,45 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
         return await SqlCatalog.BuildAsync(conn, ct);
     }
 
+    // --- Server description (connection pane) ---------------------------------------------------------
+
+    /// <summary>
+    /// One batch: the server's properties and every database with its state (the tree lists online ones only). Runs in
+    /// the connection's own database, so a contained Azure SQL user needs nothing in master.
+    /// </summary>
+    public async Task<ServerDescription?> DescribeServerAsync(ConnectionConfig c, string? secret, CancellationToken ct)
+    {
+        const string sql = """
+            SELECT CAST(SERVERPROPERTY('ProductVersion') AS nvarchar(128)),
+                   CAST(SERVERPROPERTY('ProductLevel') AS nvarchar(128)),
+                   CAST(SERVERPROPERTY('Edition') AS nvarchar(128)),
+                   CAST(SERVERPROPERTY('EngineEdition') AS int),
+                   CAST(SERVERPROPERTY('Collation') AS nvarchar(128)),
+                   CAST(DATABASEPROPERTYEX(DB_NAME(), 'ServiceObjective') AS nvarchar(128)),
+                   SYSDATETIMEOFFSET();
+            SELECT name, state_desc FROM sys.databases;
+            """;
+        try
+        {
+            await using var conn = await Open(c, secret, c.Database, ct);
+            await using var cmd = new SqlCommand(sql, conn) { CommandTimeout = 15 };
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            if (!await reader.ReadAsync(ct)) return null;
+            string? Text(int i) => reader.IsDBNull(i) ? null : reader.GetString(i);
+            var server = new SqlServerFacts.Server(
+                Text(0), Text(1), Text(2), reader.IsDBNull(3) ? null : reader.GetInt32(3), Text(4), Text(5),
+                reader.IsDBNull(6) ? null : reader.GetDateTimeOffset(6));
+            await reader.NextResultAsync(ct);
+            var databases = new List<(string Name, string State)>();
+            while (await reader.ReadAsync(ct)) databases.Add((reader.GetString(0), reader.GetString(1)));
+            return new ServerDescription(SqlServerFacts.Facts(server), SqlServerFacts.Databases(databases));
+        }
+        catch (SqlException ex)
+        {
+            throw SqlErrors.ToRpc(ex, c, c.Database);
+        }
+    }
+
     // --- Tree queries -----------------------------------------------------------------------------------
 
     private async Task<TreeNode[]> Databases(ConnectionConfig c, string? secret, NodePath path, CancellationToken ct)
@@ -632,20 +672,25 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
         var builder = Settings(c, database);
 
         SqlConnection conn;
+        string identity;
+        AccessToken? token = null;
         switch (c.Auth)
         {
             case AuthKinds.Sql:
                 builder.UserID = c.User ?? "";
                 builder.Password = secret ?? "";
                 conn = new SqlConnection(builder.ConnectionString);
+                identity = c.User ?? "";
                 break;
             case AuthKinds.Windows when c.Kind == ConnectionKinds.Sql:
                 builder.IntegratedSecurity = true;
                 conn = new SqlConnection(builder.ConnectionString);
+                identity = SessionLog.WindowsIdentity;
                 break;
             case AuthKinds.Entra:
-                await SignInAsync(credentials.For(c.TenantId, c.ClientId), SignInBudget, c, database, ct);
+                token = await SignInAsync(credentials.For(c.TenantId, c.ClientId), SignInBudget, c, database, ct);
                 conn = new SqlConnection(builder.ConnectionString) { AccessTokenCallback = TokenCallbackFor(c.TenantId, c.ClientId) };
+                identity = SessionLog.EntraIdentity(token.Value);
                 break;
             default:
                 throw new RpcException(RpcException.InvalidParams, $"SQL Server does not support auth '{c.Auth}'");
@@ -653,7 +698,9 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
 
         try
         {
+            var started = System.Diagnostics.Stopwatch.GetTimestamp();
             await conn.OpenAsync(ct);
+            sessions?.Opened(c, System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds, identity, SessionLog.AuthLabel(this, c), token?.ExpiresOn);
             return conn;
         }
         catch (SqlException ex)
@@ -677,13 +724,13 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
     /// OperationCanceledException (which FallbackCredential does not count as a WAM failure); running out of budget
     /// as a sign-in node error.
     /// </summary>
-    public static async Task SignInAsync(TokenCredential credential, TimeSpan budget, ConnectionConfig c, string? database, CancellationToken ct)
+    public static async Task<AccessToken> SignInAsync(TokenCredential credential, TimeSpan budget, ConnectionConfig c, string? database, CancellationToken ct)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         cts.CancelAfter(budget);
         try
         {
-            await credential.GetTokenAsync(new TokenRequestContext(SqlScope), cts.Token).AsTask().WaitAsync(cts.Token);
+            return await credential.GetTokenAsync(new TokenRequestContext(SqlScope), cts.Token).AsTask().WaitAsync(cts.Token);
         }
         catch (OperationCanceledException) when (cts.IsCancellationRequested && !ct.IsCancellationRequested)
         {

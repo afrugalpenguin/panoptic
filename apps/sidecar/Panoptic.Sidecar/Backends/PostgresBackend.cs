@@ -14,7 +14,8 @@ namespace Panoptic.Sidecar.Backends;
 /// expand, from pg_catalog), queries and the IntelliSense catalog. A Postgres connection is bound to one database, so
 /// each database has its own pooled data source.
 /// </summary>
-public sealed class PostgresBackend(Credentials credentials) : IQueryBackend
+/// <param name="sessions">Where each successful open is recorded, for the connection pane; none in most tests.</param>
+public sealed class PostgresBackend(Credentials credentials, SessionLog? sessions = null) : IQueryBackend
 {
     /// <summary>Azure Database for PostgreSQL's Entra resource.</summary>
     private static readonly string[] EntraScope = ["https://ossrdbms-aad.database.windows.net/.default"];
@@ -616,6 +617,37 @@ public sealed class PostgresBackend(Credentials credentials) : IQueryBackend
     }
 
     /// <summary>The connection string for one database. The password or token is supplied separately.</summary>
+    /// <summary>
+    /// The connection pane's About rows and the server's databases (docs/connection-pane.md), in one round trip on the
+    /// connection's default database. Templates are left out, as the tree leaves them out.
+    /// </summary>
+    public async Task<ServerDescription?> DescribeServerAsync(ConnectionConfig c, string? secret, CancellationToken ct)
+    {
+        const string sql = """
+            SELECT version(), current_setting('server_version'), current_setting('server_encoding'),
+                   (SELECT datcollate FROM pg_database WHERE datname = current_database()),
+                   to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS');
+            SELECT datname, datallowconn, datconnlimit FROM pg_database WHERE NOT datistemplate;
+            """;
+        try
+        {
+            await using var conn = await Open(c, secret, null, ct);
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            if (!await reader.ReadAsync(ct)) return null;
+            string? Text(int i) => reader.IsDBNull(i) ? null : reader.GetString(i);
+            var server = new PostgresFacts.Server(Text(0), Text(1), Text(2), Text(3), Text(4));
+            await reader.NextResultAsync(ct);
+            var databases = new List<PostgresFacts.Database>();
+            while (await reader.ReadAsync(ct)) databases.Add(new(reader.GetString(0), reader.GetBoolean(1), reader.GetInt32(2)));
+            return new ServerDescription(PostgresFacts.Facts(server), PostgresFacts.Databases(databases));
+        }
+        catch (NpgsqlException ex)
+        {
+            throw PostgresErrors.ToRpc(ex, c, c.Database ?? DefaultDatabase);
+        }
+    }
+
     public static NpgsqlConnectionStringBuilder Settings(ConnectionConfig c, string? database, string? user)
     {
         var (host, port) = ParseEndpoint(c.Endpoint);
@@ -644,6 +676,7 @@ public sealed class PostgresBackend(Credentials credentials) : IQueryBackend
     {
         string? user = c.User;
         Func<NpgsqlConnectionStringBuilder, CancellationToken, ValueTask<string>>? tokens = null;
+        DateTimeOffset? tokenExpires = null;
         switch (c.Auth)
         {
             case AuthKinds.Password:
@@ -653,6 +686,7 @@ public sealed class PostgresBackend(Credentials credentials) : IQueryBackend
             case AuthKinds.Entra:
                 var credential = credentials.For(c.TenantId, c.ClientId);
                 var token = await SignInAsync(credential, SignInBudget, c, database, ct);
+                tokenExpires = token.ExpiresOn;
                 if (string.IsNullOrWhiteSpace(user)) user = EntraUser(token.Token)
                     ?? throw new RpcException(RpcException.InvalidParams, "Enter the Entra user name (the role's name on the server): it could not be read from the sign-in.");
                 tokens = async (_, t) => (await credential.GetTokenAsync(new TokenRequestContext(EntraScope), t)).Token;
@@ -692,7 +726,10 @@ public sealed class PostgresBackend(Credentials credentials) : IQueryBackend
             else builder.ConnectionStringBuilder.Password = secret ?? "";
             return builder.Build();
         });
-        return await source.OpenConnectionAsync(ct);
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        var opened = await source.OpenConnectionAsync(ct);
+        sessions?.Opened(c, System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds, user ?? "", SessionLog.AuthLabel(this, c), tokenExpires);
+        return opened;
     }
 
     /// <summary>

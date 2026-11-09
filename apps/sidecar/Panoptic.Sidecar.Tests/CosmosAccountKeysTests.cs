@@ -163,7 +163,7 @@ public sealed class CosmosAccountKeysTests
     public async Task The_backend_fetches_the_key_once_and_again_after_the_client_is_dropped()
     {
         var arm = new FakeArm(Graph($$"""{"id":"{{Id}}","disableLocalAuth":false}"""), Keys());
-        var backend = new CosmosBackend(new Credentials(_ => { }, _ => new FakeCredential()), new CosmosAccountKeys(arm));
+        var backend = new CosmosBackend(new Credentials(_ => { }, _ => new FakeCredential()), accountKeys: new CosmosAccountKeys(arm));
         var connection = new ConnectionConfig("cos1", "dev", ConnectionKinds.Cosmos, Endpoint, AuthKinds.EntraKeys);
 
         var first = await backend.ClientForAsync(connection, null, CancellationToken.None);
