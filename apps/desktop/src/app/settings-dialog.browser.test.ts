@@ -14,7 +14,7 @@ const settings = {
   editor: { intellisense: true, keywordCase: null, autoRefreshOnDdl: true, warnUnknownNames: true, catalogSampleDocs: 100, maxRows: 100000 },
 } as AppSettings;
 
-// A desktop window: the default test viewport is phone-sized, which narrows the dialog below its 520px.
+// A desktop window: the default test viewport is phone-sized, which narrows the dialog below its 760px.
 beforeAll(() => page.viewport(1280, 800));
 
 let mounted: Record<string, unknown> | undefined;
@@ -107,10 +107,9 @@ describe("Settings dialog layout", () => {
     // One line: the status and both links share a top, and the links end at the control column's right edge.
     expect(new Set([status, ...links].map((e) => Math.round(rect(e).top))).size).toBe(1);
     expect(Math.round(rect(links[1]).right)).toBe(Math.round(rect(row.querySelector(".control")!).right));
-    // At the dialog's default 520px the status column is narrower than "vX, up to date · checked HH:MM", so its
-    // tail ends in an ellipsis rather than wrapping; the full text is in its tooltip (#360).
-    expect(Math.round(rect(dialog).width)).toBe(520);
-    expect(status.getAttribute("title")).toBe(text(status));
+    // The dialog is the wide size so the status fits beside its links: nothing ends in an ellipsis (#360).
+    expect(Math.round(rect(dialog).width)).toBe(760);
+    expect(status.scrollWidth).toBeLessThanOrEqual(status.clientWidth);
   });
 
   it("says Checking... while a check runs, and keeps the error text", () => {

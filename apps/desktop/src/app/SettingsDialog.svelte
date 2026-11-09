@@ -106,7 +106,7 @@
   }
 </script>
 
-<Dialog title="Settings" {onClose}>
+<Dialog title="Settings" wide {onClose}>
   <div class="full settings">
     <section>
       <h3>General</h3>
@@ -216,7 +216,7 @@
         <div class="control">
           <input id="s-max-rows" type="number" min="1000" max="1000000" step="1000" bind:value={editor.maxRows} />
         </div>
-        <p class="help muted">Rows kept per result set. Past this, the rest of the set isn't loaded; the script still runs to the end.</p>
+        <p class="help muted">Rows kept per result set; the script still runs to the end. A single SELECT past this can be saved in full with Save all rows.</p>
       </div>
       <div class="row">
         <label class="label" for="s-sample">Cosmos sample size</label>
