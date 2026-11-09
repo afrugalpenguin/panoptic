@@ -292,8 +292,11 @@
           </div>
           <div class="tile connected">
             <span class="key">Connected</span>
-            {#if session}
-              <span class="value mono">{formatMs(session.handshakeMs)} ms</span>
+            {#if session?.handshakeMs == null && session}
+              <span class="value mono dim" title="Every open so far reused a connection the driver had already made, so there was no handshake to time">pooled</span>
+              <span class="sub">opened {ago(Date.now() - session.openedAt)}</span>
+            {:else if session}
+              <span class="value mono">{formatMs(session.handshakeMs ?? 0)} ms</span>
               <span class="sub" title="The handshake of the first session the explorer or a query opened">opened {ago(Date.now() - session.openedAt)}</span>
             {:else}
               <span class="value mono">-</span>

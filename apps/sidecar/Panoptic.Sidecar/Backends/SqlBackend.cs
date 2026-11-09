@@ -30,6 +30,10 @@ public sealed class SqlBackend(Credentials credentials, SessionLog? sessions = n
 
     private readonly ConcurrentDictionary<TokenCredential, Func<SqlAuthenticationParameters, CancellationToken, Task<SqlAuthenticationToken>>> _tokenCallbacks = new();
 
+    /// <summary>Physical connections already opened (SqlClient keeps ClientConnectionId across pooled reuse), so a
+    /// session that starts on a pooled one records no handshake rather than a pool lookup's time.</summary>
+    private readonly ConcurrentDictionary<Guid, byte> _physical = new();
+
     public async Task<TreeNode[]> ChildrenAsync(ConnectionConfig c, string? secret, NodePath path, int start, CancellationToken ct)
     {
         var rel = path.From(start);
@@ -700,7 +704,9 @@ public sealed class SqlBackend(Credentials credentials, SessionLog? sessions = n
         {
             var started = System.Diagnostics.Stopwatch.GetTimestamp();
             await conn.OpenAsync(ct);
-            sessions?.Opened(c, System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds, identity, SessionLog.AuthLabel(this, c), token?.ExpiresOn);
+            var elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            var fresh = _physical.TryAdd(conn.ClientConnectionId, 0);
+            sessions?.Opened(c, fresh ? elapsed : null, identity, SessionLog.AuthLabel(this, c), token?.ExpiresOn);
             return conn;
         }
         catch (SqlException ex)

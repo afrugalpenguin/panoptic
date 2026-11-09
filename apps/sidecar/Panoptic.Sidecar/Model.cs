@@ -169,11 +169,13 @@ public sealed record ServerDescription(List<ServerFact> Facts, ServerDatabases? 
 /// The sidecar's record of a session to a connection, from its own opens; no network (docs/connection-pane.md,
 /// sessionInfo). Times are Unix milliseconds.
 /// </summary>
-/// <param name="HandshakeMs">How long the open that started the session took: connect, TLS and sign-in.</param>
+/// <param name="HandshakeMs">How long connecting took: connect, TLS and sign-in, from the session's first open that made
+/// a new physical connection. Null while every open has reused one the driver's pool already had (after a connection
+/// test, say), as there was no handshake to time.</param>
 /// <param name="Identity">Who it signed in as: a login, a Windows account, an Entra user, or "account key".</param>
 /// <param name="AuthMode">The sign-in's label, as backends.describe gives it.</param>
 /// <param name="TokenExpiresAt">When the newest Entra token seen for it runs out, for token sign-ins.</param>
-public sealed record SessionInfo(double OpenedAt, double HandshakeMs, string Identity, string AuthMode, double? TokenExpiresAt = null);
+public sealed record SessionInfo(double OpenedAt, double? HandshakeMs, string Identity, string AuthMode, double? TokenExpiresAt = null);
 
 /// <summary>An exception the pane's Needs attention strip shows: severity "warn" or "error".</summary>
 /// <param name="Group">What kind of thing it is about ("database"), for the strip's heading.</param>

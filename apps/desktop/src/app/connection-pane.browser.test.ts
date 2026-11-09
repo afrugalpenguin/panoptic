@@ -452,6 +452,11 @@ describe("ConnectionPane", () => {
       expect(text(tile("Session"))).toBe("Session ana.costa@fabrikam.example Microsoft Entra ID, token 42 min left");
     });
 
+    it("says pooled when the session started on a connection the driver had already made", async () => {
+      show({ server: vi.fn(async () => ({ ...described, session: { ...described.session!, handshakeMs: null } })) });
+      await vi.waitFor(() => expect(text(tile("Connected"))).toBe("Connected pooled opened 2 min ago"));
+    });
+
     it("lists the About facts in the backend's order, then Databases with a pill per state", async () => {
       show({ server: vi.fn(async () => described) });
       await vi.waitFor(() => expect(document.querySelector("[aria-label='About this server']")).not.toBeNull());

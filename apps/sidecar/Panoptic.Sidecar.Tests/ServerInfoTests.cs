@@ -90,6 +90,19 @@ public sealed class ServerInfoTests : IDisposable
     }
 
     [Fact]
+    public void A_session_that_starts_on_a_pooled_connection_has_no_handshake_until_a_new_one_is_made()
+    {
+        var sessions = new SessionLog(new Clock());
+        sessions.Opened(Orders, null, "report_reader", "SQL login");
+        Assert.Null(sessions.Get("c1")!.HandshakeMs);
+
+        sessions.Opened(Orders, 0.2, "report_reader", "SQL login");
+        Assert.Equal(0.2, sessions.Get("c1")!.HandshakeMs);
+        sessions.Opened(Orders, 95, "report_reader", "SQL login");
+        Assert.Equal(0.2, sessions.Get("c1")!.HandshakeMs);
+    }
+
+    [Fact]
     public void Entra_identity_is_the_token_user_or_a_service_principal()
     {
         static string Jwt(string payload) =>
@@ -310,13 +323,20 @@ public sealed class ServerInfoTests : IDisposable
     {
         var sessions = new SessionLog(TimeProvider.System);
         var backend = new SqlBackend(NoEntra, sessions);
-        var sql = new ConnectionConfig("sql1", "dev sql", ConnectionKinds.Sql, "127.0.0.1,14333", AuthKinds.Sql, User: "sa", TrustServerCertificate: true);
+        // Written with tcp: so its connection string, and so its pool, is this test's alone: the first open makes a new
+        // physical connection whatever other tests have pooled.
+        var sql = new ConnectionConfig("sql1", "dev sql", ConnectionKinds.Sql, "tcp:127.0.0.1,14333", AuthKinds.Sql, User: "sa", TrustServerCertificate: true);
 
         await backend.TestAsync(sql, SqlFactAttribute.Password, default);
         var session = sessions.Get("sql1")!;
         Assert.Equal("sa", session.Identity);
         Assert.Equal("SQL login", session.AuthMode);
-        Assert.True(session.HandshakeMs > 0);
+        Assert.True(session.HandshakeMs > 0, $"handshake {session.HandshakeMs}");
+
+        // A session that starts on the connection the pool kept (as after a connection test) has no handshake to time.
+        sessions.Forget("sql1");
+        await backend.TestAsync(sql, SqlFactAttribute.Password, default);
+        Assert.Null(sessions.Get("sql1")!.HandshakeMs);
 
         var warm = System.Diagnostics.Stopwatch.StartNew();
         var description = (await backend.DescribeServerAsync(sql, SqlFactAttribute.Password, default))!;

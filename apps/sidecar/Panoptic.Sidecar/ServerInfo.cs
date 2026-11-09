@@ -16,9 +16,10 @@ public sealed class SessionLog(TimeProvider time)
     /// <summary>A connection's first open since it was saved or the sidecar started: the server can be described now.</summary>
     public event Action<string>? FirstOpen;
 
-    /// <param name="handshakeMs">How long this open took; kept only for the open that started the session.</param>
+    /// <param name="handshakeMs">How long this open took when it made a new physical connection; null when the driver
+    /// reused a pooled one. The session keeps the first new connection's time.</param>
     /// <param name="tokenExpiresAt">The Entra token's expiry, for token sign-ins.</param>
-    public void Opened(ConnectionConfig connection, double handshakeMs, string identity, string authMode, DateTimeOffset? tokenExpiresAt = null)
+    public void Opened(ConnectionConfig connection, double? handshakeMs, string identity, string authMode, DateTimeOffset? tokenExpiresAt = null)
     {
         var first = false;
         var expires = tokenExpiresAt?.ToUnixTimeMilliseconds();
@@ -27,11 +28,19 @@ public sealed class SessionLog(TimeProvider time)
             _ =>
             {
                 first = true;
-                return new SessionInfo(time.GetUtcNow().ToUnixTimeMilliseconds(), Math.Round(handshakeMs, 1), identity, authMode, expires);
+                return new SessionInfo(time.GetUtcNow().ToUnixTimeMilliseconds(), Round(handshakeMs), identity, authMode, expires);
             },
-            (_, old) => old with { Identity = identity, AuthMode = authMode, TokenExpiresAt = expires ?? old.TokenExpiresAt });
+            (_, old) => old with
+            {
+                HandshakeMs = old.HandshakeMs ?? Round(handshakeMs),
+                Identity = identity,
+                AuthMode = authMode,
+                TokenExpiresAt = expires ?? old.TokenExpiresAt,
+            });
         if (first) FirstOpen?.Invoke(connection.Id);
     }
+
+    private static double? Round(double? ms) => ms is { } v ? Math.Round(v, 1) : null;
 
     public SessionInfo? Get(string connectionId) => _sessions.GetValueOrDefault(connectionId);
 

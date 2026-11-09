@@ -388,7 +388,7 @@ export interface ServerUpdated {
 
 export interface SessionInfo {
   openedAt: number;
-  handshakeMs: number;
+  handshakeMs?: number | null;
   identity: string;
   authMode: string;
   tokenExpiresAt?: number | null;

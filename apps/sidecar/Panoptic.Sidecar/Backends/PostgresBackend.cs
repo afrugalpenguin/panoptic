@@ -17,6 +17,10 @@ namespace Panoptic.Sidecar.Backends;
 /// <param name="sessions">Where each successful open is recorded, for the connection pane; none in most tests.</param>
 public sealed class PostgresBackend(Credentials credentials, SessionLog? sessions = null) : IQueryBackend
 {
+    /// <summary>Physical connections already opened, by data source and server process, so a session that starts on a
+    /// pooled one records no handshake rather than a pool lookup's time.</summary>
+    private readonly ConcurrentDictionary<(string Source, int ProcessId), byte> _physical = new();
+
     /// <summary>Azure Database for PostgreSQL's Entra resource.</summary>
     private static readonly string[] EntraScope = ["https://ossrdbms-aad.database.windows.net/.default"];
 
@@ -728,7 +732,10 @@ public sealed class PostgresBackend(Credentials credentials, SessionLog? session
         });
         var started = System.Diagnostics.Stopwatch.GetTimestamp();
         var opened = await source.OpenConnectionAsync(ct);
-        sessions?.Opened(c, System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds, user ?? "", SessionLog.AuthLabel(this, c), tokenExpires);
+        var elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        // A server process per physical connection: one seen before on this data source was a pooled reuse.
+        var fresh = _physical.TryAdd((key.Item3, opened.ProcessID), 0);
+        sessions?.Opened(c, fresh ? elapsed : null, user ?? "", SessionLog.AuthLabel(this, c), tokenExpires);
         return opened;
     }
 
