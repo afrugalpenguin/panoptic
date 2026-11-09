@@ -35,6 +35,14 @@ public interface IBackend
     /// </summary>
     Task WarmUpAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
+    /// <summary>
+    /// Where a reachability probe for the connection goes (docs/environment-pane.md): a TCP connect, or an HTTPS HEAD
+    /// for an endpoint that is a URL. No sign-in, no query, nothing sent beyond the connect or the HEAD. Null when the
+    /// backend cannot tell without signing in (a SQL Server named instance's port), or for an endpoint it cannot read:
+    /// the connection then reports unknown. <see cref="ProbeService"/> runs the probe, times it and caches the result.
+    /// </summary>
+    ProbeTarget? ProbeTarget(ConnectionConfig connection) => null;
+
     // --- Node actions (optional) ---------------------------------------------------------------------
     // A node's action ids come with it from ChildrenAsync. Labels for the shared ones are in Nodes.ActionLabels.
     // Node meta may carry ready-made text for the UI: "dragText", what dragging the node into an editor inserts, and
@@ -50,6 +58,10 @@ public interface IBackend
     Task<string?> InvokeAsync(ConnectionConfig connection, string? secret, NodePath path, int start, string actionId, CancellationToken cancellationToken) =>
         Task.FromResult(Nodes.InvokeDefault(actionId));
 }
+
+/// <summary>Where a reachability probe goes: a TCP connect to <paramref name="Host"/> and <paramref name="Port"/>.</summary>
+/// <param name="Url">Set when the endpoint is a URL: an HTTPS HEAD to it instead, where any answer is reachable.</param>
+public sealed record ProbeTarget(string Host, int Port, Uri? Url = null);
 
 /// <summary>
 /// A backend that can run queries: the query editor, its templates and its IntelliSense catalog. All or nothing, so a

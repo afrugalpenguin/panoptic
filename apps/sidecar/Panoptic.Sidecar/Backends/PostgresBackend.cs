@@ -587,6 +587,19 @@ public sealed class PostgresBackend(Credentials credentials) : IQueryBackend
     private static RpcException BadEndpoint(string endpoint) =>
         new(RpcException.InvalidParams, $"Invalid Postgres server '{endpoint}'. Use host or host:port.");
 
+    public ProbeTarget? ProbeTarget(ConnectionConfig connection)
+    {
+        try
+        {
+            var (host, port) = ParseEndpoint(connection.Endpoint);
+            return new ProbeTarget(host, port);
+        }
+        catch (RpcException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>A .pfx or .p12: a client certificate bundled with its key.</summary>
     public static bool IsBundle(string? file) => Path.GetExtension(file?.Trim() ?? "").ToLowerInvariant() is ".pfx" or ".p12";
 

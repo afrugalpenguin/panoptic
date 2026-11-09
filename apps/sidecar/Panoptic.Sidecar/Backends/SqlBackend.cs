@@ -55,6 +55,38 @@ public sealed class SqlBackend(Credentials credentials) : IQueryBackend
         return Task.CompletedTask;
     }
 
+    public ProbeTarget? ProbeTarget(ConnectionConfig connection) => ProbeTargetFor(connection.Endpoint);
+
+    /// <summary>
+    /// The server and port a data source names: <c>server</c>, <c>server,port</c>, an optional <c>tcp:</c> prefix, and
+    /// <c>.</c> or <c>(local)</c> for this machine. Null for a named instance with no port (only SQL Browser knows it),
+    /// LocalDB, named pipes and shared memory, and anything unreadable.
+    /// </summary>
+    public static ProbeTarget? ProbeTargetFor(string endpoint)
+    {
+        var text = endpoint.Trim();
+        if (text.StartsWith("tcp:", StringComparison.OrdinalIgnoreCase)) text = text[4..].Trim();
+        else if (text.Contains(':') && !text.StartsWith('[')) return null; // np:, lpc:, admin: and the like.
+        var comma = text.LastIndexOf(',');
+        var server = (comma < 0 ? text : text[..comma]).Trim();
+        int? port = null;
+        if (comma >= 0)
+        {
+            if (!int.TryParse(text[(comma + 1)..].Trim(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var p) || p is < 1 or > 65535)
+                return null;
+            port = p;
+        }
+        var slash = server.IndexOf('\\');
+        if (slash >= 0)
+        {
+            if (port is null) return null;
+            server = server[..slash];
+        }
+        if (server is "." or "(local)") server = "localhost";
+        if (server.Length == 0 || server.StartsWith('(') || server.Any(ch => char.IsWhiteSpace(ch) || char.IsControl(ch))) return null;
+        return new ProbeTarget(server, port ?? 1433);
+    }
+
     private async Task<TreeNode[]> Children(ConnectionConfig c, string? secret, NodePath path, IReadOnlyList<NodePath.Segment> rel, CancellationToken ct)
     {
         var shape = Nodes.Shape(rel);

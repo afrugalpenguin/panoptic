@@ -250,6 +250,18 @@ export interface PathRef {
   types: string[];
 }
 
+export interface ProbeParams {
+  connectionIds: string[];
+  fresh: boolean;
+}
+
+export interface ProbeResult {
+  connectionId: string;
+  status: string;
+  ms?: number | null;
+  error?: string | null;
+}
+
 export interface PurgeSecretsParams {
   connectionIds?: string[] | null;
 }

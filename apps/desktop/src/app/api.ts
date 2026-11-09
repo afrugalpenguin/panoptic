@@ -34,6 +34,8 @@ export type EditorSettings = Narrow<Sidecar.EditorSettings, { keywordCase?: "low
 export type AppSettings = Narrow<Sidecar.AppSettings, { updateCheck: UpdateCheckMode; explorer: ExplorerSettings; editor: EditorSettings }>;
 
 export type TestConnectionResult = Sidecar.TestConnectionResult;
+/** connection.probe (docs/environment-pane.md): reachable with the round trip, unreachable with why, or unknown. */
+export type ProbeResult = Narrow<Sidecar.ProbeResult, { status: "reachable" | "unreachable" | "unknown" }>;
 export type DeviceCodePrompt = Sidecar.DeviceCodePrompt;
 
 /** A connection found in SSMS, Azure Data Studio or VS Code. Never includes a password. */
@@ -64,6 +66,9 @@ export function createApi(rpc: RpcClient) {
     testConnection: (connection: ConnectionConfig, secret?: string, signal?: AbortSignal) =>
       // Sign-in can include an interactive Entra prompt, so allow longer than a normal call.
       rpc.request<TestConnectionResult>("connection.test", { connection, secret: secret ?? null }, 180_000, signal),
+    /** Reachability of saved connections, all probed at once; fresh skips the sidecar's 60 s cache (Refresh). */
+    probeConnections: (connectionIds: string[], fresh = false, signal?: AbortSignal) =>
+      rpc.request<ProbeResult[]>("connection.probe", { connectionIds, fresh }, 10_000, signal),
     scanImports: () => rpc.request<ImportSource[]>("import.scan", undefined, 30_000),
     /** Connections backups (#28): the sidecar reads and writes the file; secrets are never in it. */
     exportBackup: (path: string) => rpc.request<Sidecar.BackupExportResult>("backup.export", { path }),

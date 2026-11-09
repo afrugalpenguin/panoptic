@@ -7,7 +7,7 @@ public sealed record SidecarInfo(double StartupMs, string Version, string Mode);
 
 public static class Methods
 {
-    public static Dictionary<string, RpcHandler> Create(SidecarInfo info, ConfigStore? store = null, TreeService? tree = null, Query.QueryService? query = null, Catalog.CatalogService? catalog = null)
+    public static Dictionary<string, RpcHandler> Create(SidecarInfo info, ConfigStore? store = null, TreeService? tree = null, Query.QueryService? query = null, Catalog.CatalogService? catalog = null, ProbeService? probes = null)
     {
         var methods = new Dictionary<string, RpcHandler>
         {
@@ -126,6 +126,15 @@ public static class Methods
                 backend.Forget(args.Connection.Id);
             }
             return Rpc.Result(result, SidecarJson.Default.TestConnectionResult);
+        };
+
+        // Reachability for the environment pane (docs/environment-pane.md): saved connections only, by id, so the UI
+        // never names a host to contact.
+        probes ??= new ProbeService(store, tree.BackendFor, new NetworkProbe(), TimeProvider.System);
+        methods["connection.probe"] = async (p, ct) =>
+        {
+            var args = Rpc.Params(p, SidecarJson.Default.ProbeParams);
+            return Rpc.Result(await probes.ProbeAsync(args.ConnectionIds, args.Fresh, ct), SidecarJson.Default.ProbeResultArray);
         };
 
         // Saved connections to and from one file (#28, ADR 0008): no secrets, merged on import. The sidecar reads and
