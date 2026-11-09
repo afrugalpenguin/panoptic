@@ -37,6 +37,8 @@ export type TestConnectionResult = Sidecar.TestConnectionResult;
 /** connection.probe (docs/environment-pane.md): reachable with the round trip, unreachable with why, or unknown. */
 export type ProbeResult = Narrow<Sidecar.ProbeResult, { status: "reachable" | "unreachable" | "unknown" }>;
 export type DeviceCodePrompt = Sidecar.DeviceCodePrompt;
+/** connection.server (docs/connection-pane.md): the session, About facts, databases and Needs attention, from the sidecar's cache. */
+export type ServerState = Narrow<Sidecar.ServerState, { exceptions: (Sidecar.ServerException & { severity: "warn" | "error" })[] }>;
 
 /** A connection found in SSMS, Azure Data Studio or VS Code. Never includes a password. */
 export type ImportCandidate = Narrow<Sidecar.ImportCandidate, { auth: AuthKind }>;
@@ -69,6 +71,10 @@ export function createApi(rpc: RpcClient) {
     /** Reachability of saved connections, all probed at once; fresh skips the sidecar's 60 s cache (Refresh). */
     probeConnections: (connectionIds: string[], fresh = false, signal?: AbortSignal) =>
       rpc.request<ProbeResult[]>("connection.probe", { connectionIds, fresh }, 10_000, signal),
+    /** The connection pane's server state, from the sidecar's cache; refresh describes the server again when a session
+     * to it has opened (one query, so a longer timeout). */
+    serverState: (connectionId: string, refresh = false) =>
+      rpc.request<ServerState>("connection.server", { connectionId, refresh } satisfies Sidecar.ServerParams, refresh ? 40_000 : 10_000),
     scanImports: () => rpc.request<ImportSource[]>("import.scan", undefined, 30_000),
     /** Connections backups (#28): the sidecar reads and writes the file; secrets are never in it. */
     exportBackup: (path: string) => rpc.request<Sidecar.BackupExportResult>("backup.export", { path }),

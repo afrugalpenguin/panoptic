@@ -14,7 +14,7 @@ namespace Panoptic.Sidecar.Backends;
 /// Cosmos DB for NoSQL. Clients are expensive, so one is cached per connection and dropped when the
 /// connection's settings change. Metadata comes from the SDK's feed iterators.
 /// </summary>
-public sealed class CosmosBackend(Credentials credentials, CosmosAccountKeys? accountKeys = null) : IQueryBackend
+public sealed class CosmosBackend(Credentials credentials, SessionLog? sessions = null, CosmosAccountKeys? accountKeys = null) : IQueryBackend
 {
     private readonly CosmosAccountKeys _accountKeys = accountKeys ?? new();
 
@@ -43,7 +43,7 @@ public sealed class CosmosBackend(Credentials credentials, CosmosAccountKeys? ac
 
     public async Task<TreeNode[]> ChildrenAsync(ConnectionConfig c, string? secret, NodePath path, int start, CancellationToken ct)
     {
-        var client = await ClientForAsync(c, secret, ct);
+        var client = await SessionClientAsync(c, secret, ct);
         var rel = path.From(start);
         try
         {
@@ -103,6 +103,68 @@ public sealed class CosmosBackend(Credentials credentials, CosmosAccountKeys? ac
     public void Forget(string connectionId)
     {
         if (_clients.TryRemove(connectionId, out var entry)) entry.Client.Dispose();
+        _sessionClients.TryRemove(connectionId, out _);
+    }
+
+    // --- Sessions and the server description (connection pane) -----------------------------------------
+
+    /// <summary>The client each connection's session was recorded for: a new client is a new session.</summary>
+    private readonly ConcurrentDictionary<string, CosmosClient> _sessionClients = new();
+
+    /// <summary>
+    /// The connection's client, recording a session the first time it is used: timed around the account read the SDK
+    /// makes on its first request anyway. An Entra sign-in's token is fetched first for the account's own scope, the
+    /// one the SDK then asks for, so it comes from the cache and the session can name the user and the token's expiry.
+    /// </summary>
+    private async Task<CosmosClient> SessionClientAsync(ConnectionConfig c, string? secret, CancellationToken ct)
+    {
+        var client = await ClientForAsync(c, secret, ct);
+        if (sessions is null || (_sessionClients.TryGetValue(c.Id, out var known) && ReferenceEquals(known, client))) return client;
+        try
+        {
+            string identity = "account key";
+            DateTimeOffset? expires = null;
+            if (c.Auth == AuthKinds.Entra)
+            {
+                var uri = new Uri(c.Endpoint);
+                var token = await credentials.For(c.TenantId, c.ClientId).GetTokenAsync(new Azure.Core.TokenRequestContext([$"{uri.Scheme}://{uri.Host}/.default"]), ct);
+                identity = SessionLog.EntraIdentity(token);
+                expires = token.ExpiresOn;
+            }
+            var started = System.Diagnostics.Stopwatch.GetTimestamp();
+            await client.ReadAccountAsync();
+            sessions.Opened(c, System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds, identity, SessionLog.AuthLabel(this, c), expires);
+            _sessionClients[c.Id] = client;
+            return client;
+        }
+        catch (CosmosException ex)
+        {
+            throw Failed(ex, c);
+        }
+    }
+
+    /// <summary>The account's API, id, consistency and regions, and how many databases it has (Cosmos has no offline
+    /// state): the account read and one database listing.</summary>
+    public async Task<ServerDescription?> DescribeServerAsync(ConnectionConfig c, string? secret, CancellationToken ct)
+    {
+        try
+        {
+            var client = await ClientForAsync(c, secret, ct);
+            var account = await client.ReadAccountAsync();
+            var databases = 0;
+            using var iterator = client.GetDatabaseQueryIterator<DatabaseProperties>();
+            while (iterator.HasMoreResults) databases += (await iterator.ReadNextAsync(ct)).Count;
+            var facts = CosmosFacts.Facts(
+                account.Id,
+                account.Consistency?.DefaultConsistencyLevel.ToString(),
+                account.WritableRegions.Select(r => r.Name).ToList(),
+                account.ReadableRegions.Select(r => r.Name).ToList());
+            return new ServerDescription(facts, new ServerDatabases(databases, databases, []));
+        }
+        catch (CosmosException ex)
+        {
+            throw Failed(ex, c);
+        }
     }
 
     // --- Query editor -----------------------------------------------------------------------------------
@@ -130,7 +192,7 @@ public sealed class CosmosBackend(Credentials credentials, CosmosAccountKeys? ac
         if (target.Database is null || target.Container is null)
             throw new RpcException(RpcException.InvalidParams, "Select a container to query: Cosmos queries run against one container.");
 
-        var client = await ClientForAsync(target.Connection, secret, ct);
+        var client = await SessionClientAsync(target.Connection, secret, ct);
         var container = client.GetContainer(target.Database, target.Container);
         using var iterator = container.GetItemQueryStreamIterator(new QueryDefinition(text), requestOptions: new QueryRequestOptions { MaxItemCount = sink.BatchSize });
 
@@ -207,7 +269,7 @@ public sealed class CosmosBackend(Credentials credentials, CosmosAccountKeys? ac
     public async Task<DatabaseCatalog> CatalogAsync(QueryTarget target, string? secret, EditorSettings editor, CancellationToken ct)
     {
         if (target.Database is null) throw new RpcException(RpcException.InvalidParams, "Select a Cosmos database or container for IntelliSense.");
-        return await CosmosCatalog.BuildAsync(await ClientForAsync(target.Connection, secret, ct), target.Database, editor.CatalogSampleDocs, ct);
+        return await CosmosCatalog.BuildAsync(await SessionClientAsync(target.Connection, secret, ct), target.Database, editor.CatalogSampleDocs, ct);
     }
 
     // --- Tree -------------------------------------------------------------------------------------------

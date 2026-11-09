@@ -43,6 +43,16 @@ public interface IBackend
     /// </summary>
     ProbeTarget? ProbeTarget(ConnectionConfig connection) => null;
 
+    /// <summary>
+    /// The connection pane's About card and the server's databases (docs/connection-pane.md, describeServer): a flat
+    /// list of labelled facts in display order, and every database with its state, the ones the tree leaves out
+    /// included. One round trip where the backend can; the UI renders whatever comes back. Only called once a session
+    /// to the connection has opened (<see cref="ServerInfoService"/>), and on Refresh. Null when the backend has nothing
+    /// to say: the pane then shows no About card.
+    /// </summary>
+    Task<ServerDescription?> DescribeServerAsync(ConnectionConfig connection, string? secret, CancellationToken cancellationToken) =>
+        Task.FromResult<ServerDescription?>(null);
+
     // --- Node actions (optional) ---------------------------------------------------------------------
     // A node's action ids come with it from ChildrenAsync. Labels for the shared ones are in Nodes.ActionLabels.
     // Node meta may carry ready-made text for the UI: "dragText", what dragging the node into an editor inserts, and

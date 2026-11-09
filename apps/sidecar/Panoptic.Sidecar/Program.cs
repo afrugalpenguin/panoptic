@@ -38,7 +38,9 @@ catch (StoreUnavailableException ex)
     Console.Error.WriteLine(ex.Message);
     return 3;
 }
-var backends = BackendRegistry.Create(credentials);
+// Sessions the backends open, and what the connection pane shows about each server (docs/connection-pane.md).
+var sessions = new SessionLog(TimeProvider.System);
+var backends = BackendRegistry.Create(credentials, sessions);
 var tree = new TreeService(store, backends);
 
 var startupMs = (DateTime.Now - Process.GetCurrentProcess().StartTime).TotalMilliseconds;
@@ -51,7 +53,9 @@ var catalog = new Panoptic.Sidecar.Catalog.CatalogService(
     catalogCache,
     new Panoptic.Sidecar.Catalog.CatalogSources(store, tree),
     (method, notice) => Notify(method, w => JsonSerializer.Serialize(w, notice, SidecarJson.Default.CatalogNotice)));
-var dispatcher = new JsonRpcDispatcher(Methods.Create(new SidecarInfo(Math.Round(startupMs, 1), version, mode), store, tree, query, catalog));
+var server = new ServerInfoService(store, tree.BackendFor, sessions, TimeProvider.System,
+    id => Notify("connection.serverUpdated", w => JsonSerializer.Serialize(w, new ServerUpdated(id), SidecarJson.Default.ServerUpdated)));
+var dispatcher = new JsonRpcDispatcher(Methods.Create(new SidecarInfo(Math.Round(startupMs, 1), version, mode), store, tree, query, catalog, server: server));
 // Compiles the UI's first requests while the shell is still creating its window.
 _ = Task.Run(() => StartupWarmUp.RunAsync(dispatcher, store.Config));
 

@@ -148,6 +148,54 @@ public sealed record ProbeParams(List<string> ConnectionIds, bool Fresh = false)
 /// <param name="Ms">The probe's round trip, when reachable.</param>
 /// <param name="Error">Why it was unreachable or unknown, in one line.</param>
 public sealed record ProbeResult(string ConnectionId, string Status, double? Ms = null, string? Error = null);
+/// <summary>connection.server (docs/connection-pane.md): a saved connection by id; Refresh describes the server again
+/// when a session to it has opened.</summary>
+public sealed record ServerParams(string ConnectionId, bool Refresh = false);
+/// <summary>connection.serverUpdated: a describe for this connection finished; the pane asks connection.server again.</summary>
+public sealed record ServerUpdated(string ConnectionId);
+
+/// <summary>One row of the connection pane's About card, in the order the backend gives them.</summary>
+/// <param name="Mono">Shown in the mono stack: an identifier or a number.</param>
+public sealed record ServerFact(string Label, string Value, string? Detail = null, bool Mono = false);
+/// <summary>A database that is not online, and its state in words ("restoring", "offline").</summary>
+/// <param name="Error">A state that needs action rather than waiting (suspect, recovery pending).</param>
+public sealed record DatabaseState(string Name, string State, bool Error = false);
+/// <summary>The server's databases as the describe read them, including those the tree does not list.</summary>
+public sealed record ServerDatabases(int Total, int Online, List<DatabaseState> NotOnline);
+/// <summary>What <see cref="Backends.IBackend.DescribeServerAsync"/> returns: the About rows and the databases.</summary>
+public sealed record ServerDescription(List<ServerFact> Facts, ServerDatabases? Databases = null);
+
+/// <summary>
+/// The sidecar's record of a session to a connection, from its own opens; no network (docs/connection-pane.md,
+/// sessionInfo). Times are Unix milliseconds.
+/// </summary>
+/// <param name="HandshakeMs">How long connecting took: connect, TLS and sign-in, from the session's first open that made
+/// a new physical connection. Null while every open has reused one the driver's pool already had (after a connection
+/// test, say), as there was no handshake to time.</param>
+/// <param name="Identity">Who it signed in as: a login, a Windows account, an Entra user, or "account key".</param>
+/// <param name="AuthMode">The sign-in's label, as backends.describe gives it.</param>
+/// <param name="TokenExpiresAt">When the newest Entra token seen for it runs out, for token sign-ins.</param>
+public sealed record SessionInfo(double OpenedAt, double? HandshakeMs, string Identity, string AuthMode, double? TokenExpiresAt = null);
+
+/// <summary>An exception the pane's Needs attention strip shows: severity "warn" or "error".</summary>
+/// <param name="Group">What kind of thing it is about ("database"), for the strip's heading.</param>
+/// <param name="Subject">The object it names, in mono.</param>
+/// <param name="NodeId">The tree node to reveal, when the tree lists it.</param>
+public sealed record ServerException(string Severity, string Group, string Subject, string Detail, string? NodeId = null);
+
+/// <summary>connection.server: everything the connection pane shows that is not in the store or the probe.</summary>
+/// <param name="Session">Null until the sidecar has opened a session to the connection.</param>
+/// <param name="About">The described facts; null until a describe has finished.</param>
+/// <param name="DescribedAt">When <paramref name="About"/> was read, Unix milliseconds.</param>
+/// <param name="AboutError">Why the last describe failed, in one line.</param>
+public sealed record ServerState(
+    SessionInfo? Session,
+    List<ServerFact>? About,
+    double? DescribedAt,
+    ServerDatabases? Databases,
+    List<ServerException> Exceptions,
+    string? AboutError = null);
+
 /// <param name="Database">Overrides the database the node resolves to (the tab's database picker).</param>
 public sealed record QueryRequest(string QueryId, string NodeId, string Text, string? Database = null);
 public sealed record QueryCancelParams(string QueryId);
@@ -303,6 +351,9 @@ public sealed record StoreFile(AppConfig Config, Dictionary<string, string> Secr
 [JsonSerializable(typeof(TestConnectionResult))]
 [JsonSerializable(typeof(ProbeParams))]
 [JsonSerializable(typeof(ProbeResult[]))]
+[JsonSerializable(typeof(ServerParams))]
+[JsonSerializable(typeof(ServerUpdated))]
+[JsonSerializable(typeof(ServerState))]
 [JsonSerializable(typeof(DeviceCodePrompt))]
 [JsonSerializable(typeof(Import.ImportSource[]))]
 [JsonSerializable(typeof(Import.ImportSource))]

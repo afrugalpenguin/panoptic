@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { EnvironmentConfig, TreeNode } from "./api";
 import { BUILTIN_KINDS } from "./builtin-kinds";
-import { authLabel, databases, placeText, secretPlace, writePolicy } from "./conn-pane";
+import { ago, attentionTitle, authLabel, databases, databaseSummary, placeText, secretPlace, tokenLeft, writePolicy } from "./conn-pane";
 import { keepsSecret } from "./sign-in.svelte";
 
 const prod: EnvironmentConfig = { id: "prod", name: "Prod", color: "#e03131", readOnly: true, connections: [] };
@@ -52,5 +52,36 @@ describe("keepsSecret", () => {
     expect(keepsSecret(saved, { ...saved, user: "writer" })).toBe(false);
     expect(keepsSecret(saved, { ...saved, trustServerCertificate: true })).toBe(false);
     expect(keepsSecret(saved, { ...saved, certificateHostName: "other.example.test" })).toBe(false);
+  });
+});
+
+describe("connection pane server wording (phase 2)", () => {
+  it("says how long ago a session opened", () => {
+    expect(ago(20_000)).toBe("just now");
+    expect(ago(2 * 60_000 + 5_000)).toBe("2 min ago");
+    expect(ago(3 * 3_600_000)).toBe("3 h ago");
+    expect(ago(50 * 3_600_000)).toBe("2 d ago");
+    expect(ago(-5_000)).toBe("just now");
+  });
+
+  it("says how long the token has left, or that it ran out", () => {
+    const now = 1_000_000_000;
+    expect(tokenLeft(now + 42 * 60_000 + 1, now)).toBe("token 42 min left");
+    expect(tokenLeft(now + 2 * 3_600_000 + 1, now)).toBe("token 2 h left");
+    expect(tokenLeft(now - 1, now)).toBe("token expired");
+  });
+
+  it("counts databases and groups the ones that are not online by state", () => {
+    expect(databaseSummary({ total: 12, online: 9, notOnline: [{ name: "a", state: "restoring", error: false }, { name: "b", state: "suspect", error: true }, { name: "c", state: "restoring", error: false }] })).toEqual({
+      text: "12 · 9 online",
+      pills: [{ state: "restoring", count: 2, error: false }, { state: "suspect", count: 1, error: true }],
+    });
+    expect(databaseSummary({ total: 4, online: 4, notOnline: [] })).toEqual({ text: "4 · 4 online", pills: [] });
+  });
+
+  it("heads Needs attention by what the items are", () => {
+    expect(attentionTitle([{ group: "database" }])).toBe("1 database needs attention");
+    expect(attentionTitle([{ group: "database" }, { group: "database" }])).toBe("2 databases need attention");
+    expect(attentionTitle([{ group: "database" }, { group: "token" }])).toBe("2 items need attention");
   });
 });

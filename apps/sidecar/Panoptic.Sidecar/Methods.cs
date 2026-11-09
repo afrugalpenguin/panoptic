@@ -7,7 +7,7 @@ public sealed record SidecarInfo(double StartupMs, string Version, string Mode);
 
 public static class Methods
 {
-    public static Dictionary<string, RpcHandler> Create(SidecarInfo info, ConfigStore? store = null, TreeService? tree = null, Query.QueryService? query = null, Catalog.CatalogService? catalog = null, ProbeService? probes = null)
+    public static Dictionary<string, RpcHandler> Create(SidecarInfo info, ConfigStore? store = null, TreeService? tree = null, Query.QueryService? query = null, Catalog.CatalogService? catalog = null, ProbeService? probes = null, ServerInfoService? server = null)
     {
         var methods = new Dictionary<string, RpcHandler>
         {
@@ -45,7 +45,11 @@ public static class Methods
         methods["config.deleteEnvironment"] = (p, _) =>
         {
             var id = Rpc.Params(p, SidecarJson.Default.IdParams).Id;
-            foreach (var c in store.FindEnvironment(id)?.Connections ?? []) tree.Forget(c.Id);
+            foreach (var c in store.FindEnvironment(id)?.Connections ?? [])
+            {
+                tree.Forget(c.Id);
+                server?.Forget(c.Id);
+            }
             store.DeleteEnvironment(id);
             catalog?.Forget();
             return Task.FromResult(Rpc.Result(store.Config, SidecarJson.Default.AppConfig));
@@ -57,6 +61,7 @@ public static class Methods
             tree.Validate(args.Connection);
             store.SaveConnection(args.EnvironmentId, args.Connection, args.Secret);
             tree.Forget(args.Connection.Id);
+            server?.Forget(args.Connection.Id);
             catalog?.Forget();
             return Task.FromResult(Rpc.Result(store.Config, SidecarJson.Default.AppConfig));
         };
@@ -74,6 +79,7 @@ public static class Methods
             var id = Rpc.Params(p, SidecarJson.Default.IdParams).Id;
             store.DeleteConnection(id);
             tree.Forget(id);
+            server?.Forget(id);
             catalog?.Forget();
             return Task.FromResult(Rpc.Result(store.Config, SidecarJson.Default.AppConfig));
         };
@@ -124,6 +130,8 @@ public static class Methods
             finally
             {
                 backend.Forget(args.Connection.Id);
+                // A test is not a session: it may have run with unsaved settings.
+                server?.Forget(args.Connection.Id);
             }
             return Rpc.Result(result, SidecarJson.Default.TestConnectionResult);
         };
@@ -136,6 +144,16 @@ public static class Methods
             var args = Rpc.Params(p, SidecarJson.Default.ProbeParams);
             return Rpc.Result(await probes.ProbeAsync(args.ConnectionIds, args.Fresh, ct), SidecarJson.Default.ProbeResultArray);
         };
+
+        // The connection pane's About card, Connected and Session tiles and Needs attention (docs/connection-pane.md):
+        // from the sidecar's own records, so asking runs nothing on the server; Refresh describes it again once a
+        // session has opened. connection.serverUpdated says when a describe has finished.
+        if (server is not null)
+            methods["connection.server"] = async (p, ct) =>
+            {
+                var args = Rpc.Params(p, SidecarJson.Default.ServerParams);
+                return Rpc.Result(await server.GetAsync(args.ConnectionId, args.Refresh, ct), SidecarJson.Default.ServerState);
+            };
 
         // Saved connections to and from one file (#28, ADR 0008): no secrets, merged on import. The sidecar reads and
         // writes the file itself, so the UI needs no file access and the format stays in one place.

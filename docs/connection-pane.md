@@ -31,7 +31,7 @@ Three blocks, gap 14px, top-aligned.
 Card header row 12px: `SERVER` label, `probed 12 s ago` mono dim, right-aligned `next on refresh` mono dim. Below, a four-tile grid (`repeat(4, minmax(0,1fr))`), tiles separated by hairlines, each 14px 16px padding: 10.5px uppercase dim key, 20px 600 value (mono for numbers), 11.5px muted subline.
 
 1. **Ping**: round trip in ms coloured like the status, subline the status word with its dot. Same probe, cache and thresholds as the environment pane. Slow threshold is the environment pane's; do not define a second one here.
-2. **Connected**: handshake time in ms, subline `2 min ago, kept open` or `not connected` with the value `-`. From the pool: when the sidecar last opened a session to this host and whether one is still open.
+2. **Connected**: handshake time in ms, subline `opened 2 min ago` or `not connected` with the value `-`. From the sidecar's record of its own opens: when the session to this connection started and how long that open took. Whether a pooled connection is still open is not shown: the drivers' pools cannot be asked.
 3. **Catalog**: `warm` green, `cold` dim, `refreshing` amber; subline `3 of 12 databases · 4 min ago` (how many databases have a snapshot and when the newest was built). From the catalog snapshot store the query editor already uses. Tile omitted until that store exists in the build.
 4. **Session**: the authenticated identity in mono 15px (Entra UPN, SQL login name, or `account key` for Cosmos key auth), subline the auth mode and, for token auth, time left on the token. Value `-` with subline `not connected` until a session has been opened.
 
@@ -41,7 +41,7 @@ Tiles never block paint. Each shows `-` until its source answers.
 
 Header row: `ABOUT THIS SERVER` label, `read on connect, cached` mono dim. Then rows 34px, hairline top border, grid `150px minmax(0,1fr)`: key dim, value text, mono where it is an identifier or number.
 
-The rows are a flat `{label, value, detail?, mono?}` list returned by the backend's `describeServer()` after a session opens, cached per connection until Refresh. The UI renders whatever comes back in order and adds one row of its own at the end: **Databases**, `12 · 11 online` plus a state pill for every non-online state present (`1 restoring`, `2 offline`), using the counts the tree already has.
+The rows are a flat `{label, value, detail?, mono?}` list returned by the backend's `describeServer()` after a session opens, cached per connection until Refresh. The UI renders whatever comes back in order and adds one row of its own at the end: **Databases**, `12 · 11 online` plus a state pill for every non-online state present (`1 restoring`, `2 offline`). The counts come from the same describe, which reads every database and its state: the SQL tree lists online databases only, so the tree's children cannot say which are not.
 
 Reference lists per backend, so the shape is agreed up front (backends may add or drop rows):
 
@@ -55,7 +55,7 @@ Card hidden until the first session has opened; it never shows placeholders.
 
 Rendered only when there is at least one exception. Amber hairline border `#3a2f16`, background `#15130e`, 12px 16px padding. Amber dot, then a 13px 600 title `1 database needs attention` (or `3 databases need attention`), a 12.5px muted line per item naming the object in mono and the state with its age (`is restoring, started 14 min ago`), and a right-aligned `Show in tree` link that selects and reveals the first item.
 
-Sources in phase 1: any database whose `state` is not online (from the tree's existing children). Later: expired or expiring token (under 5 min), probe unreachable while a session is open, catalog refresh failed. Each source is a backend-reported `{severity, title, detail, nodeId?}`; the UI only renders. Red variant (`#3a2226` / `#1a0f11`, dot `#ff7b7b`) for severity error.
+Sources in phase 2: any database the describe found not online (restoring, offline, suspect...; on Postgres, one that takes no connections or was left invalid). No age is shown: there is no portable source for when a state began. No `Show in tree` link either, as these databases are not in the tree. Later: expired or expiring token (under 5 min), probe unreachable while a session is open, catalog refresh failed. Each source is a backend-reported `{severity, title, detail, nodeId?}`; the UI only renders. Red variant (`#3a2226` / `#1a0f11`, dot `#ff7b7b`) for severity error.
 
 ### Right rail
 
@@ -85,8 +85,8 @@ As the environment pane: `Ready`, `<core>: n items in x ms` (time to list the co
 Behind the backend contract, generic across engines:
 
 - `probe(connection)`: already specified by the environment pane; reused.
-- `describeServer(session)`: returns `Array<{label, value, detail?, mono?}>`. Called once after the first session opens and on Refresh. Must complete in under 200 ms on a warm connection against the SQL family (`SERVERPROPERTY`, `sys.dm_user_db_resource_governance` or `sys.database_service_objectives` for the edition, `sysdatetimeoffset()`); Cosmos uses the account read the SDK already does on connect.
-- `sessionInfo(connection)`: from the pool, no network: `{openedAt, handshakeMs, identity, authMode, tokenExpiresAt?}` or null.
+- `describeServer(session)`: returns `Array<{label, value, detail?, mono?}>` and every database with its state. Called once, in the background, when the sidecar first opens a session to the connection (an expand, a query, a catalog), and on Refresh; the pane reads the cached result and is told (`connection.serverUpdated`) when a describe finishes. Must complete in under 200 ms on a warm connection against the SQL family (`SERVERPROPERTY`, `sys.dm_user_db_resource_governance` or `sys.database_service_objectives` for the edition, `sysdatetimeoffset()`); Cosmos uses the account read the SDK already does on connect.
+- `sessionInfo(connection)`: from the sidecar's record of its opens, no network: `{openedAt, handshakeMs, identity, authMode, tokenExpiresAt?}` or null.
 - `exceptions(connection)`: `Array<{severity: 'warn'|'error', title, detail, nodeId?}>`, computed from state the app already holds; no new queries in phase 1.
 
 ## Keyboard
@@ -100,7 +100,7 @@ Per-connection write policy, query history (a separate feature), light theme, la
 ## Phases
 
 1. Layout and inline properties, no new backend calls: colour rule, header (reachable segment `checking` until phase 2 of the environment pane lands, then live), actions, Properties card with Host, Engine, Environment menu, Authentication popover, Default database, Write policy inherited, Secret, Position; Remove at the bottom; footer. Server card shows only the tiles whose source already exists (Ping once the environment pane's probe is in; otherwise the strip is omitted). About card and Needs attention hidden. Remove the nine-button toolbar and the Edit dialog path for existing connections.
-2. `describeServer` and `sessionInfo` behind the contract for SQL family and Cosmos; About card; Connected and Session tiles; Needs attention from non-online database states.
+2. `describeServer` and `sessionInfo` behind the contract for the SQL family, Cosmos and Postgres; About card; Connected and Session tiles; Needs attention from non-online database states.
 3. Catalog tile (once the catalog snapshot store exists), Recent card filtered to the connection, token-expiry and probe exceptions.
 
 Each phase is its own PR with a change fragment in `changes/`.

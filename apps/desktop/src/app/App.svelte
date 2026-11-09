@@ -106,6 +106,8 @@
   let landing = $state<Landing>();
   /** The first config has arrived: until then an empty config does not mean a first run. */
   let configLoaded = $state(false);
+  /** Bumped per connection when the sidecar says a server describe finished, so its pane reads the new state. */
+  let serverRevisions = $state<Record<string, number>>({});
 
   const model = new TreeModel(
     (id, signal) => api!.children(id, signal),
@@ -238,6 +240,10 @@
       (method, params) => {
         if (method === "auth.deviceCode") deviceCode = params as DeviceCodePrompt;
         else if (method.startsWith("query.") || method.startsWith("catalog.")) workspace.handle(method, params);
+        else if (method === "connection.serverUpdated") {
+          const id = (params as { connectionId: string }).connectionId;
+          serverRevisions = { ...serverRevisions, [id]: (serverRevisions[id] ?? 0) + 1 };
+        }
       },
       (reason) => reportProblem("Database engine output", reason),
     );
@@ -591,6 +597,8 @@
       copyText: node.meta?.copyText,
       canQuery: node.actions.includes("newQuery"),
       probe: (fresh) => (api ? api.probeConnections([connection.id], fresh) : Promise.reject(new Error("The database engine is not running"))),
+      server: (refresh) => (api ? api.serverState(connection.id, refresh) : Promise.reject(new Error("The database engine is not running"))),
+      serverRevision: serverRevisions[connection.id] ?? 0,
       onSave: async (next, secret) => configChanged(await api!.saveConnection(env?.id ?? null, next, secret)),
       onMoveTo: (environmentId) => relocateConnection(connection.id, environmentId),
       onMove: (by) => stepConnectionBy(connection.id, by),

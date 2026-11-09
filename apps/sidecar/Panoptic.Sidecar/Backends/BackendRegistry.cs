@@ -7,15 +7,16 @@ namespace Panoptic.Sidecar.Backends;
 /// </summary>
 public static class BackendRegistry
 {
-    public static Dictionary<string, IBackend> Create(Credentials credentials)
+    /// <param name="sessions">Where backends record the sessions they open, for the connection pane.</param>
+    public static Dictionary<string, IBackend> Create(Credentials credentials, SessionLog? sessions = null)
     {
-        var sql = new SqlBackend(credentials);
+        var sql = new SqlBackend(credentials, sessions);
         return new()
         {
             [ConnectionKinds.Sql] = sql,
             [ConnectionKinds.Synapse] = sql,
-            [ConnectionKinds.Cosmos] = new CosmosBackend(credentials),
-            [ConnectionKinds.Postgres] = new PostgresBackend(credentials),
+            [ConnectionKinds.Cosmos] = new CosmosBackend(credentials, sessions),
+            [ConnectionKinds.Postgres] = new PostgresBackend(credentials, sessions),
         };
     }
 }
