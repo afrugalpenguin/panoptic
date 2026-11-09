@@ -46,10 +46,10 @@
     }
   }
 
-  const MODES: { value: UpdateCheckMode; label: string; help: string }[] = [
-    { value: "startup", label: "On startup", help: "Checks GitHub Releases once each time Panoptic starts." },
-    { value: "hourly", label: "Hourly", help: "Checks at startup and then every hour while Panoptic is open." },
-    { value: "never", label: "Never", help: "Panoptic never contacts GitHub on its own. Use Check now when you want to." },
+  const MODES: { value: UpdateCheckMode; label: string }[] = [
+    { value: "startup", label: "On startup" },
+    { value: "hourly", label: "Hourly" },
+    { value: "never", label: "Never" },
   ];
 
   // svelte-ignore state_referenced_locally
@@ -67,25 +67,27 @@
 
   let error = $state("");
 
-  const help = $derived(MODES.find((m) => m.value === updateCheck)!.help);
-  const status = $derived.by(() => {
+  /** The update row's status: the main text, a muted tail, and whether it gets the check mark. */
+  const status = $derived.by((): { text: string; tail?: string; ok?: boolean } => {
     switch (update?.kind) {
       case "checking":
-        return "Checking...";
-      case "upToDate":
-        return `Up to date (v${update.current}), checked ${new Date(update.checkedAt).toLocaleTimeString()}`;
+        return { text: "Checking..." };
+      case "upToDate": {
+        const at = new Date(update.checkedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        return { text: `v${update.current}, up to date`, tail: `· checked ${at}`, ok: true };
+      }
       case "available":
-        return `v${update.next} is available on GitHub Releases`;
+        return { text: `v${update.next} is available on GitHub Releases` };
       case "downloading":
-        return `Downloading v${update.next}...`;
+        return { text: `Downloading v${update.next}...` };
       case "ready":
-        return `v${update.next} is downloaded and installs when you close Panoptic, or restart now from the status bar`;
+        return { text: `v${update.next} is downloaded and installs when you close Panoptic, or restart now from the status bar` };
       case "error":
-        return `Check failed: ${update.message}`;
+        return { text: `Check failed: ${update.message}` };
       case "installFailed":
-        return `Update failed: ${update.message}`;
+        return { text: `Update failed: ${update.message}` };
       default:
-        return update ? `v${update.current}, not checked yet this session` : "";
+        return { text: update ? `v${update.current}, not checked yet this session` : "" };
     }
   });
 
@@ -104,83 +106,127 @@
   }
 </script>
 
-<Dialog title="Settings" {onClose}>
-  <label for="s-updates">Check for updates</label>
-  <select id="s-updates" bind:value={updateCheck}>
-    {#each MODES as m}<option value={m.value}>{m.label}</option>{/each}
-  </select>
+<Dialog title="Settings" wide {onClose}>
+  <div class="full settings">
+    <section>
+      <h3>General</h3>
+      <div class="row updates">
+        <span class="label">Updates</span>
+        <div class="control line">
+          <span class="status" title={[status.text, status.tail].filter(Boolean).join(" ")}>
+            {#if status.ok}<svg class="ok" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg>{/if}{status.text}{#if status.tail}<span class="muted">{" " + status.tail}</span>{/if}
+          </span>
+          <span class="links">
+            <button type="button" class="link" disabled={update?.kind === "checking" || update?.kind === "downloading"} onclick={onCheckNow}>Check now</button>
+            <span class="muted" aria-hidden="true">·</span>
+            <button
+              type="button"
+              class="link"
+              disabled={!hasChangelog}
+              title={hasChangelog ? "Release notes for every version" : "This build has no release notes"}
+              onclick={onWhatsNew}>What's new</button
+            >
+          </span>
+        </div>
+      </div>
+      <div class="row">
+        <label class="label" for="s-updates">Check for updates</label>
+        <div class="control">
+          <select id="s-updates" bind:value={updateCheck}>
+            {#each MODES as m}<option value={m.value}>{m.label}</option>{/each}
+          </select>
+        </div>
+      </div>
+      <div class="row connections">
+        <span class="label">Connections</span>
+        <div class="control">
+          <span class="links">
+            <button type="button" class="link" onclick={exportConnections}>Export to a file</button>
+            <span class="muted" aria-hidden="true">·</span>
+            <button type="button" class="link" onclick={importConnections}>Import from a backup</button>
+          </span>
+        </div>
+        <p class="help muted">{backupStatus || "Environments and connections only. Passwords and keys are never included."}</p>
+      </div>
+    </section>
 
-  <span></span>
-  <p class="help muted">{help}</p>
+    <section>
+      <h3>Explorer</h3>
+      <div class="row">
+        <label class="label" for="s-badges">Engine badges</label>
+        <div class="control">
+          <label class="check"><input id="s-badges" type="checkbox" bind:checked={showKindBadge} /> Show S, C, Sy badges on connections</label>
+        </div>
+      </div>
+      <div class="row">
+        <label class="label" for="s-font">Row font</label>
+        <div class="control">
+          <select id="s-font" bind:value={rowFont}>
+            <option value="mono">Monospace</option>
+            <option value="ui">UI font</option>
+          </select>
+        </div>
+      </div>
+    </section>
 
-  <span></span>
-  <div class="check-now">
-    <button type="button" disabled={update?.kind === "checking" || update?.kind === "downloading"} onclick={onCheckNow}>Check now</button>
-    <button
-      type="button"
-      disabled={!hasChangelog}
-      title={hasChangelog ? "Release notes for every version" : "This build has no release notes"}
-      onclick={onWhatsNew}>What's new</button
-    >
-    <span class="muted">{status}</span>
+    <section>
+      <h3>Editor</h3>
+      <div class="row">
+        <label class="label" for="s-intellisense">IntelliSense</label>
+        <div class="control">
+          <label class="check"
+            ><input id="s-intellisense" type="checkbox" bind:checked={editor.intellisense} /> Complete names and show details on hover</label
+          >
+        </div>
+      </div>
+      <div class="row">
+        <label class="label" for="s-ddl">Refresh after DDL</label>
+        <div class="control">
+          <label class="check"
+            ><input id="s-ddl" type="checkbox" bind:checked={editor.autoRefreshOnDdl} disabled={!editor.intellisense} /> Refresh IntelliSense after CREATE,
+            ALTER or DROP</label
+          >
+        </div>
+      </div>
+      <div class="row">
+        <label class="label" for="s-unknown">Unknown names</label>
+        <div class="control">
+          <label class="check"
+            ><input id="s-unknown" type="checkbox" bind:checked={editor.warnUnknownNames} disabled={!editor.intellisense} /> Warn before running</label
+          >
+        </div>
+      </div>
+      <div class="row">
+        <label class="label" for="s-case">Keyword case</label>
+        <div class="control">
+          <select id="s-case" bind:value={editor.keywordCase} disabled={!editor.intellisense}>
+            <option value="default">Default (lower for SQL, upper for Cosmos)</option>
+            <option value="lower">lower</option>
+            <option value="upper">UPPER</option>
+            <option value="preserve">As listed</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h3>Results</h3>
+      <div class="row">
+        <label class="label" for="s-max-rows">Row limit</label>
+        <div class="control">
+          <input id="s-max-rows" type="number" min="1000" max="1000000" step="1000" bind:value={editor.maxRows} />
+        </div>
+        <p class="help muted">Rows kept per result set; the script still runs to the end. A single SELECT past this can be saved in full with Save all rows.</p>
+      </div>
+      <div class="row">
+        <label class="label" for="s-sample">Cosmos sample size</label>
+        <div class="control">
+          <input id="s-sample" type="number" min="10" max="500" step="10" bind:value={editor.catalogSampleDocs} disabled={!editor.intellisense} />
+        </div>
+        <p class="help muted">Documents read from each container to learn its property paths.</p>
+      </div>
+    </section>
   </div>
-
-  <h3 class="full">Connections</h3>
-
-  <span></span>
-  <div class="check-now">
-    <button type="button" onclick={exportConnections}>Export to a file...</button>
-    <button type="button" onclick={importConnections}>Import from a backup...</button>
-  </div>
-  <span></span>
-  <p class="help muted">{backupStatus || "Environments and connections, to back up or move to another machine. Passwords and keys are never included."}</p>
-
-  <h3 class="full">Explorer</h3>
-
-  <span></span>
-  <label class="check"><input type="checkbox" bind:checked={showKindBadge} /> Show engine badges (S, C, Sy...) on connections</label>
-
-  <label for="s-font">Row font</label>
-  <select id="s-font" bind:value={rowFont}>
-    <option value="mono">Monospace</option>
-    <option value="ui">UI font</option>
-  </select>
-
-
-  <h3 class="full">Query editor</h3>
-
-  <span></span>
-  <label class="check"><input type="checkbox" bind:checked={editor.intellisense} /> IntelliSense: complete names and show details on hover</label>
-
-  <label for="s-case">Keyword case</label>
-  <select id="s-case" bind:value={editor.keywordCase} disabled={!editor.intellisense}>
-    <option value="default">Default (lower for SQL, upper for Cosmos)</option>
-    <option value="lower">lower</option>
-    <option value="upper">UPPER</option>
-    <option value="preserve">As listed</option>
-  </select>
-
-  <span></span>
-  <label class="check"
-    ><input type="checkbox" bind:checked={editor.autoRefreshOnDdl} disabled={!editor.intellisense} /> Refresh IntelliSense after running CREATE, ALTER or DROP</label
-  >
-
-  <span></span>
-  <label class="check"
-    ><input type="checkbox" bind:checked={editor.warnUnknownNames} disabled={!editor.intellisense} /> Warn about unknown names before running</label
-  >
-
-  <label for="s-sample">Cosmos sample size</label>
-  <input id="s-sample" type="number" min="10" max="500" step="10" bind:value={editor.catalogSampleDocs} disabled={!editor.intellisense} />
-
-  <span></span>
-  <p class="help muted">Documents read from each Cosmos container to learn its property paths.</p>
-
-  <label for="s-max-rows">Row limit</label>
-  <input id="s-max-rows" type="number" min="1000" max="1000000" step="1000" bind:value={editor.maxRows} />
-
-  <span></span>
-  <p class="help muted">Rows kept per result set. Past it, the rest of that result is not loaded; the script still runs to the end.</p>
 
   {#if error}<p class="full error">{error}</p>{/if}
 
@@ -192,34 +238,89 @@
 </Dialog>
 
 <style>
+  /* One grid for every row (#360): a fixed label column, then the control. Helper text sits under its control. */
+  .settings {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+  }
+  section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+  }
+  section + section {
+    padding-top: var(--space-6);
+    border-top: 1px solid var(--border);
+  }
+  h3 {
+    margin: 0;
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+  .row {
+    display: grid;
+    grid-template-columns: 150px minmax(0, 1fr);
+    align-items: center;
+    column-gap: var(--space-6);
+    row-gap: var(--space-1);
+  }
+  .label {
+    color: var(--text-muted);
+  }
+  .control {
+    min-width: 0;
+  }
+  .control select,
+  .control input:not([type="checkbox"]) {
+    width: 240px;
+    text-overflow: ellipsis;
+  }
   .help {
-    margin: -4px 0 0;
+    grid-column: 2;
+    margin: 0;
     font-size: var(--fs-sm);
   }
-  .check-now {
+  .line {
     display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: var(--fs-sm);
+    align-items: baseline;
+    gap: var(--space-6);
+  }
+  .status {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .ok {
+    width: 12px;
+    height: 12px;
+    margin-right: var(--space-2);
+    vertical-align: -1px;
+    fill: none;
+    stroke: var(--ok);
+    stroke-width: 2;
+  }
+  .links {
+    display: inline-flex;
+    flex: none;
+    align-items: baseline;
+    gap: var(--space-3);
+    white-space: nowrap;
   }
   .error {
     margin: 0;
     color: var(--bad);
   }
-  h3 {
-    margin: 8px 0 0;
-    padding-top: 10px;
-    border-top: 1px solid var(--border);
-    font-size: var(--fs-sm);
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--text-muted);
-  }
   .check {
     display: flex;
-    gap: 6px;
+    gap: var(--space-3);
     align-items: center;
     color: var(--text) !important;
+  }
+  .check input {
+    margin: 0;
   }
 </style>
