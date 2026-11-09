@@ -2,6 +2,7 @@
 //! between it and the UI. It never parses or holds connection data.
 
 mod diagnostics;
+mod export_path;
 
 use diagnostics::{failure_text, Log, Tail};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -55,6 +56,20 @@ fn changelog_markdown(app: AppHandle) -> Result<String, String> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
         Err(e) => Err(e.to_string()),
     }
+}
+
+/// The path the result export dialog suggests (#347): a free `results[ (n)].<ext>` in `dir`, the folder the last export
+/// went to, or in Downloads when that is unset or gone. Only csv and json, so this cannot probe other names.
+#[tauri::command]
+fn free_export_path(app: AppHandle, dir: Option<String>, ext: String) -> Result<String, String> {
+    if ext != "csv" && ext != "json" {
+        return Err(format!("unsupported export format: {ext}"));
+    }
+    let dir = match dir.map(std::path::PathBuf::from).filter(|d| d.is_absolute() && d.is_dir()) {
+        Some(d) => d,
+        None => app.path().download_dir().map_err(|e| e.to_string())?,
+    };
+    Ok(export_path::free_path(&dir, &ext).to_string_lossy().into_owned())
 }
 
 /// Bench mode only: writes results to the path the launcher chose, then exits. With PANOPTIC_BENCH_STAY_OPEN set
@@ -325,7 +340,7 @@ pub fn run() {
             tauri::WebviewWindowBuilder::from_config(app.handle(), config)?.build()?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![sidecar_send, sidecar_stop, sidecar_start, sidecar_status, startup_info, bench_finish, is_installed, changelog_markdown])
+        .invoke_handler(tauri::generate_handler![sidecar_send, sidecar_stop, sidecar_start, sidecar_status, startup_info, bench_finish, is_installed, changelog_markdown, free_export_path])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
