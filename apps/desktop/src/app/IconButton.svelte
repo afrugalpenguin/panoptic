@@ -1,12 +1,22 @@
 
 <script lang="ts">
-  import { GLYPHS, type GlyphName as IconName } from "./glyphs";
-  let { icon, label, disabled = false, onclick }: { icon: IconName; label: string; disabled?: boolean; onclick: () => void } = $props();
+  import { FILLED, GLYPHS, type GlyphName as IconName } from "./glyphs";
+  let {
+    icon,
+    label,
+    tooltip = label,
+    disabled = false,
+    onclick,
+  }: { icon: IconName; label: string; /** Defaults to the label; set it to add a shortcut hint. */ tooltip?: string; disabled?: boolean; onclick: () => void } = $props();
 </script>
 
-<button class="icon-button ghost" type="button" aria-label={label} title={label} {disabled} {onclick}>
+<button class="icon-button ghost" type="button" aria-label={label} title={tooltip} {disabled} {onclick}>
   <svg viewBox="0 0 16 16" aria-hidden="true">
-    <path d={GLYPHS[icon]} fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
+    {#if FILLED.has(icon)}
+      <path d={GLYPHS[icon]} fill="currentColor" fill-rule="evenodd" />
+    {:else}
+      <path d={GLYPHS[icon]} fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
+    {/if}
   </svg>
 </button>
 

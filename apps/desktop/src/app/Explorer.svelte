@@ -1,10 +1,10 @@
 <script lang="ts">
   import { onDestroy } from "svelte";
   import EngineFilter from "./EngineFilter.svelte";
-  import { engineControl, summaryText, toggleNames } from "./explorer-view";
+  import { engineControl, toggleNames } from "./explorer-view";
   import IconButton from "./IconButton.svelte";
   import Tree from "./Tree.svelte";
-  import type { EngineSummary, ExplorerSummary, Row, TreeModel } from "./tree-model";
+  import type { EngineSummary, Row, TreeModel } from "./tree-model";
 
   /**
    * The explorer panel (docs/explorer-ux.md, "Layout (top to bottom)"): a 36px filter bar, the tree, and a footer
@@ -15,7 +15,6 @@
     rows,
     engines,
     hiddenEngines,
-    summary,
     selectedKey = $bindable(),
     onContextMenu,
     onActivate,
@@ -32,13 +31,11 @@
     onImport,
     onExpandAll,
     onCollapseAll,
-    onSettings,
   }: {
     model: TreeModel;
     rows: Row[];
     engines: EngineSummary[];
     hiddenEngines: ReadonlySet<string>;
-    summary: ExplorerSummary;
     selectedKey: string | undefined;
     onContextMenu: (row: Row, x: number, y: number) => void;
     onActivate: (row: Row) => void;
@@ -48,7 +45,7 @@
     disconnected?: boolean;
     showKindBadge?: boolean;
     rowFont?: "mono" | "ui";
-    /** The engine is up: New connection, Import and Settings need it. */
+    /** The engine is up: New connection and Import need it. */
     connected: boolean;
     /** Nothing configured yet: "No connections yet." over the empty tree. */
     emptyHint?: boolean;
@@ -57,7 +54,6 @@
     onImport: () => void;
     onExpandAll: () => void;
     onCollapseAll: () => void;
-    onSettings: () => void;
   } = $props();
 
   /** Typing settles this long before the tree model is filtered. */
@@ -73,7 +69,6 @@
 
   const form = $derived(engineControl(barWidth, engines.length));
   const named = $derived(toggleNames(barWidth, namedWidth));
-  const summaryLine = $derived(summaryText(summary));
 
   function onFilterInput() {
     clearTimeout(timer);
@@ -153,11 +148,6 @@
     <span class="separator" aria-hidden="true"></span>
     <IconButton icon="collapse-all" label="Collapse all" disabled={rows.length === 0} onclick={onCollapseAll} />
     <IconButton icon="expand-all" label="Expand all" disabled={rows.length === 0} onclick={onExpandAll} />
-    <span class="summary" role="status" title={summaryLine.long}>
-      <span class="long">{summaryLine.long}</span>
-      <span class="short" aria-hidden="true">{summaryLine.short}</span>
-    </span>
-    <IconButton icon="settings" label="Settings" disabled={!connected} onclick={onSettings} />
   </div>
 {/snippet}
 
@@ -222,7 +212,6 @@
     height: 100%;
     box-sizing: border-box;
     padding: 0 4px;
-    container: explorer-footer / inline-size;
   }
   .footer :global(.icon-button) {
     flex: none;
@@ -235,31 +224,5 @@
     height: 16px;
     margin: 0 3px;
     background: var(--border);
-  }
-  .summary {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    padding: 0 4px;
-    text-align: right;
-    white-space: nowrap;
-    font-size: 10.5px;
-    color: var(--text-muted);
-  }
-  .short {
-    display: none;
-  }
-  /* Under 260px the words go; the long form stays for screen readers. */
-  @container explorer-footer (width < 260px) {
-    .long {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip-path: inset(50%);
-    }
-    .short {
-      display: inline;
-    }
   }
 </style>

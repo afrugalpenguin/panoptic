@@ -133,10 +133,9 @@ describe("explorer width", () => {
     noSideways(panel);
     noSideways(tree);
 
-    // Unticking one engine filters the tree and the footer says so.
+    // Unticking one engine filters the tree (the count of what matches is in the status bar, #366).
     popover.querySelector<HTMLInputElement>("input[type=checkbox]")!.click();
     await vi.waitFor(() => expect(button.textContent?.replace(/\s+/g, " ").trim()).toBe("Engine 7/8"));
-    expect(panel.querySelector(".summary .short")?.textContent).toBe("21 / 24");
   });
 
   it("keeps the footer at the bottom of a short tree", async () => {

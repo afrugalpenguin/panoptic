@@ -13,6 +13,13 @@ describe("globalShortcut", () => {
     expect(k("p", { ctrlKey: true })).toBe("seek");
   });
 
+  it("maps Ctrl+, (Cmd+, on macOS) to Settings, in the editor too", () => {
+    expect(k(",", { ctrlKey: true })).toBe("settings");
+    expect(k(",", { ctrlKey: true }, true)).toBe("settings");
+    expect(globalShortcut({ key: ",", ctrlKey: false, metaKey: true, shiftKey: false }, false)).toBe("settings");
+    expect(k(",")).toBeUndefined();
+  });
+
   it("leaves Ctrl+I to the editor, and plain keys alone", () => {
     expect(k("i", { ctrlKey: true }, true)).toBeUndefined();
     expect(k("n")).toBeUndefined();
@@ -40,6 +47,7 @@ describe("keyCommand", () => {
     expect(keyCommand(ctrl("n"), { ...idle, dialogOpen: true, selectedNode: table })).toBeUndefined();
     expect(keyCommand(ctrl("n"), { ...idle, dialogOpen: true })).toBeUndefined();
     expect(keyCommand(ctrl("p"), { ...idle, dialogOpen: true })).toBeUndefined();
+    expect(keyCommand(ctrl(","), { ...idle, dialogOpen: true })).toBeUndefined();
   });
 
   it("maps the global shortcuts, leaving Ctrl+I to the editor", () => {

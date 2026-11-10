@@ -1,4 +1,5 @@
 <script lang="ts">
+  import IconButton from "./IconButton.svelte";
   import Spinner from "./Spinner.svelte";
   import { onMount } from "svelte";
   import type { UpdateState } from "../updates";
@@ -17,6 +18,8 @@
     onOpenProblems,
     onCancelLoad,
     undo,
+    summary,
+    onSettings,
   }: {
     sidecar: "connecting" | "connected" | "disconnected";
     sidecarText: string;
@@ -33,6 +36,10 @@
     onCancelLoad: (id: string) => void;
     /** The last delete while it can be undone (docs/explorer-ux.md, "Destructive actions"). */
     undo?: { text: string; run: () => void };
+    /** The explorer's count, `3 environments · 20 connections` or `9 of 20 match` (explorer-view.ts summaryText). */
+    summary?: string;
+    /** Opens Settings; the gear waits for the database engine, as Settings does. */
+    onSettings: () => void;
   } = $props();
 
   let now = $state(Date.now());
@@ -45,6 +52,10 @@
 
 <footer class="status">
   <span class="item" title={startup}><span class="dot {sidecar}"></span>{sidecarText}</span>
+  {#if summary}
+    <span class="divider" aria-hidden="true"></span>
+    <span class="item muted" role="status">{summary}</span>
+  {/if}
 
   {#if undo}
     <span class="item">{undo.text} - <button class="cancel ghost" onclick={undo.run}>Undo</button></span>
@@ -80,6 +91,8 @@
     <span class="item bad" title={update.message}>Update failed: {update.message}</span>
   {/if}
   {#if update}<span class="item muted">v{update.current}</span>{/if}
+  <span class="divider" aria-hidden="true"></span>
+  <IconButton icon="settings" label="Settings" tooltip="Settings (Ctrl+,)" disabled={sidecar !== "connected"} onclick={onSettings} />
 </footer>
 
 <style>
@@ -103,6 +116,24 @@
   }
   .grow {
     flex: 1;
+  }
+  .divider {
+    flex: none;
+    width: 1px;
+    height: 14px;
+    background: var(--border);
+  }
+  /* The gear fits the 24px bar; its hover is IconButton's, the same --bg-hover as the bar's other buttons. */
+  .status :global(.icon-button) {
+    flex: none;
+    width: 24px;
+    height: 20px;
+    margin-left: 4px;
+    border-radius: 4px;
+  }
+  .status :global(.icon-button svg) {
+    width: 14px;
+    height: 14px;
   }
   .dot {
     width: 8px;

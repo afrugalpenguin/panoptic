@@ -25,7 +25,7 @@
   import type { BackupPreview } from "../sidecar-types.generated";
   import MoveDialog from "./MoveDialog.svelte";
   import Explorer from "./Explorer.svelte";
-  import { explorerWidth, splitterKey } from "./explorer-view";
+  import { explorerWidth, splitterKey, summaryText } from "./explorer-view";
   import { innerWidth } from "svelte/reactivity/window";
   import Landing from "./Landing.svelte";
   import SeekOverlay from "./SeekOverlay.svelte";
@@ -822,6 +822,8 @@
       if (sidecar === "connected") addConnection();
     } else if (command.action === "import") {
       if (sidecar === "connected") dialog = { kind: "import" };
+    } else if (command.action === "settings") {
+      if (sidecar === "connected") dialog = { kind: "settings" };
     } else void focusSeek();
   }
 
@@ -910,7 +912,6 @@
       {rows}
       {engines}
       {hiddenEngines}
-      {summary}
       bind:selectedKey
       onContextMenu={openMenu}
       onActivate={activate}
@@ -927,7 +928,6 @@
       onImport={() => (dialog = { kind: "import" })}
       onExpandAll={() => expandOrCollapseAll(() => model.expandEnvironments())}
       onCollapseAll={() => expandOrCollapseAll(() => model.collapseAll())}
-      onSettings={() => (dialog = { kind: "settings" })}
     />
   </aside>
 
@@ -979,7 +979,9 @@
 
   <div class="status-host">
     <StatusBar {sidecar} {sidecarText} {inFlight} {lastLoad} {startup} {update} onRestartToUpdate={restartToUpdate} problems={problems.length} onOpenProblems={() => openProblems()} onCancelLoad={(id) => model.cancel(id)}
-      undo={undoText ? { text: undoText, run: () => undoDelete.undo() } : undefined} />
+      undo={undoText ? { text: undoText, run: () => undoDelete.undo() } : undefined}
+      summary={sidecar === "connected" ? summaryText(summary) : undefined}
+      onSettings={() => (dialog = { kind: "settings" })} />
   </div>
 </div>
 

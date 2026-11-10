@@ -47,12 +47,12 @@ Contents left to right, icon buttons 26px with `aria-label` and tooltip:
 4. 1px separator
 5. Collapse all
 6. Expand all
-7. Summary text, right-aligned, 10.5px muted: `3 environments · 20 connections` when nothing is filtered (`20 connections` with no environments), `9 of 20 match` when the text filter or engine filter hides anything. This is the only "filter active" indicator besides the controls themselves.
-8. Settings
+
+Settings and the summary are not in the footer: they are app-wide, so they sit in the status bar (#366). The summary, `3 environments · 20 connections` when nothing is filtered (`20 connections` with no environments), `9 of 20 match` when the text filter or engine filter hides anything, is muted text after "Ready" behind a thin divider, shown while the engine is up. It is the only "filter active" indicator besides the controls themselves; the tree has no count of its own. The last items on the status bar are the version (muted), a divider and an icon-only filled gear, `aria-label` "Settings", tooltip "Settings (Ctrl+,)", disabled until the engine is up.
 
 Expand all opens every environment as far as its connections and closes anything deeper, so it never calls a server; Collapse all closes every node. A selection hidden by either moves up to its nearest shown ancestor.
 
-At widths under 260px the summary drops the words and shows `9 / 20` (`3 · 20` unfiltered). Nothing else in the footer ever hides; at 220px the eight items fit with 4px padding.
+Nothing in the footer ever hides; at 220px the six items fit with 4px padding.
 
 Colours are theme variables in `app.css`: `--engine-toggle-on` (`#2a3356`), `--explorer-footer-bg` (`rgba(28,28,33,.9)`), `--explorer-sticky-shadow` and `--scrollbar-thumb`, with light-theme values beside them.
 

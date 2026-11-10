@@ -3,7 +3,7 @@
 import type { TreeNode } from "./api";
 import { shortcutAction, type TabAction } from "./node-menu";
 
-export type GlobalAction = "newQuery" | "newConnection" | "import" | "seek";
+export type GlobalAction = "newQuery" | "newConnection" | "import" | "seek" | "settings";
 
 export function globalShortcut(e: { key: string; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean }, inEditor: boolean): GlobalAction | undefined {
   if (!(e.ctrlKey || e.metaKey)) return undefined;
@@ -15,6 +15,8 @@ export function globalShortcut(e: { key: string; ctrlKey: boolean; metaKey: bool
       return inEditor ? undefined : "import";
     case "p":
       return "seek";
+    case ",":
+      return "settings";
   }
   return undefined;
 }
