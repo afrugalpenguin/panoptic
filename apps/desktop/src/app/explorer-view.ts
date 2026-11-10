@@ -33,11 +33,11 @@ export function toggleNames(barWidth: number, namedWidth: number): boolean {
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-/** The footer's summary: `long` normally, `short` (no words) when the footer is under 260px. */
-export function summaryText({ environments, connections, matching }: ExplorerSummary): { long: string; short: string } {
-  if (matching < connections) return { long: `${matching} of ${connections} match`, short: `${matching} / ${connections}` };
-  if (environments === 0) return { long: plural(connections, "connection"), short: String(connections) };
-  return { long: `${plural(environments, "environment")} · ${plural(connections, "connection")}`, short: `${environments} · ${connections}` };
+/** The explorer summary shown in the status bar (#366). */
+export function summaryText({ environments, connections, matching }: ExplorerSummary): string {
+  if (matching < connections) return `${matching} of ${connections} match`;
+  if (environments === 0) return plural(connections, "connection");
+  return `${plural(environments, "environment")} · ${plural(connections, "connection")}`;
 }
 
 /** The explorer is laid out down to 220px (docs/explorer-ux.md, "Principles"); the content beside it keeps 240px. */

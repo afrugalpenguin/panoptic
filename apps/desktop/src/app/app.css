@@ -214,11 +214,19 @@ button.link {
 button.link:hover {
   text-decoration: underline;
 }
+/* Buttons ring for keyboard focus only (#366): never on :focus alone, and not after a click even when Chromium
+   counts focus coming back from a dialog as keyboard focus (focus.ts trackInputModality). */
+button:focus {
+  outline: none;
+}
 input:focus,
 select:focus,
 button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -1px;
+}
+:root[data-input="pointer"] button:focus-visible {
+  outline: none;
 }
 
 pre,

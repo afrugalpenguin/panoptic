@@ -3,20 +3,20 @@ import { engineControl, explorerWidth, splitterKey, summaryText, toggleNames } f
 
 describe("summaryText", () => {
   it("counts environments and connections when nothing is hidden", () => {
-    expect(summaryText({ environments: 3, connections: 20, matching: 20 })).toEqual({ long: "3 environments · 20 connections", short: "3 · 20" });
+    expect(summaryText({ environments: 3, connections: 20, matching: 20 })).toBe("3 environments · 20 connections");
   });
 
   it("uses the singular for one", () => {
-    expect(summaryText({ environments: 1, connections: 1, matching: 1 }).long).toBe("1 environment · 1 connection");
+    expect(summaryText({ environments: 1, connections: 1, matching: 1 })).toBe("1 environment · 1 connection");
   });
 
   it("leaves environments out when there are none", () => {
-    expect(summaryText({ environments: 0, connections: 4, matching: 4 })).toEqual({ long: "4 connections", short: "4" });
+    expect(summaryText({ environments: 0, connections: 4, matching: 4 })).toBe("4 connections");
   });
 
   it("says how many match when a filter hides anything", () => {
-    expect(summaryText({ environments: 3, connections: 20, matching: 9 })).toEqual({ long: "9 of 20 match", short: "9 / 20" });
-    expect(summaryText({ environments: 3, connections: 20, matching: 0 })).toEqual({ long: "0 of 20 match", short: "0 / 20" });
+    expect(summaryText({ environments: 3, connections: 20, matching: 9 })).toBe("9 of 20 match");
+    expect(summaryText({ environments: 3, connections: 20, matching: 0 })).toBe("0 of 20 match");
   });
 });
 

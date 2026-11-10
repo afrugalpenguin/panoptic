@@ -4,7 +4,7 @@
   import { onMount } from "svelte";
   import type { TreeNode } from "../app/api";
   import Explorer from "../app/Explorer.svelte";
-  import { TreeModel, type EngineSummary, type ExplorerSummary, type Row } from "../app/tree-model";
+  import { TreeModel, type EngineSummary, type Row } from "../app/tree-model";
 
   let {
     nodes,
@@ -24,7 +24,6 @@
   let rows = $state.raw<Row[]>([]);
   let engines = $state.raw<EngineSummary[]>([]);
   let hiddenEngines = $state.raw<ReadonlySet<string>>(new Set());
-  let summary = $state.raw<ExplorerSummary>({ environments: 0, connections: 0, matching: 0 });
   let selectedKey = $state<string>();
   // svelte-ignore state_referenced_locally
   const model = new TreeModel(
@@ -33,7 +32,6 @@
       rows = model.rows();
       engines = model.engines();
       hiddenEngines = model.hiddenEngines();
-      summary = model.summary();
     },
   );
   const noop = () => {};
@@ -58,7 +56,6 @@
     {rows}
     {engines}
     {hiddenEngines}
-    {summary}
     bind:selectedKey
     onContextMenu={noop}
     onActivate={(r) => r.type === "node" && model.toggle(r.node.id)}
@@ -71,7 +68,6 @@
     onImport={noop}
     onExpandAll={() => model.expandEnvironments()}
     onCollapseAll={() => model.collapseAll()}
-    onSettings={noop}
   />
 </div>
 

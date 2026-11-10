@@ -42,5 +42,6 @@ Some sizes are still between steps (9, 10.5, 11.5, 12.5 and 15px). Move them ont
 - `button.ghost` (`app.css`) is the borderless, backgroundless button reset; components add only their own layout.
 - `button.link` is a button that reads as a link.
 - `Spinner.svelte`, `Kbd.svelte`, `KindBadge.svelte` and `ReadOnlyPill.svelte` are the shared spinner, shortcut chip, engine badge and READ ONLY pill.
-- `glyphs.ts` holds the SVG paths for icons drawn in more than one place.
+- `glyphs.ts` holds the SVG paths for icons drawn in more than one place. They are 1.3px strokes, except those in `FILLED` (the status bar's Settings gear), which are filled even-odd.
+- Buttons show a focus ring for keyboard focus only (`:focus-visible`). A click never leaves one, including when a dialog closed with Esc or Enter hands focus back to the button that opened it (`trackInputModality` in `focus.ts`, #366).
 - The logo is `src-tauri/icons/icon.svg` everywhere in the UI.

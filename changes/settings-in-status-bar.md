@@ -1,0 +1,1 @@
+Changed: **Settings** moved from the explorer footer to the right end of the status bar, after the version, and opens with `Ctrl+,`. The connection count moved to the status bar too, next to Ready. Clicking a button no longer leaves a focus ring on it after a dialog closes.
