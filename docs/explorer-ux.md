@@ -73,7 +73,7 @@ Moving a connection:
 - Drag an environment header onto another environment header to place it before or after that one, by the same half-row rule; this saves `explorer.envOrder`. Ungrouped is always last and is not a target for environments.
 - Escape cancels a drag, and a drop anywhere else does nothing; the line or outline clears either way.
 - Alt+Up and Alt+Down move the selected environment, or the selected connection within its group, one place. A connection's menu also has **Move up** and **Move down**, as an environment's does, off at either end of its group. The moved row stays selected and in view.
-- A connection's menu has **Move to environment...** (the environments other than its own, or New environment..., which creates one) and, for a connection in an environment, **Remove from environment**.
+- A connection's menu has **Edit connection...** (the connection dialog on its saved settings, #377), **Move to environment...** (the environments other than its own, or New environment..., which creates one) and, for a connection in an environment, **Remove from environment**.
 - New connection and Import ask for an environment with a picker whose default is None (docs/landing.md).
 - Saving a new connection selects it in the tree, expanding its environment and scrolling it into view, with focus on the tree (#216). Enter in a field of the connection dialog saves it, as Save does (#217).
 - A server can be added once: saving a connection with the same type, server, sign-in, user and database as another one is refused, wherever that one is, and the message names it (#269). Server names compare ignoring case, surrounding spaces and a `tcp:` prefix.

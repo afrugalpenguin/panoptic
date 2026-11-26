@@ -71,7 +71,7 @@
   let kinds = $state.raw<KindDescription[]>([]);
   let dialog = $state<
     | { kind: "environment" }
-    | { kind: "connection"; environmentId: string | null }
+    | { kind: "connection"; environmentId: string | null; initial?: ConnectionConfig }
     | { kind: "move"; connection: ConnectionConfig; from?: string }
     | { kind: "import" }
     | { kind: "backup"; path: string; preview: BackupPreview }
@@ -671,6 +671,7 @@
       newConnection: addConnection,
       moveEnvironment: moveEnv,
       deleteEnvironment,
+      editConnection: (found) => (dialog = { kind: "connection", environmentId: found.env?.id ?? null, initial: found.connection }),
       moveConnection: (found) => (dialog = { kind: "move", connection: found.connection, from: found.env?.id }),
       stepConnection: stepConnectionBy,
       removeFromEnvironment: (connectionId) => moveConnection(connectionId, null),
@@ -1060,7 +1061,8 @@
     {kinds}
     environments={config.environments}
     environmentId={dialog.environmentId}
-    onSaved={(saved, environmentId) => showAddedConnection(saved.id, environmentId)}
+    initial={dialog.initial}
+    onSaved={(saved, environmentId) => (dialog?.kind === "connection" && !dialog.initial ? showAddedConnection(saved.id, environmentId) : configChanged())}
     onEnvironmentCreated={configChanged}
     onClose={() => (dialog = undefined)}
   />
