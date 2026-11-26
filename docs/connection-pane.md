@@ -2,7 +2,7 @@
 
 Decided 9 Nov 2026. Mockup: "Panoptic window concepts" canvas, artboard E. All mock data is the fictional Fabrikam estate. Companion to `docs/environment-pane.md`; shares its tokens, components and rules, so only differences are spelled out here.
 
-Replaces the current connection view in `DetailPane.svelte` (title, nine text buttons, Engine and Server rows). The Edit connection dialog is no longer needed for existing connections; every property edits in place. The New connection dialog stays.
+Replaces the current connection view in `DetailPane.svelte` (title, nine text buttons, Engine and Server rows). Every property edits in place. The connection dialog stays for New connection, and for Edit connection... on a connection's right-click menu (#377), so the whole connection can also be edited in one place, as SSMS's Properties.
 
 ## Principles
 

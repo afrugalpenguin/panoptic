@@ -37,6 +37,8 @@ export interface RowMenuContext {
   moveEnvironment: (environmentId: string, by: -1 | 1) => void;
   /** Asks, deletes and offers Undo. */
   deleteEnvironment: (env: EnvironmentConfig) => void;
+  /** Edit connection...: the connection dialog on the saved settings (#377). */
+  editConnection: (found: FoundConnection) => void;
   /** Move to environment...: the picker dialog. */
   moveConnection: (found: FoundConnection) => void;
   /** Move up (-1) or Move down (1) within the connection's environment, or within none. */
@@ -69,10 +71,12 @@ export function rowMenu(row: Row, ctx: RowMenuContext): MenuEntry[] {
     };
     items.push(...queryItems(n, ctx.labels, on));
     // Environments and connections are Panoptic's own config, so their menus also move and delete them; their
-    // properties edit in place in their detail panes (docs/environment-pane.md, docs/connection-pane.md).
+    // properties edit in place in their detail panes (docs/environment-pane.md, docs/connection-pane.md), and a
+    // connection's in the dialog too, from its menu (#377).
     if (n.kind === "environment") items.push(...environmentItems(n, ctx));
     else if (n.kind === "connection") {
       const found = ctx.connection(n.meta!.connectionId);
+      items.push({ label: "Edit connection...", run: () => found && ctx.editConnection(found) });
       const refresh = () => {
         ctx.refresh(n.id);
         ctx.refreshQueryTabs(n.id);
