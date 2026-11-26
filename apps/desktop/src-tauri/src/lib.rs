@@ -72,6 +72,26 @@ fn free_export_path(app: AppHandle, dir: Option<String>, ext: String) -> Result<
     Ok(export_path::free_path(&dir, &ext).to_string_lossy().into_owned())
 }
 
+/// Export all (#376): `count` free numbered paths `<base>1.<ext>`, ... in `dir` (or Downloads when it is unset or gone).
+/// The base is a bare file name and the format csv or json, so this cannot probe other names or folders.
+#[tauri::command]
+fn free_export_paths(app: AppHandle, dir: Option<String>, base: String, ext: String, count: usize) -> Result<Vec<String>, String> {
+    if ext != "csv" && ext != "json" {
+        return Err(format!("unsupported export format: {ext}"));
+    }
+    if base.is_empty() || base.len() > 200 || base.contains(['/', '\\', ':']) || base.contains("..") {
+        return Err("invalid export name".into());
+    }
+    if count == 0 || count > 1000 {
+        return Err(format!("unsupported export count: {count}"));
+    }
+    let dir = match dir.map(std::path::PathBuf::from).filter(|d| d.is_absolute() && d.is_dir()) {
+        Some(d) => d,
+        None => app.path().download_dir().map_err(|e| e.to_string())?,
+    };
+    Ok(export_path::numbered_free_paths(&dir, &base, &ext, count).iter().map(|p| p.to_string_lossy().into_owned()).collect())
+}
+
 /// Bench mode only: writes results to the path the launcher chose, then exits. With PANOPTIC_BENCH_STAY_OPEN set
 /// it stays open instead, so the launcher can measure the idle process tree before closing the window.
 #[tauri::command]
@@ -340,7 +360,7 @@ pub fn run() {
             tauri::WebviewWindowBuilder::from_config(app.handle(), config)?.build()?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![sidecar_send, sidecar_stop, sidecar_start, sidecar_status, startup_info, bench_finish, is_installed, changelog_markdown, free_export_path])
+        .invoke_handler(tauri::generate_handler![sidecar_send, sidecar_stop, sidecar_start, sidecar_status, startup_info, bench_finish, is_installed, changelog_markdown, free_export_path, free_export_paths])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
