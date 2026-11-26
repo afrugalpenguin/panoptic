@@ -1,0 +1,1 @@
+Added: the results grid selects like SSMS (corner box for everything, row numbers, column headers, drag or Shift for a block) and its right-click menu has Copy, Copy with Headers and Select All; Ctrl+Shift+C copies with headers and Ctrl+A selects all. A row number click now selects the row instead of copying it.
