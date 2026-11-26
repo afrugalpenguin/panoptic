@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { folderOf, toCsv, toJson } from "./export";
+import { exportBase, folderOf, toCsv, toJson } from "./export";
 
 const columns = [{ name: "id", type: "int" }, { name: "name", type: "nvarchar" }, { name: "note", type: "nvarchar" }];
 
@@ -61,5 +61,18 @@ describe("folderOf", () => {
 
   it("is undefined for a bare name", () => {
     expect(folderOf("results.csv")).toBeUndefined();
+  });
+});
+
+describe("exportBase", () => {
+  it("is the chosen file's name without its extension or trailing number", () => {
+    expect(exportBase(String.raw`C:\out\results1.csv`)).toBe("results");
+    expect(exportBase("/home/me/orders.json")).toBe("orders");
+    expect(exportBase(String.raw`C:\out\q3 sales 12.csv`)).toBe("q3 sales ");
+  });
+
+  it("falls back to results when nothing is left", () => {
+    expect(exportBase(String.raw`C:\out\123.csv`)).toBe("results");
+    expect(exportBase(String.raw`C:\out\.csv`)).toBe("results");
   });
 });

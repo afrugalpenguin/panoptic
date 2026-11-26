@@ -5,7 +5,7 @@
   import { writeTextFile } from "@tauri-apps/plugin-fs";
   import SeekBox from "../app/SeekBox.svelte";
   import type { SeekHost, SeekIndex, SeekRow } from "../app/seek";
-  import { rememberExportDir, suggestExportPath, toCsv, toJson } from "./export";
+  import { exportBase, folderOf, numberedExportPaths, rememberExportDir, suggestExportPath, toCsv, toJson } from "./export";
   import QueryEditor from "./QueryEditor.svelte";
   import ResultGrid from "./ResultGrid.svelte";
   import type { QueryTab, QueryWorkspace } from "./store.svelte";
@@ -66,6 +66,35 @@
     rememberExportDir(path);
     try {
       await writeTextFile(path, format === "csv" ? toCsv(current.columns, current.rows) : toJson(current.columns, current.rows));
+    } catch (e) {
+      exportError = `Export failed: ${e instanceof Error ? e.message : e}`;
+    }
+  }
+
+  /**
+   * Export all (#376): every result set to base1, base2, ... in the chosen folder, CSV or JSON by the chosen type. The
+   * shell picks free names, so no file is written over, the chosen one included.
+   */
+  async function exportAll() {
+    const sets = tab.results.filter((s) => s.columns.length > 0);
+    if (sets.length === 0) return;
+    exportError = undefined;
+    try {
+      const [suggested] = await numberedExportPaths(undefined, "results", "csv", 1);
+      const path = await save({
+        defaultPath: suggested,
+        filters: [
+          { name: "CSV", extensions: ["csv"] },
+          { name: "JSON", extensions: ["json"] },
+        ],
+      });
+      if (!path) return;
+      rememberExportDir(path);
+      const format = path.toLowerCase().endsWith(".json") ? "json" : "csv";
+      const paths = await numberedExportPaths(folderOf(path), exportBase(path), format, sets.length);
+      for (const [i, set] of sets.entries()) {
+        await writeTextFile(paths[i], format === "csv" ? toCsv(set.columns, set.rows) : toJson(set.columns, set.rows));
+      }
     } catch (e) {
       exportError = `Export failed: ${e instanceof Error ? e.message : e}`;
     }
@@ -219,6 +248,9 @@
         {/if}
         <button class="small" onclick={() => exportAs("csv")} disabled={tab.running}>Export CSV</button>
         <button class="small" onclick={() => exportAs("json")} disabled={tab.running}>Export JSON</button>
+      {/if}
+      {#if tab.results.length > 1}
+        <button class="small" onclick={exportAll} disabled={tab.running}>Export all...</button>
       {/if}
     </div>
     {#if exportError}<p class="error banner">{exportError}</p>{/if}

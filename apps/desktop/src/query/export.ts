@@ -25,6 +25,27 @@ export async function suggestExportPath(ext: "csv" | "json"): Promise<string> {
   }
 }
 
+/** Export all (#376): the chosen file's name without its extension or trailing number, so orders.csv gives orders1, ... */
+export function exportBase(path: string): string {
+  const name = path.slice(Math.max(path.lastIndexOf("\\"), path.lastIndexOf("/")) + 1);
+  const dot = name.lastIndexOf(".");
+  return (dot > 0 ? name.slice(0, dot) : dot === 0 ? "" : name).replace(/\d+$/, "") || "results";
+}
+
+/**
+ * Export all (#376): count free names base1.ext, base2.ext, ... in dir (or the last export folder, Downloads at first),
+ * numbering past any taken, so no file is written over. The shell checks the disk.
+ */
+export async function numberedExportPaths(dir: string | undefined, base: string, ext: "csv" | "json", count: number): Promise<string[]> {
+  let folder = dir ?? null;
+  if (!folder) {
+    try {
+      folder = localStorage.getItem(EXPORT_DIR_KEY);
+    } catch {}
+  }
+  return invoke<string[]>("free_export_paths", { dir: folder, base, ext, count });
+}
+
 /** Remembers the chosen file's folder for the next suggestion. */
 export function rememberExportDir(path: string) {
   const dir = folderOf(path);
