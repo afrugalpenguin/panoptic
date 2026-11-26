@@ -33,7 +33,6 @@
   import { keyCommand, removesConnection } from "./shortcuts";
   import { connectionRecent, envRecent, loadUsage, recordUse, saveUsage, type Place } from "./usage";
   import { rowMenu, type FoundConnection, type RowMenuContext } from "./row-menu";
-  import Workspace from "../query/Workspace.svelte";
   import { preloadMonaco, warmEditorWhenIdle } from "../query/preload";
   import { intellisense, syncCatalogs } from "../query/intellisense/shared";
   import { QueryWorkspace, type QueryTab } from "../query/store.svelte";
@@ -159,6 +158,19 @@
     const meta = envId ? model.node(envId)?.meta : undefined;
     return { envColor: meta?.color, readOnly: meta?.readOnly === "true" };
   };
+
+  /**
+   * The tabbed workspace (query view, results grid, export, What's new) only shows once a tab is open, so it loads on
+   * demand, out of the start-up JS (#381), and is warmed in idle time after start-up so the first tab doesn't wait.
+   */
+  let WorkspaceView = $state<typeof import("../query/Workspace.svelte").default>();
+  let workspaceLoading: Promise<unknown> | undefined;
+  function loadWorkspace() {
+    return (workspaceLoading ??= import("../query/Workspace.svelte").then((m) => (WorkspaceView = m.default)));
+  }
+  $effect(() => {
+    if (workspace.tabs.length > 0) void loadWorkspace();
+  });
 
   const workspace = new QueryWorkspace({
     executeQuery: (request) => api!.executeQuery(request),
@@ -335,6 +347,7 @@
     }
     if (info.benchMode) return;
     warmEditorWhenIdle();
+    requestIdleCallback(() => void loadWorkspace(), { timeout: 2000 });
     settings = await api!.settings();
     model.setEnvOrder(settings.explorer.envOrder);
     const current = await currentVersion();
@@ -948,12 +961,14 @@
 
   <main class="content">
     {#if workspace.tabs.length > 0}
-      <Workspace
-        {workspace}
-        {seekIndex}
-        onConnect={connectTab}
-        onLinkError={(error) => (lastLoad = { id: "", label: "Open link", count: 0, ms: 0, error })}
-      />
+      {#if WorkspaceView}
+        <WorkspaceView
+          {workspace}
+          {seekIndex}
+          onConnect={connectTab}
+          onLinkError={(error) => (lastLoad = { id: "", label: "Open link", count: 0, ms: 0, error })}
+        />
+      {/if}
     {:else if !selectedRow}
       <Landing
         bind:this={landing}
