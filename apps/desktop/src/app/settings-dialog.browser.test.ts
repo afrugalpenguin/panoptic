@@ -10,7 +10,7 @@ import SettingsDialog from "./SettingsDialog.svelte";
 
 const settings = {
   updateCheck: "startup",
-  explorer: { showKindBadge: true, rowFont: "mono" },
+  explorer: { showKindBadge: true, rowFont: "mono", groupByEngine: true },
   editor: { intellisense: true, keywordCase: null, autoRefreshOnDdl: true, warnUnknownNames: true, catalogSampleDocs: 100, maxRows: 100000 },
 } as AppSettings;
 
@@ -62,7 +62,7 @@ describe("Settings dialog layout", () => {
     const rows = [...dialog.querySelectorAll(".row")];
     expect(rows.map((r) => text(r.querySelector(":scope > .label")))).toEqual([
       "Updates", "Check for updates", "Connections",
-      "Engine badges", "Row font",
+      "Engine badges", "Group by engine", "Row font",
       "IntelliSense", "Refresh after DDL", "Unknown names", "Keyword case",
       "Row limit", "Cosmos sample size",
     ]);
@@ -81,7 +81,7 @@ describe("Settings dialog layout", () => {
     const left = Math.round(rect(fields[0]).left);
     expect(new Set(fields.map((f) => Math.round(rect(f).left)))).toEqual(new Set([left]));
     const boxes = [...dialog.querySelectorAll<HTMLInputElement>("input[type=checkbox]")];
-    expect(boxes.length).toBe(4);
+    expect(boxes.length).toBe(5);
     for (const b of boxes) expect(Math.abs(rect(b).left - left)).toBeLessThanOrEqual(1);
   });
 
@@ -89,10 +89,21 @@ describe("Settings dialog layout", () => {
     const { dialog } = show(upToDate);
     expect([...dialog.querySelectorAll(".check")].map(text)).toEqual([
       "Show S, C, Sy badges on connections",
+      "Keep each engine's connections together",
       "Complete names and show details on hover",
       "Refresh IntelliSense after CREATE, ALTER or DROP",
       "Warn before running",
     ]);
+  });
+
+  it("saves Group by engine (#385)", async () => {
+    const { props, dialog } = show(upToDate);
+    const box = dialog.querySelector<HTMLInputElement>("#s-group-engine")!;
+    expect(box.checked).toBe(true);
+    box.click();
+    [...dialog.querySelectorAll("button")].find((b) => text(b) === "Save")!.click();
+    await vi.waitFor(() => expect(props.onSave).toHaveBeenCalled());
+    expect((props.onSave.mock.calls[0] as unknown as [AppSettings])[0].explorer).toMatchObject({ showKindBadge: true, groupByEngine: false });
   });
 
   it("shows the update status and its links on one line", () => {

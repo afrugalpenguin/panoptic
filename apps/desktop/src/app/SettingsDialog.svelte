@@ -57,6 +57,8 @@
   // svelte-ignore state_referenced_locally
   let showKindBadge = $state(settings.explorer.showKindBadge);
   // svelte-ignore state_referenced_locally
+  let groupByEngine = $state(settings.explorer.groupByEngine);
+  // svelte-ignore state_referenced_locally
   let rowFont = $state(settings.explorer.rowFont);
   // svelte-ignore state_referenced_locally
   let editor = $state<Omit<EditorSettings, "keywordCase"> & { keywordCase: NonNullable<EditorSettings["keywordCase"]> | "default" }>({
@@ -96,7 +98,7 @@
     error = "";
     try {
       const keywordCase = editor.keywordCase === "default" ? null : editor.keywordCase;
-      await onSave({ ...settings, updateCheck, explorer: { ...settings.explorer, showKindBadge, rowFont }, editor: { ...editor, keywordCase } });
+      await onSave({ ...settings, updateCheck, explorer: { ...settings.explorer, showKindBadge, groupByEngine, rowFont }, editor: { ...editor, keywordCase } });
       onClose();
     } catch (e) {
       error = String(e instanceof Error ? e.message : e);
@@ -156,6 +158,12 @@
         <label class="label" for="s-badges">Engine badges</label>
         <div class="control">
           <label class="check"><input id="s-badges" type="checkbox" bind:checked={showKindBadge} /> Show S, C, Sy badges on connections</label>
+        </div>
+      </div>
+      <div class="row">
+        <label class="label" for="s-group-engine">Group by engine</label>
+        <div class="control">
+          <label class="check"><input id="s-group-engine" type="checkbox" bind:checked={groupByEngine} /> Keep each engine's connections together</label>
         </div>
       </div>
       <div class="row">

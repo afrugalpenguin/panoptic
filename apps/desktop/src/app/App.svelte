@@ -38,7 +38,7 @@
   import { QueryWorkspace, type QueryTab } from "../query/store.svelte";
   import SettingsDialog from "./SettingsDialog.svelte";
   import StatusBar from "./StatusBar.svelte";
-  import { environmentOrder, moveEnvironment, stepConnection, TreeModel, UNGROUPED, type EngineSummary, type ExplorerSummary, type LoadReport, type Row } from "./tree-model";
+  import { environmentOrder, moveEnvironment, moveGroup, stepConnection, TreeModel, UNGROUPED, type EngineSummary, type ExplorerSummary, type LoadReport, type Row } from "./tree-model";
   import { appProblem, type Problem } from "./problems";
   import { isAbortError } from "../rpc";
   import { UndoDelete } from "./undo-delete";
@@ -91,7 +91,7 @@
   let changelog = $state.raw<ChangelogSection[]>([]);
   let settings = $state<AppSettings>({
     updateCheck: "startup",
-    explorer: { showKindBadge: true, rowFont: "mono", envOrder: [] },
+    explorer: { showKindBadge: true, rowFont: "mono", envOrder: [], groupByEngine: true },
     editor: { intellisense: true, catalogSampleDocs: 50, autoRefreshOnDdl: true, warnUnknownNames: true, maxRows: 100_000 },
   });
   const checkForUpdates = createUpdateChecker((s) => (update = s));
@@ -350,6 +350,7 @@
     requestIdleCallback(() => void loadWorkspace(), { timeout: 2000 });
     settings = await api!.settings();
     model.setEnvOrder(settings.explorer.envOrder);
+    model.setGroupByEngine(settings.explorer.groupByEngine);
     const current = await currentVersion();
     update = { kind: "idle", current };
     // After the tree has loaded, so release notes never delay first paint (ADR 0013).
@@ -397,8 +398,9 @@
 
   async function saveSettings(next: AppSettings) {
     settings = await api!.saveSettings(next);
-    // Explorer settings re-render the tree once; nothing is reloaded.
+    // Explorer settings re-render the tree; nothing is reloaded.
     model.setEnvOrder(settings.explorer.envOrder);
+    model.setGroupByEngine(settings.explorer.groupByEngine);
     stopUpdateSchedule();
     stopUpdateSchedule = scheduleUpdateChecks(settings.updateCheck, checkForUpdates, { atLaunch: false });
   }
@@ -495,10 +497,10 @@
     return true;
   }
 
-  /** Move up (-1) or Move down (1) within the connection's environment, or within none. */
+  /** Move up (-1) or Move down (1) within the connection's environment, or within none; within its engine when grouped (#385). */
   function stepConnectionBy(connectionId: string, by: -1 | 1) {
     const found = connectionOf(connectionId);
-    const ids = (found?.env?.connections ?? config.connections).map((c) => c.id);
+    const ids = found ? moveGroup(found.env?.connections ?? config.connections, found.connection, settings.explorer.groupByEngine).map((c) => c.id) : [];
     const beforeId = stepConnection(ids, connectionId, by);
     if (found && beforeId !== undefined) moveConnection(connectionId, found.env?.id ?? null, beforeId);
   }
@@ -595,7 +597,7 @@
     const found = connectionOf(node.meta?.connectionId ?? "");
     if (!found) return undefined;
     const { env, connection } = found;
-    const siblings = env?.connections ?? config.connections;
+    const siblings = moveGroup(env?.connections ?? config.connections, connection, settings.explorer.groupByEngine);
     return {
       connection,
       env,
@@ -659,6 +661,7 @@
       labels: actionLabels,
       envOrder: environmentOrder(settings.explorer.envOrder, config.environments.map((e) => e.id)),
       looseConnections: config.connections,
+      groupByEngine: settings.explorer.groupByEngine,
       environment: envOf,
       connection: connectionOf,
       copy: (text) => navigator.clipboard.writeText(text).catch(() => {}),

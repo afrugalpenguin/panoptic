@@ -282,7 +282,7 @@ function serverState(id: string) {
 
 let settings = {
   updateCheck: "never",
-  explorer: { showKindBadge: true, rowFont: "mono", envOrder: [] as string[] },
+  explorer: { showKindBadge: true, rowFont: "mono", envOrder: [] as string[], groupByEngine: true },
   editor: { intellisense: true, catalogSampleDocs: 50, autoRefreshOnDdl: true, warnUnknownNames: true, maxRows: 100_000 },
   lastSeenVersion: VERSION,
 };

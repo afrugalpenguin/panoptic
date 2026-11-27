@@ -64,6 +64,7 @@ A connection may be in one environment or in none, and an environment may have n
 - **At least one environment:** the environments come first, in `explorer.envOrder`, and the connections in no environment come last under a dimmed **Ungrouped** header (muted, weight 600, with a count). The group has no environment colour: no bar and no tint, only the neutral hover and selection washes. It is collapsible, starts open and opens again with Expand all. Selecting it shows a short note in the detail pane.
 - **An empty environment** shows its header (no chevron, count 0) with a muted row under it: "Empty - drag a connection here". The row is not a node and cannot be selected.
 - **Read-only** is an environment setting, so a connection in no environment is never read-only.
+- **By engine** (`explorer.groupByEngine`, default on, #385): each environment's connections, Ungrouped's and the flat list's sit together by engine, in the order the sidecar registers engines (an unknown one last), keeping the manual order within an engine. It only changes what the tree shows: the saved order is untouched, so turning it off gives back exactly the manual order. The environment detail pane lists connections in the same order.
 - **Filters:** the Ungrouped header shows only when a connection in none passes the engine and text filters (it has no environment name for the text filter to match); an empty environment is hidden by any filter.
 
 Moving a connection:
@@ -71,6 +72,7 @@ Moving a connection:
 - Drag a connection row onto an environment header or its empty row to move it there (last), or onto the Ungrouped header to take it out of its environment. The target is outlined while a drop is possible.
 - Drag a connection row onto another connection row to place it before that row (the upper half of the row) or after it (the lower half), in the same environment, another one or Ungrouped (#63). A 2px accent line at the row's indent shows where it will land. A drop that would leave it where it is shows no line and does nothing.
 - Drag an environment header onto another environment header to place it before or after that one, by the same half-row rule; this saves `explorer.envOrder`. Ungrouped is always last and is not a target for environments.
+- With connections grouped by engine, a connection moves only within its engine's block: a drop line shows only on a connection of the same engine, a drop on a header lands it at the end of its engine's block, and Move up, Move down, Alt+Up and Alt+Down (and the connection pane's position) count within the block.
 - Escape cancels a drag, and a drop anywhere else does nothing; the line or outline clears either way.
 - Alt+Up and Alt+Down move the selected environment, or the selected connection within its group, one place. A connection's menu also has **Move up** and **Move down**, as an environment's does, off at either end of its group. The moved row stays selected and in view.
 - A connection's menu has **Edit connection...** (the connection dialog on its saved settings, #377), **Move to environment...** (the environments other than its own, or New environment..., which creates one) and, for a connection in an environment, **Remove from environment**.
@@ -126,6 +128,7 @@ Same indent rule. Chevron if expandable, type icon (table, database, container `
 explorer.showKindBadge   bool   default true
 explorer.rowFont         enum   mono | ui   default mono (connection and leaf rows only)
 explorer.envOrder        string[] manual order of env ids, default order added
+explorer.groupByEngine   bool   default true (see "Grouping")
 ```
 
 `explorer.envOrder` is set in the tree, by dragging an environment header, with Alt+Up and Alt+Down, or with Move up and Move down on an environment's context menu, not in the Settings dialog (#63).

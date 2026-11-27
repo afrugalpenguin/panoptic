@@ -290,8 +290,11 @@ public static class RowFonts
     public const string Ui = "ui";
 }
 
-/// <summary>Explorer display settings (docs/explorer-ux.md). EnvOrder lists environment ids in manual order; empty means order added.</summary>
-public sealed record ExplorerSettings(bool ShowKindBadge = true, string RowFont = RowFonts.Mono, string[]? EnvOrder = null)
+/// <summary>
+/// Explorer display settings (docs/explorer-ux.md). EnvOrder lists environment ids in manual order; empty means order
+/// added. GroupByEngine keeps each group's connections of one engine together (#385).
+/// </summary>
+public sealed record ExplorerSettings(bool ShowKindBadge = true, string RowFont = RowFonts.Mono, string[]? EnvOrder = null, bool GroupByEngine = true)
 {
     public string[] EnvOrder { get; init; } = EnvOrder ?? [];
 }

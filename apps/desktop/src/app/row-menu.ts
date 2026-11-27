@@ -3,7 +3,7 @@
 import type { ConnectionConfig, EnvironmentConfig, TreeNode } from "./api";
 import { actionItems, actionLabel, queryItems, type NodeActionHandlers, type TabAction } from "./node-menu";
 import { errorText } from "./problems";
-import type { Row } from "./tree-model";
+import { moveGroup, type Row } from "./tree-model";
 
 /** Structurally ContextMenu.svelte's MenuItem; plain .ts cannot import types from a .svelte module under tsc. */
 export type MenuEntry = { label: string; run: () => void; danger?: boolean; disabled?: boolean } | "separator";
@@ -41,6 +41,8 @@ export interface RowMenuContext {
   editConnection: (found: FoundConnection) => void;
   /** Move to environment...: the picker dialog. */
   moveConnection: (found: FoundConnection) => void;
+  /** explorer.groupByEngine: Move up and Move down stay within the connection's engine (#385). */
+  groupByEngine: boolean;
   /** Move up (-1) or Move down (1) within the connection's environment, or within none. */
   stepConnection: (connectionId: string, by: -1 | 1) => void;
   removeFromEnvironment: (connectionId: string) => void;
@@ -83,7 +85,7 @@ export function rowMenu(row: Row, ctx: RowMenuContext): MenuEntry[] {
       };
       items.push(...actionItems(n, ctx.labels, { ...on, refresh }));
       items.push({ label: "Move to environment...", run: () => found && ctx.moveConnection(found) });
-      const group = found ? (found.env?.connections ?? ctx.looseConnections) : [];
+      const group = found ? moveGroup(found.env?.connections ?? ctx.looseConnections, found.connection, ctx.groupByEngine) : [];
       const position = found ? group.findIndex((c) => c.id === found.connection.id) : -1;
       items.push({ label: "Move up", disabled: position <= 0, run: () => found && ctx.stepConnection(found.connection.id, -1) });
       items.push({ label: "Move down", disabled: position < 0 || position >= group.length - 1, run: () => found && ctx.stepConnection(found.connection.id, 1) });

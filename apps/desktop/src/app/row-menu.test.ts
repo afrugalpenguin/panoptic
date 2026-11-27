@@ -25,6 +25,7 @@ function context(over: Partial<RowMenuContext> = {}) {
     labels: { selectTop: "Select top 1000", newQuery: "New query", refresh: "Refresh" },
     envOrder: ["prod", "uat"],
     looseConnections: [],
+    groupByEngine: false,
     environment: (id) => [prod, uat].find((e) => e.id === id),
     connection: (id) => (id === conn.id ? { env: prod, connection: conn } : undefined),
     copy: record("copy"),
@@ -130,6 +131,19 @@ describe("rowMenu", () => {
     const items = rowMenu(nodeRow(node({ id: "conn:c2", kind: "connection", meta: { connectionId: "c2" } })), ctx);
     expect(labels(items)).toContain("Move up");
     expect(labels(items)).toContain("Move down [disabled]");
+  });
+
+  it("grouped by engine, a connection moves within its engine's block (#385)", () => {
+    const cosmos = { ...conn, id: "c2", kind: "cosmos" };
+    const third = { ...conn, id: "c3" };
+    const env = { ...prod, connections: [conn, cosmos, third] };
+    const moves = (c: ConnectionConfig, groupByEngine: boolean) => {
+      const { ctx } = context({ groupByEngine, connection: (id) => ({ env, connection: [conn, cosmos, third].find((x) => x.id === id)! }) });
+      return labels(rowMenu(nodeRow(node({ id: `conn:${c.id}`, kind: "connection", meta: { connectionId: c.id } })), ctx)).filter((l) => l.startsWith("Move up") || l.startsWith("Move down"));
+    };
+    expect(moves(cosmos, false)).toEqual(["Move up", "Move down"]);
+    expect(moves(cosmos, true)).toEqual(["Move up [disabled]", "Move down [disabled]"]);
+    expect(moves(third, true)).toEqual(["Move up", "Move down [disabled]"]);
   });
 
   it("a connection in no environment has nothing to be removed from", () => {

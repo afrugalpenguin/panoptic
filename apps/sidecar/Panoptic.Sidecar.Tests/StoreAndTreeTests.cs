@@ -414,13 +414,15 @@ public sealed class ConfigStoreTests : IDisposable
         Assert.True(store.Settings.Explorer.ShowKindBadge);
         Assert.Equal(RowFonts.Mono, store.Settings.Explorer.RowFont);
         Assert.Empty(store.Settings.Explorer.EnvOrder);
+        Assert.True(store.Settings.Explorer.GroupByEngine);
 
-        store.SaveSettings(store.Settings with { Explorer = new ExplorerSettings(false, RowFonts.Ui, ["prod", "dev"]) });
+        store.SaveSettings(store.Settings with { Explorer = new ExplorerSettings(false, RowFonts.Ui, ["prod", "dev"], GroupByEngine: false) });
 
         var reloaded = new ConfigStore(_path).Settings.Explorer;
         Assert.False(reloaded.ShowKindBadge);
         Assert.Equal(RowFonts.Ui, reloaded.RowFont);
         Assert.Equal(["prod", "dev"], reloaded.EnvOrder);
+        Assert.False(reloaded.GroupByEngine);
     }
 
     [Fact]
@@ -523,6 +525,8 @@ public sealed class ConfigStoreTests : IDisposable
         Assert.Equal(RowFonts.Mono, settings.Explorer.RowFont);
         Assert.False(settings.Explorer.ShowKindBadge);
         Assert.Equal(["dev"], settings.Explorer.EnvOrder);
+        // Settings saved before #385 have no groupByEngine: it comes up on.
+        Assert.True(settings.Explorer.GroupByEngine);
         Assert.Null(settings.Editor.KeywordCase);
         Assert.Equal(new EditorSettings().CatalogSampleDocs, settings.Editor.CatalogSampleDocs);
         Assert.Equal(EditorSettings.DefaultMaxRows, settings.Editor.MaxRows);
