@@ -20,3 +20,9 @@ export function kindDescription(kind: string): KindDescription | undefined {
 export function kindBadge(kind: string): KindBadge {
   return registry.get(kind)?.badge ?? { letters: kind.charAt(0).toUpperCase() || "?", color: "var(--kind-unknown)", name: kind };
 }
+
+/** A kind's place in the sidecar's order, for grouping connections by engine (#385); an unknown kind sorts last. */
+export function kindRank(kind: string): number {
+  const i = [...registry.keys()].indexOf(kind);
+  return i < 0 ? registry.size : i;
+}

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { TreeNode } from "./api";
 import { AbortError, RpcError } from "../rpc";
 import {
-  connectionDrop, dropTarget, ENV_GAP, environmentDrop, moveEnvironment, ROW_HEIGHT, selectableRow, stepConnection, TreeModel, UNGROUPED, type Row,
+  connectionDrop, dropTarget, ENV_GAP, environmentDrop, moveEnvironment, moveGroup, ROW_HEIGHT, selectableRow, stepConnection, TreeModel, UNGROUPED, type Row,
 } from "./tree-model";
 import { BUILTIN_KINDS } from "./builtin-kinds";
 import { registerKinds } from "./kinds";
@@ -20,13 +20,13 @@ const node = (id: string, hasChildren = true, meta?: Record<string, string>): Tr
   meta,
 });
 
-function fixture(children: Record<string, TreeNode[]>) {
+function fixture(children: Record<string, TreeNode[]>, onChange: () => void = () => {}) {
   const load = vi.fn(async (id: string) => {
     const kids = children[id];
     if (!kids) throw new Error(`boom ${id}`);
     return kids;
   });
-  const model = new TreeModel(load, () => {});
+  const model = new TreeModel(load, onChange);
   return { model, load };
 }
 
@@ -894,6 +894,66 @@ describe("connections without an environment", () => {
     expect(model.connectionGroup("conn:a/db:x")).toBeUndefined();
   });
 
+  describe("group by engine (#385)", () => {
+    it("moveGroup: a connection's group, narrowed to its engine when on", () => {
+      const group = [{ id: "a", kind: "sql" }, { id: "b", kind: "cosmos" }, { id: "c", kind: "sql" }];
+      expect(moveGroup(group, group[2], false)).toBe(group);
+      expect(moveGroup(group, group[2], true).map((c) => c.id)).toEqual(["a", "c"]);
+    });
+
+    async function engines(onChange?: () => void) {
+      const f = fixture({
+        "": [env("env:dev", 4), conn("conn:p", "postgres"), conn("conn:q", "cosmos"), conn("conn:r", "sql")],
+        "env:dev": [conn("conn:a", "cosmos"), conn("conn:b", "sql"), conn("conn:c", "cosmos"), conn("conn:d", "sql")],
+      }, onChange);
+      await f.model.loadRoot();
+      await f.model.preload(f.model.envIds());
+      await f.model.expand("env:dev");
+      return f;
+    }
+
+    it("is off until set: connections keep their manual order", async () => {
+      const { model } = await engines();
+      expect(labels(model)).toEqual(["dev", "  conn:a", "  conn:b", "  conn:c", "  conn:d", "<group>", "  conn:p", "  conn:q", "  conn:r"]);
+    });
+
+    it("on, sorts each group's connections by engine in registry order, keeping manual order within one", async () => {
+      const changed = vi.fn();
+      const { model } = await engines(changed);
+      changed.mockClear();
+      model.setGroupByEngine(true);
+      model.setGroupByEngine(true);
+      expect(changed).toHaveBeenCalledTimes(1);
+      expect(labels(model)).toEqual(["dev", "  conn:b", "  conn:d", "  conn:a", "  conn:c", "<group>", "  conn:r", "  conn:q", "  conn:p"]);
+      expect(model.envConnections("env:dev").map((c) => c.connectionId)).toEqual(["b", "d", "a", "c"]);
+      model.setGroupByEngine(false);
+      expect(model.envConnections("env:dev").map((c) => c.connectionId)).toEqual(["a", "b", "c", "d"]);
+    });
+
+    it("sorts the flat list with no environments", async () => {
+      const f = fixture({ "": [conn("conn:a", "cosmos"), conn("conn:b"), conn("conn:c", "cosmos")] });
+      await f.model.loadRoot();
+      f.model.setGroupByEngine(true);
+      expect(labels(f.model)).toEqual(["conn:b", "conn:a", "conn:c"]);
+    });
+
+    it("narrows connectionGroup to the connection's engine, in config order", async () => {
+      const { model } = await engines();
+      expect(model.connectionGroup("conn:c")?.connectionIds).toEqual(["a", "b", "c", "d"]);
+      model.setGroupByEngine(true);
+      expect(model.connectionGroup("conn:c")).toEqual({ environmentId: "dev", connectionIds: ["a", "c"] });
+      expect(model.connectionGroup("conn:r")).toEqual({ environmentId: null, connectionIds: ["r"] });
+    });
+
+    it("connectionGroup for a drag: none onto another engine's connection when grouped", async () => {
+      const { model } = await engines();
+      expect(model.connectionGroup("conn:b", "conn:q")?.connectionIds).toEqual(["a", "b", "c", "d"]);
+      model.setGroupByEngine(true);
+      expect(model.connectionGroup("conn:b", "conn:q")).toBeUndefined();
+      expect(model.connectionGroup("conn:b", "conn:r")).toEqual({ environmentId: "dev", connectionIds: ["b", "d"] });
+    });
+  });
+
   it("treeEnvironmentIds: config ids in the order the tree shows them", async () => {
     const { model } = await mixed();
     expect(model.treeEnvironmentIds()).toEqual(["dev", "empty"]);
@@ -909,6 +969,11 @@ describe("connections without an environment", () => {
       expect(connectionDrop(connRow("b"), true, "x", group)).toEqual({ at: "before", drop: { environmentId: "dev", beforeId: "b" } });
       expect(connectionDrop(connRow("b"), false, "x", group)).toEqual({ at: "after", drop: { environmentId: "dev", beforeId: "c" } });
       expect(connectionDrop(connRow("c"), false, "x", group)).toEqual({ at: "after", drop: { environmentId: "dev", beforeId: null } });
+    });
+
+    it("is not a drop on a connection outside the group", () => {
+      expect(connectionDrop(connRow("z"), true, "x", group)).toBeUndefined();
+      expect(connectionDrop(connRow("z"), false, "x", group)).toBeUndefined();
     });
 
     it("in no environment, the target environment is null", () => {

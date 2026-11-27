@@ -179,6 +179,7 @@ export interface EnvironmentConfig {
 export interface ExplorerSettings {
   showKindBadge: boolean;
   rowFont: string;
+  groupByEngine: boolean;
   envOrder: string[];
 }
 

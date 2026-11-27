@@ -75,7 +75,8 @@
   let typed = "";
   let typedAt = 0;
   /** What is being dragged to move it, set on dragstart: a connection's or an environment's config id. */
-  let dragging: { kind: "connection" | "environment"; id: string } | undefined;
+  /** What is being dragged: its config id, and for a connection its node id (to keep a drop within its engine). */
+  let dragging: { kind: "connection" | "environment"; id: string; node?: string } | undefined;
   /** The row being dragged over and how it shows the drop: outlined, or a line above or below it. */
   let dropOn = $state<{ key: string; at: DropAt }>();
   /** Shows the scrollbar thumb while scrolling. */
@@ -317,12 +318,13 @@
   function onRowDragStart(e: DragEvent, row: Row) {
     // Connections and environment headers drag to move them; anything else drags its text into the editor.
     dragging = undefined;
-    const connectionId = row.type === "node" && row.node.kind === "connection" ? row.node.meta?.connectionId : undefined;
+    const connectionNode = row.type === "node" && row.node.kind === "connection" ? row.node : undefined;
+    const connectionId = connectionNode?.meta?.connectionId;
     const environmentId = row.type === "node" && row.node.kind === "environment" ? row.node.meta?.environmentId : undefined;
     if ((connectionId || environmentId) && e.dataTransfer) {
       e.dataTransfer.setData(connectionId ? CONNECTION_MIME : ENVIRONMENT_MIME, (connectionId ?? environmentId)!);
       e.dataTransfer.effectAllowed = "move";
-      dragging = connectionId ? { kind: "connection", id: connectionId } : { kind: "environment", id: environmentId! };
+      dragging = connectionId ? { kind: "connection", id: connectionId, node: connectionNode!.id } : { kind: "environment", id: environmentId! };
       return;
     }
     const text = row.type === "node" ? row.node.meta?.dragText : undefined;
@@ -343,7 +345,7 @@
     const upper = e.clientY < box.top + box.height / 2;
     if (dragging?.kind === "connection") {
       const id = dragging.id;
-      const target = connectionDrop(row, upper, id, row.type === "node" ? model.connectionGroup(row.node.id) : undefined);
+      const target = connectionDrop(row, upper, id, row.type === "node" ? model.connectionGroup(row.node.id, dragging.node) : undefined);
       return target && { at: target.at, run: () => onMoveConnection(id, target.drop.environmentId, target.drop.beforeId) };
     }
     if (dragging?.kind === "environment") {

@@ -1,5 +1,5 @@
 import type { NodeError, TreeNode } from "./api";
-import { kindBadge, kindDescription, type KindBadge } from "./kinds";
+import { kindBadge, kindDescription, kindRank, type KindBadge } from "./kinds";
 import { computeLabels, leafLabel, type LabelSegments } from "./labels";
 import { isLoopback } from "./loopback";
 import { isAbortError } from "../rpc";
@@ -126,7 +126,7 @@ export function connectionDrop(row: Row, upper: boolean, dragged: string, group?
   const environmentId = dropTarget(row);
   if (environmentId !== undefined) return { at: "over", drop: { environmentId } };
   const target = row.type === "node" && row.node.kind === "connection" ? row.node.meta?.connectionId : undefined;
-  if (!target || !group || target === dragged) return undefined;
+  if (!target || !group || target === dragged || !group.connectionIds.includes(target)) return undefined;
   const ids = group.connectionIds;
   const beforeId = upper ? target : (ids[ids.indexOf(target) + 1] ?? null);
   const at = ids.indexOf(dragged);
@@ -156,6 +156,11 @@ export function stepConnection(ids: string[], id: string, by: -1 | 1): string | 
   const i = ids.indexOf(id);
   if (i < 0 || i + by < 0 || i + by >= ids.length) return undefined;
   return by < 0 ? ids[i - 1] : (ids[i + 2] ?? null);
+}
+
+/** The connections a connection moves among: its group, or only its engine's block there with explorer.groupByEngine (#385). */
+export function moveGroup<T extends { kind: string }>(group: T[], connection: T, byEngine: boolean): T[] {
+  return byEngine ? group.filter((c) => c.kind === connection.kind) : group;
 }
 
 /**
@@ -236,6 +241,8 @@ export class TreeModel {
   private text = "";
   /** explorer.envOrder: environment ids (not node ids) in manual order. */
   private envOrder: string[] = [];
+  /** explorer.groupByEngine: each group's connections sorted by engine, manual order within one (#385). */
+  private groupByEngine = false;
   /** Each node's last failed load, kept while a retry is loading (docs/explorer-errors.md); cleared on success. */
   private readonly failures = new Map<string, { error: NodeError; at: number }>();
   /** Aborts each in-flight load; collapsing a node, or cancelling from the status bar, aborts its load. */
@@ -283,12 +290,19 @@ export class TreeModel {
     return this.treeEnvIds().map((id) => this.nodes.get(id)?.meta?.environmentId ?? "");
   }
 
-  /** A connection node's group, unfiltered, for placing a drop; undefined for any other node. */
-  connectionGroup(id: string): ConnectionGroup | undefined {
+  /**
+   * A connection node's group, unfiltered, for placing a drop; undefined for any other node. Grouped by engine, only
+   * its engine's connections, and undefined when `moving` (the dragged connection's node) is another engine (#385).
+   */
+  connectionGroup(id: string, moving?: string): ConnectionGroup | undefined {
     if (this.nodes.get(id)?.kind !== "connection") return undefined;
+    if (this.groupByEngine && moving !== undefined && this.kindOf(moving) !== this.kindOf(id)) return undefined;
     const parent = this.parents.get(id);
     if (parent === undefined) return undefined;
-    const connectionIds = this.childIds(parent).map((c) => this.nodes.get(c)!).filter((n) => n.kind === "connection").map((n) => n.meta?.connectionId ?? "");
+    const kind = this.kindOf(id);
+    const connectionIds = this.childIds(parent)
+      .filter((c) => this.nodes.get(c)?.kind === "connection" && (!this.groupByEngine || this.kindOf(c) === kind))
+      .map((c) => this.nodes.get(c)?.meta?.connectionId ?? "");
     return { environmentId: parent === "" ? null : (this.nodes.get(parent)?.meta?.environmentId ?? null), connectionIds };
   }
 
@@ -312,7 +326,7 @@ export class TreeModel {
    * order, unfiltered and whether or not the environment is open, with the tree's label segments and engine badge.
    */
   envConnections(envNodeId: string): EnvConnection[] {
-    return this.childIds(envNodeId).flatMap((id) => {
+    return this.byEngine(this.childIds(envNodeId)).flatMap((id) => {
       const node = this.nodes.get(id);
       if (node?.kind !== "connection") return [];
       const kind = node.meta?.connectionKind ?? node.icon;
@@ -449,6 +463,13 @@ export class TreeModel {
     this.onChange();
   }
 
+  /** Applies explorer.groupByEngine. */
+  setGroupByEngine(on: boolean): void {
+    if (on === this.groupByEngine) return;
+    this.groupByEngine = on;
+    this.onChange();
+  }
+
   /** Engines (connection kinds) switched off; an engine no connection has any more drops out. */
   hiddenEngines(): ReadonlySet<string> {
     return this.hidden;
@@ -558,7 +579,7 @@ export class TreeModel {
         if (s?.status === "loaded") shown.set(env, s.ids.filter((id) => this.matches(id)).length);
       }
     const envs = this.orderedEnvs(this.envIds());
-    const loose = this.looseIds().filter((id) => !filter || this.matches(id));
+    const loose = this.byEngine(this.looseIds()).filter((id) => !filter || this.matches(id));
     // With no environments at all, loose connections are the whole tree: flat at the root, no header.
     const flat = envs.length === 0;
 
@@ -628,7 +649,7 @@ export class TreeModel {
         if (state.status === "loading") out.push(place({ ...base, type: "loading" as const, key: `${id}#loading` }, false));
         else if (state.status === "error") out.push(place({ ...base, type: "error" as const, key: `${id}#error`, error: state.error }, false));
         else if (state.ids.length === 0) out.push(place({ ...base, type: "empty" as const, key: `${id}#empty` }, false));
-        else visit(state.ids, depth + 1, color, ro, env, isLoose);
+        else visit(isEnv ? this.byEngine(state.ids) : state.ids, depth + 1, color, ro, env, isLoose);
       }
     };
     visit(envs, 0, undefined, false, "", false);
@@ -657,6 +678,16 @@ export class TreeModel {
     );
     if (this.ungroupedOpen) visit(loose, 1, undefined, false, UNGROUPED, true);
     return out;
+  }
+
+  private kindOf(id: string): string {
+    const node = this.nodes.get(id);
+    return node?.meta?.connectionKind ?? node?.icon ?? "";
+  }
+
+  /** Connections sorted by engine when explorer.groupByEngine is on (a stable sort keeps manual order within one). */
+  private byEngine(ids: string[]): string[] {
+    return this.groupByEngine ? [...ids].sort((a, b) => kindRank(this.kindOf(a)) - kindRank(this.kindOf(b))) : ids;
   }
 
   private orderedEnvs(ids: string[]): string[] {
